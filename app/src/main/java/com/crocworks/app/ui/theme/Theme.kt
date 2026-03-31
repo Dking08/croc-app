@@ -103,13 +103,18 @@ private val AmoledDarkColorScheme = DarkColorScheme.copy(
     surfaceContainerHighest = md_theme_amoled_surfaceContainerHighest,
 )
 
-// Express You — generous corner radii
-private val CrocShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(20.dp),
-    extraLarge = RoundedCornerShape(28.dp)
+/**
+ * M3 Expressive shapes — rounder, more playful corner radii.
+ * - Buttons, chips, text fields → fully rounded (pill)
+ * - Cards → large radii for soft, inviting feel
+ * - Dialogs, sheets → extra large radii
+ */
+private val ExpressiveShapes = Shapes(
+    extraSmall = RoundedCornerShape(12.dp),
+    small = RoundedCornerShape(16.dp),
+    medium = RoundedCornerShape(24.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(32.dp)
 )
 
 @Composable
@@ -146,7 +151,7 @@ fun CrocTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = CrocTypography,
-        shapes = CrocShapes,
+        shapes = ExpressiveShapes,
         content = content
     )
 }

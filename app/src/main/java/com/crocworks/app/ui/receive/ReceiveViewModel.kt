@@ -57,9 +57,18 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             crocProcess.state.collect { state ->
                 _uiState.update { it.copy(transferState = state) }
                 if (state is CrocTransferState.Completed) {
-                    val receivedFiles = publishReceivedFiles(state.fileNames)
+                    // Scan the output directory for actual files, since parser
+                    // fileNames may be truncated (e.g. "4200-funn...")
+                    val receivedFiles = publishReceivedFiles()
                     _uiState.update { it.copy(receivedFiles = receivedFiles) }
-                    saveToHistory(state)
+                    // Use actual file names for history, not truncated parser names
+                    val actualNames = receivedFiles.map { it.name }
+                    saveToHistory(
+                        state.copy(
+                            fileNames = actualNames,
+                            totalFileCount = receivedFiles.size
+                        )
+                    )
                 }
             }
         }
@@ -106,9 +115,10 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             crocProcess.reset()
             kotlinx.coroutines.delay(50)
 
+            // Unique sub-directory per transfer so we only scan THIS transfer's files
             val outputDir = File(
                 getApplication<CrocApp>().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                "croc-received"
+                "croc-received/${System.currentTimeMillis()}"
             ).apply { mkdirs() }
             currentOutputDir = outputDir
 
@@ -150,12 +160,16 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun publishReceivedFiles(fileNames: List<String>): List<ReceivedFile> {
+    /**
+     * Scan the output directory for all files and publish them.
+     * We don't rely on [fileNames] from the parser because croc truncates
+     * long names in its progress output (e.g. "4200-funn...").
+     */
+    private fun publishReceivedFiles(): List<ReceivedFile> {
         val outputDir = currentOutputDir ?: return emptyList()
-        return fileNames.mapNotNull { fileName ->
-            val source = File(outputDir, File(fileName).name)
-            if (!source.exists()) return@mapNotNull null
+        val files = outputDir.listFiles()?.filter { it.isFile } ?: return emptyList()
 
+        return files.mapNotNull { source ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 publishToMediaStore(source)
             } else {

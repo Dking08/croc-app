@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -153,12 +154,13 @@ fun CrocApp(
                             label = {
                                 Text(
                                     text = destination.label,
-                                    style = MaterialTheme.typography.labelMedium
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                                 )
                             },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
                                 indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                                 unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant

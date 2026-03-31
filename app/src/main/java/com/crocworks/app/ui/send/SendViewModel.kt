@@ -207,12 +207,27 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun saveToHistory(state: CrocTransferState.Completed) {
         val code = _uiState.value.codePhrase
-        state.fileNames.forEach { fileName ->
+        val files = _uiState.value.selectedFiles
+        if (files.isNotEmpty()) {
+            // Use actual selected file names, not truncated parser names
+            files.forEach { file ->
+                app.database.transferHistoryDao().insert(
+                    TransferHistory(
+                        code = code,
+                        type = TransferType.SEND,
+                        fileName = file.name,
+                        fileSize = file.size,
+                        status = TransferStatus.COMPLETED
+                    )
+                )
+            }
+        } else {
+            // Fallback: use parser data (e.g. text mode)
             app.database.transferHistoryDao().insert(
                 TransferHistory(
                     code = code,
                     type = TransferType.SEND,
-                    fileName = fileName,
+                    fileName = state.fileNames.firstOrNull() ?: "text",
                     fileSize = state.totalBytes,
                     status = TransferStatus.COMPLETED
                 )

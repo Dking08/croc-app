@@ -50,7 +50,9 @@ class CrocProcess(
         val exitCode: Int,
         val fileNames: List<String>,
         val totalBytes: Long,
-        val outputTail: List<String>
+        val outputTail: List<String>,
+        val peerIp: String = "",
+        val totalFileCount: Int = 0
     )
 
     private val homeDir: File
@@ -267,7 +269,12 @@ class CrocProcess(
         }
 
         if (isSuccessfulTransfer(result)) {
-            _state.value = CrocTransferState.Completed(result.fileNames, result.totalBytes)
+            _state.value = CrocTransferState.Completed(
+                fileNames = result.fileNames,
+                totalBytes = result.totalBytes,
+                peerIp = result.peerIp,
+                totalFileCount = result.totalFileCount.coerceAtLeast(result.fileNames.size)
+            )
         } else {
             _state.value = CrocTransferState.Error(errorMessageFor(result))
         }
@@ -357,10 +364,13 @@ class CrocProcess(
     private fun isSuccessfulTransfer(result: ProcessResult): Boolean {
         if (result.exitCode != 0 || hasCliUsageExit(result)) return false
         if (result.fileNames.isNotEmpty() || result.totalBytes > 0L) return true
+        // If we captured a peer IP, the transfer happened
+        if (result.peerIp.isNotBlank()) return true
 
         return result.outputTail.any {
             val line = it.lowercase()
-            "sending '" in line || "receiving '" in line
+            "sending '" in line || "receiving '" in line ||
+                    "sending (" in line || "receiving (" in line
         }
     }
 
@@ -383,7 +393,24 @@ class CrocProcess(
         val fileNames = mutableListOf<String>()
         var totalBytes = 0L
         var currentFileName = ""
+        var peerIp = ""
+        var totalFilesFromProgress = 0
         val outputTail = ArrayDeque<String>()
+
+        // Regex patterns for the v10.4.2 output format
+        // Matches: "Sending (->1.2.3.4:9009)" or "Receiving (<-1.2.3.4:9009)"
+        val peerIpRegex = Regex("""(?:->|<-)(\d+\.\d+\.\d+\.\d+)""")
+        // Matches progress lines: "filename... 42% |...| (size) N/M" or "file.txt 42% |...| (size)"
+        // Filename may or may not be truncated with "..."
+        val progressLineRegex = Regex("""^\s*(.+?)\s+(\d+)%\s*\|.*\|\s*\((.+?)\)\s*(?:(\d+)/(\d+))?""")
+        // Matches size: "(42/100 kB" or "(85/85 kB, 6.1 MB/s)"
+        val sizeInProgressRegex = Regex("""(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)\s*(\w+)""")
+        // Matches old format: Sending 'filename' (100 kB)
+        val oldSendingRegex = Regex("""'([^']+)'""")
+        val oldSizeRegex = Regex("""\((\d+(?:\.\d+)?)\s*(\w+)\)""")
+
+        // Track per-file sizes to compute total
+        val fileSizeMap = mutableMapOf<String, Long>()
 
         try {
             var line: String?
@@ -393,39 +420,109 @@ class CrocProcess(
                 outputTail.addLast(l)
                 if (outputTail.size > 50) outputTail.removeFirst()
 
+                // Skip blank / whitespace-only lines
+                if (l.isBlank()) continue
+
+                // Code announcement
                 if (l.contains("Code is:")) {
                     val code = l.substringAfter("Code is:").trim()
                     _state.value = CrocTransferState.WaitingForPeer(code)
                     continue
                 }
 
+                // Peer connection line: "Sending (->IP:PORT)" or "Receiving (<-IP:PORT)"
                 if (l.contains("Sending") || l.contains("Receiving")) {
-                    Regex("'([^']+)'").find(l)?.let { match ->
+                    peerIpRegex.find(l)?.let { match ->
+                        peerIp = match.groupValues[1]
+                    }
+                    // Old format: Sending 'filename' (100 kB)
+                    oldSendingRegex.find(l)?.let { match ->
                         currentFileName = match.groupValues[1]
                         if (currentFileName !in fileNames) fileNames.add(currentFileName)
                     }
-                    Regex("\\(([\\d.]+)\\s*(\\w+)\\)").find(l)?.let { match ->
+                    oldSizeRegex.find(l)?.let { match ->
                         val num = match.groupValues[1].toDoubleOrNull() ?: 0.0
                         val unit = match.groupValues[2]
-                        totalBytes = when (unit.lowercase()) {
-                            "b" -> num.toLong()
-                            "kb" -> (num * 1024).toLong()
-                            "mb" -> (num * 1024 * 1024).toLong()
-                            "gb" -> (num * 1024 * 1024 * 1024).toLong()
-                            else -> num.toLong()
-                        }
+                        totalBytes = parseSize(num, unit)
                     }
                     continue
                 }
 
+                // Progress line: "filename... 42% |████   | (42/100 kB, 1.2 MB/s) 1/3"
+                val progressMatch = progressLineRegex.find(l)
+                if (progressMatch != null) {
+                    val match = progressMatch
+                    val truncatedName = match.groupValues[1].trim()
+                    val percent = match.groupValues[2].toIntOrNull() ?: 0
+                    val sizeSection = match.groupValues[3]
+                    val currentFileNum = match.groupValues[4].toIntOrNull()
+                    val totalFileNum = match.groupValues[5].toIntOrNull()
+
+                    // Update filename (use truncated name as display)
+                    if (truncatedName.isNotBlank()) {
+                        currentFileName = truncatedName
+                    }
+
+                    // Parse per-file size from "(current/total unit)"
+                    sizeInProgressRegex.find(sizeSection)?.let { sizeMatch ->
+                        val fileTotal = sizeMatch.groupValues[2].toDoubleOrNull() ?: 0.0
+                        val unit = sizeMatch.groupValues[3]
+                        val fileTotalBytes = parseSize(fileTotal, unit)
+                        fileSizeMap[currentFileName] = fileTotalBytes
+                    }
+
+                    // Update file count from N/M suffix
+                    if (totalFileNum != null && totalFileNum > 0) {
+                        totalFilesFromProgress = totalFileNum
+                    }
+
+                    // Track filenames from progress lines (100% = file done)
+                    if (percent == 100 && currentFileName.isNotBlank()) {
+                        if (currentFileName !in fileNames) {
+                            fileNames.add(currentFileName)
+                        }
+                    }
+
+                    // Compute cumulative total bytes from all known file sizes
+                    val cumulativeTotal = fileSizeMap.values.sum()
+                    if (cumulativeTotal > 0) {
+                        totalBytes = cumulativeTotal
+                    }
+
+                    // Compute bytes transferred:
+                    // sum of completed files + current file progress
+                    val completedBytes = fileNames.filter { it != currentFileName }
+                        .sumOf { fileSizeMap[it] ?: 0L }
+                    val currentFileSize = fileSizeMap[currentFileName] ?: 0L
+                    val currentFileTransferred = (currentFileSize * percent / 100)
+                    val bytesTransferred = completedBytes + currentFileTransferred
+
+                    val effectiveTotalFiles = totalFilesFromProgress.coerceAtLeast(fileNames.size).coerceAtLeast(1)
+                    val effectiveCurrentFile = if (currentFileNum != null) currentFileNum else fileNames.indexOf(currentFileName) + 1
+
+                    _state.value = CrocTransferState.Transferring(
+                        fileName = currentFileName,
+                        currentFile = effectiveCurrentFile.coerceAtLeast(1),
+                        totalFiles = effectiveTotalFiles,
+                        currentFilePercent = percent,
+                        bytesTransferred = bytesTransferred.coerceAtMost(totalBytes.coerceAtLeast(1)),
+                        totalBytes = totalBytes.coerceAtLeast(1),
+                        peerIp = peerIp
+                    )
+                    continue
+                }
+
+                // Fallback: simple percent match for lines we didn't parse above
                 Regex("(\\d+)%").find(l)?.let { match ->
                     val percent = match.groupValues[1].toIntOrNull() ?: 0
                     _state.value = CrocTransferState.Transferring(
                         fileName = currentFileName,
-                        currentFile = fileNames.indexOf(currentFileName) + 1,
-                        totalFiles = fileNames.size.coerceAtLeast(1),
+                        currentFile = fileNames.indexOf(currentFileName).coerceAtLeast(0) + 1,
+                        totalFiles = totalFilesFromProgress.coerceAtLeast(fileNames.size).coerceAtLeast(1),
+                        currentFilePercent = percent,
                         bytesTransferred = totalBytes * percent / 100,
-                        totalBytes = totalBytes
+                        totalBytes = totalBytes.coerceAtLeast(1),
+                        peerIp = peerIp
                     )
                 }
             }
@@ -435,7 +532,9 @@ class CrocProcess(
                 exitCode = exitCode,
                 fileNames = fileNames,
                 totalBytes = totalBytes,
-                outputTail = outputTail.toList()
+                outputTail = outputTail.toList(),
+                peerIp = peerIp,
+                totalFileCount = totalFilesFromProgress
             )
         } catch (e: InterruptedIOException) {
             val exitCode = waitForExitCode(process)
@@ -452,7 +551,9 @@ class CrocProcess(
                     listOf(e.message ?: "Stream interrupted")
                 } else {
                     outputTail.toList()
-                }
+                },
+                peerIp = peerIp,
+                totalFileCount = totalFilesFromProgress
             )
         } catch (e: Exception) {
             Log.e(TAG, "Parse error", e)
@@ -460,10 +561,20 @@ class CrocProcess(
                 exitCode = -1,
                 fileNames = fileNames,
                 totalBytes = totalBytes,
-                outputTail = outputTail.toList() + listOf(e.message ?: "Unknown error")
+                outputTail = listOf(e.message ?: "Unknown error"),
+                peerIp = peerIp,
+                totalFileCount = totalFilesFromProgress
             )
-        } finally {
-            currentProcess = null
+        }
+    }
+
+    private fun parseSize(num: Double, unit: String): Long {
+        return when (unit.lowercase()) {
+            "b" -> num.toLong()
+            "kb" -> (num * 1024).toLong()
+            "mb" -> (num * 1024 * 1024).toLong()
+            "gb" -> (num * 1024 * 1024 * 1024).toLong()
+            else -> num.toLong()
         }
     }
 }

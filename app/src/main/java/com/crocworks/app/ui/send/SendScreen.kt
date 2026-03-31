@@ -144,7 +144,7 @@ fun SendScreen(
 
     // Animated progress for the file card border
     val transferProgress = when (val state = uiState.transferState) {
-        is CrocTransferState.Transferring -> state.progress
+        is CrocTransferState.Transferring -> state.fileCountProgress
         is CrocTransferState.Completed -> 1f
         else -> 0f
     }
@@ -166,19 +166,6 @@ fun SendScreen(
                     )
                 },
                 actions = {
-                    TooltipBox(
-                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                        tooltip = {
-                            PlainTooltip {
-                                Text("End-to-end encrypted peer-to-peer file transfer")
-                            }
-                        },
-                        state = rememberTooltipState()
-                    ) {
-                        IconButton(onClick = {}) {
-                            Icon(Icons.Outlined.Info, contentDescription = "Info")
-                        }
-                    }
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(Icons.Outlined.History, contentDescription = "History")
                     }

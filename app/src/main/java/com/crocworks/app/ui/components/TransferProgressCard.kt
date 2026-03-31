@@ -101,12 +101,18 @@ fun TransferProgressCard(
                 }
 
                 is CrocTransferState.Transferring -> {
+                    val subtitle = buildString {
+                        append("${state.fileName} (${state.currentFile}/${state.totalFiles})")
+                        if (state.peerIp.isNotBlank()) {
+                            append(" • ${state.peerIp}")
+                        }
+                    }
                     TransferHeader(
                         icon = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
                         title = if (isSending) "Uploading..." else "Downloading...",
-                        subtitle = "${state.fileName} (${state.currentFile}/${state.totalFiles})"
+                        subtitle = subtitle
                     )
 
                     val animatedProgress by animateFloatAsState(
@@ -153,12 +159,19 @@ fun TransferProgressCard(
                 }
 
                 is CrocTransferState.Completed -> {
+                    val count = state.fileCount
+                    val subtitle = buildString {
+                        append("$count file${if (count != 1) "s" else ""} — ${formatBytes(state.totalBytes)}")
+                        if (state.peerIp.isNotBlank()) {
+                            append(" • ${state.peerIp}")
+                        }
+                    }
                     TransferHeader(
                         icon = Icons.Rounded.CheckCircle,
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
                         title = if (isSending) "Upload Complete!" else "Download Complete!",
-                        subtitle = "${state.fileNames.size} file(s) — ${formatBytes(state.totalBytes)}",
+                        subtitle = subtitle,
                         titleColor = MaterialTheme.colorScheme.primary
                     )
                 }

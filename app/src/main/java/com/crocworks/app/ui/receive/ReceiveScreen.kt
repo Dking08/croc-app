@@ -115,7 +115,7 @@ fun ReceiveScreen(
 
     // Animated progress for the code card border
     val transferProgress = when (val state = uiState.transferState) {
-        is CrocTransferState.Transferring -> state.progress
+        is CrocTransferState.Transferring -> state.fileCountProgress
         is CrocTransferState.Completed -> 1f
         else -> 0f
     }
@@ -137,19 +137,6 @@ fun ReceiveScreen(
                     )
                 },
                 actions = {
-                    TooltipBox(
-                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                        tooltip = {
-                            PlainTooltip {
-                                Text("Enter a code or scan a QR to receive files")
-                            }
-                        },
-                        state = rememberTooltipState()
-                    ) {
-                        IconButton(onClick = {}) {
-                            Icon(Icons.Outlined.Info, contentDescription = "Info")
-                        }
-                    }
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(Icons.Outlined.History, contentDescription = "History")
                     }
