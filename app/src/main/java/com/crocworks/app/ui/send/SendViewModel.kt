@@ -66,20 +66,13 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             prefsRepo.preferencesFlow.collect { prefs ->
-                val quickCodes = buildList {
-                    if (prefs.defaultCodePhrase.isNotBlank()) {
-                        add(prefs.defaultCodePhrase)
-                    }
-                    addAll(prefs.savedCodePhrases)
-                }.distinct()
-
                 _uiState.update { state ->
                     state.copy(
                         codePhrase = if (state.codePhrase.isBlank()) {
                             prefs.defaultCodePhrase.ifBlank { generateRandomCode() }
                         } else state.codePhrase,
                         defaultCodePhrase = prefs.defaultCodePhrase,
-                        savedCodePhrases = quickCodes
+                        savedCodePhrases = prefs.savedCodePhrases
                     )
                 }
             }
@@ -160,12 +153,10 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
             val state = _uiState.value
             if (!state.hasContent) return@launch
 
-            if (state.transferState is CrocTransferState.Completed ||
-                state.transferState is CrocTransferState.Error ||
-                state.transferState is CrocTransferState.Cancelled
-            ) {
-                crocProcess.reset()
-            }
+            // Always reset before starting a new transfer
+            crocProcess.reset()
+            // Give state a moment to settle
+            kotlinx.coroutines.delay(50)
 
             if (state.isTextMode) {
                 if (state.textToSend.isNotBlank()) {
@@ -230,30 +221,18 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun generateRandomCode(): String {
+        // Short words only — resulting codes are always ≤15 chars including hyphens
         val adjectives = listOf(
-            "autumn", "hidden", "bitter", "misty", "silent", "empty", "dry",
-            "dark", "summer", "icy", "quiet", "white", "cool", "spring",
-            "winter", "patient", "twilight", "dawn", "crimson", "wispy",
-            "weathered", "blue", "billowing", "broken", "cold", "damp",
-            "falling", "frosty", "green", "long", "late", "bold", "little",
-            "morning", "muddy", "old", "red", "rough", "still", "small",
-            "sparkling", "shy", "wandering", "wild", "black", "young",
-            "holy", "solitary", "fragrant", "aged", "snowy", "proud",
-            "floral", "restless", "divine", "ancient", "purple", "lively"
+            "red", "blue", "cold", "dark", "dry", "icy",
+            "old", "shy", "bold", "cool", "wild", "dim",
+            "fast", "big", "tiny", "soft", "warm", "new"
         )
         val nouns = listOf(
-            "waterfall", "river", "breeze", "moon", "rain", "wind",
-            "sea", "morning", "snow", "lake", "sunset", "pine",
-            "shadow", "leaf", "dawn", "glitter", "forest", "hill",
-            "cloud", "meadow", "sun", "glade", "bird", "brook",
-            "butterfly", "bush", "dew", "dust", "field", "fire",
-            "flower", "firefly", "feather", "grass", "haze", "mountain",
-            "night", "pond", "darkness", "snowflake", "silence", "sound",
-            "sky", "shape", "surf", "thunder", "violet", "water",
-            "wildflower", "wave", "water", "resonance", "sun", "wood",
-            "dream", "cherry", "tree", "fog", "frost", "voice"
+            "sun", "rain", "moon", "bird", "leaf", "fog",
+            "dew", "sky", "hill", "lake", "pine", "fire",
+            "snow", "wind", "wave", "dawn", "dust", "glow"
         )
-        val num = (1..9999).random()
+        val num = (10..99).random()
         return "${adjectives.random()}-${nouns.random()}-$num"
     }
 

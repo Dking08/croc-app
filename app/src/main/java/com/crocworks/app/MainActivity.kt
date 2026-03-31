@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
@@ -28,12 +29,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.crocworks.app.data.preferences.UserPreferencesRepository
 import com.crocworks.app.ui.history.HistoryScreen
 import com.crocworks.app.ui.navigation.CrocDestination
 import com.crocworks.app.ui.receive.ReceiveScreen
@@ -42,6 +45,7 @@ import com.crocworks.app.ui.scanner.QrScannerScreen
 import com.crocworks.app.ui.send.SendScreen
 import com.crocworks.app.ui.send.SendViewModel
 import com.crocworks.app.ui.settings.SettingsScreen
+import com.crocworks.app.ui.settings.SettingsViewModel
 import com.crocworks.app.ui.theme.CrocTheme
 
 class MainActivity : ComponentActivity() {
@@ -50,16 +54,27 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Handle share intent
         val sharedUris = handleShareIntent(intent)
 
         setContent {
-            CrocTheme {
+            val settingsViewModel: SettingsViewModel = viewModel()
+            val prefs by settingsViewModel.preferences.collectAsStateWithLifecycle()
+
+            val isDark = when (prefs.themeMode) {
+                "dark" -> true
+                "light" -> false
+                else -> isSystemInDarkTheme()
+            }
+
+            CrocTheme(
+                darkTheme = isDark,
+                amoledDark = prefs.amoledDark
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    CrocApp(sharedUris = sharedUris)
+                    CrocApp(sharedUris = sharedUris, settingsViewModel = settingsViewModel)
                 }
             }
         }
@@ -67,7 +82,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // Handle new share intents while app is running
     }
 
     private fun handleShareIntent(intent: Intent?): List<Uri> {
@@ -87,19 +101,19 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun CrocApp(sharedUris: List<Uri> = emptyList()) {
+fun CrocApp(
+    sharedUris: List<Uri> = emptyList(),
+    settingsViewModel: SettingsViewModel
+) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // Bottom bar visible only on the 2 primary destinations
     val showBottomBar = currentRoute in CrocDestination.bottomNavItems.map { it.route }
 
-    // Shared ViewModels for cross-screen communication
     val sendViewModel: SendViewModel = viewModel()
     val receiveViewModel: ReceiveViewModel = viewModel()
 
-    // Handle shared files on launch
     var handledSharedUris by rememberSaveable { mutableStateOf(false) }
     if (sharedUris.isNotEmpty() && !handledSharedUris) {
         handledSharedUris = true
@@ -157,7 +171,7 @@ fun CrocApp(sharedUris: List<Uri> = emptyList()) {
     ) { paddingValues ->
         NavHost(
             navController = navController,
-            startDestination = if (sharedUris.isNotEmpty()) CrocDestination.Send.route else CrocDestination.Send.route,
+            startDestination = CrocDestination.Send.route,
             modifier = Modifier.padding(paddingValues)
         ) {
             composable(CrocDestination.Send.route) {
@@ -203,6 +217,7 @@ fun CrocApp(sharedUris: List<Uri> = emptyList()) {
             }
             composable(CrocDestination.Settings.route) {
                 SettingsScreen(
+                    viewModel = settingsViewModel,
                     onNavigateBack = {
                         navController.popBackStack()
                     }
@@ -213,7 +228,14 @@ fun CrocApp(sharedUris: List<Uri> = emptyList()) {
                     onCodeScanned = { code ->
                         receiveViewModel.setCodeFromQr(code)
                         receiveViewModel.startReceive()
-                        navController.popBackStack()
+                        // Navigate back to Receive tab (not just popBackStack which could land on Send)
+                        navController.navigate(CrocDestination.Receive.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     },
                     onNavigateBack = {
                         navController.popBackStack()

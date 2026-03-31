@@ -140,12 +140,12 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
                         Text(
-                            text = "Croc Works",
+                            text = "croc-app",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "v1.5.0 • croc v10.4.2",
+                            text = "v2.0.0 • croc v10.4.2",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -160,6 +160,17 @@ fun SettingsScreen(
                     value = prefs.themeMode,
                     options = listOf("system", "light", "dark"),
                     onValueChange = { viewModel.updateThemeMode(it) }
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+                SwitchSetting(
+                    icon = Icons.Rounded.Palette,
+                    label = "AMOLED Dark",
+                    description = "Pure black background for OLED displays",
+                    checked = prefs.amoledDark,
+                    onCheckedChange = { viewModel.updateAmoledDark(it) }
                 )
             }
 
@@ -210,7 +221,7 @@ fun SettingsScreen(
                         label = { Text("Add Saved Code") },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
-                        placeholder = { Text("autumn-river-4532") },
+                        placeholder = { Text("e.g. red-sun-42") },
                         shape = MaterialTheme.shapes.large
                     )
                     FilledTonalButton(
@@ -320,7 +331,7 @@ fun SettingsScreen(
 
             // About
             SettingsSection(icon = Icons.Rounded.Info, title = "About") {
-                InfoRow(label = "App Version", value = "1.5.0")
+                InfoRow(label = "App Version", value = "2.0.0")
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 2.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)

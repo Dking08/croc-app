@@ -66,18 +66,11 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             prefsRepo.preferencesFlow.collect { prefs ->
-                val quickCodes = buildList {
-                    if (prefs.defaultCodePhrase.isNotBlank()) {
-                        add(prefs.defaultCodePhrase)
-                    }
-                    addAll(prefs.savedCodePhrases)
-                }.distinct()
-
                 _uiState.update { state ->
                     state.copy(
                         codePhrase = if (state.codePhrase.isBlank()) prefs.defaultCodePhrase else state.codePhrase,
                         defaultCodePhrase = prefs.defaultCodePhrase,
-                        savedCodePhrases = quickCodes
+                        savedCodePhrases = prefs.savedCodePhrases
                     )
                 }
             }
@@ -109,12 +102,9 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         if (code.isBlank()) return
 
         viewModelScope.launch {
-            if (_uiState.value.transferState is CrocTransferState.Completed ||
-                _uiState.value.transferState is CrocTransferState.Error ||
-                _uiState.value.transferState is CrocTransferState.Cancelled
-            ) {
-                crocProcess.reset()
-            }
+            // Always reset before starting a new transfer
+            crocProcess.reset()
+            kotlinx.coroutines.delay(50)
 
             val outputDir = File(
                 getApplication<CrocApp>().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),

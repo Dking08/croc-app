@@ -57,7 +57,7 @@ class TransferService : Service() {
 
     private fun createNotification(text: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Croc Transfer")
+            .setContentTitle("croc-app")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_upload)
             .setOngoing(true)
@@ -67,7 +67,7 @@ class TransferService : Service() {
 
     fun updateProgress(fileName: String, progress: Int) {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Croc Transfer")
+            .setContentTitle("croc-app")
             .setContentText(fileName)
             .setSmallIcon(android.R.drawable.ic_menu_upload)
             .setOngoing(true)

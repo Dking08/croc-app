@@ -260,9 +260,15 @@ class CrocProcess(
             result = runCommand(retryCommand, workDir, waitingState, extraEnv)
         }
 
+        // Check cancelled state FIRST — cancel() may have been called while parseOutput was running.
+        // Without this guard, a force-killed process can exit with code 0 and be mis-reported as Completed.
+        if (_state.value is CrocTransferState.Cancelled) {
+            return // keep the Cancelled state intact
+        }
+
         if (isSuccessfulTransfer(result)) {
             _state.value = CrocTransferState.Completed(result.fileNames, result.totalBytes)
-        } else if (_state.value !is CrocTransferState.Cancelled) {
+        } else {
             _state.value = CrocTransferState.Error(errorMessageFor(result))
         }
     }

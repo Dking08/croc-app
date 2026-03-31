@@ -10,6 +10,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
@@ -89,6 +90,19 @@ private val DarkColorScheme = darkColorScheme(
     surfaceContainerHighest = md_theme_dark_surfaceContainerHighest,
 )
 
+/** AMOLED dark: takes the normal dark scheme and replaces surfaces with pure black */
+private val AmoledDarkColorScheme = DarkColorScheme.copy(
+    background = md_theme_amoled_background,
+    surface = md_theme_amoled_surface,
+    surfaceDim = md_theme_amoled_surfaceDim,
+    surfaceBright = md_theme_amoled_surfaceBright,
+    surfaceContainerLowest = md_theme_amoled_surfaceContainerLowest,
+    surfaceContainerLow = md_theme_amoled_surfaceContainerLow,
+    surfaceContainer = md_theme_amoled_surfaceContainer,
+    surfaceContainerHigh = md_theme_amoled_surfaceContainerHigh,
+    surfaceContainerHighest = md_theme_amoled_surfaceContainerHighest,
+)
+
 // Express You — generous corner radii
 private val CrocShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
@@ -102,14 +116,29 @@ private val CrocShapes = Shapes(
 fun CrocTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
+    amoledDark: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context)
-            else dynamicLightColorScheme(context)
+            val base = if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            // Apply AMOLED overrides on top of dynamic dark
+            if (darkTheme && amoledDark) {
+                base.copy(
+                    background = Color.Black,
+                    surface = Color.Black,
+                    surfaceDim = Color.Black,
+                    surfaceBright = Color(0xFF1A1A1A),
+                    surfaceContainerLowest = Color.Black,
+                    surfaceContainerLow = Color(0xFF0A0A0A),
+                    surfaceContainer = Color(0xFF0F0F0F),
+                    surfaceContainerHigh = Color(0xFF161616),
+                    surfaceContainerHighest = Color(0xFF1C1C1C),
+                )
+            } else base
         }
+        darkTheme && amoledDark -> AmoledDarkColorScheme
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }

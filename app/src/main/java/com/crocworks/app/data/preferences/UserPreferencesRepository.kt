@@ -27,6 +27,7 @@ class UserPreferencesRepository(private val context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DEFAULT_CODE_PHRASE = stringPreferencesKey("default_code_phrase")
         val SAVED_CODE_PHRASES = stringSetPreferencesKey("saved_code_phrases")
+        val AMOLED_DARK = booleanPreferencesKey("amoled_dark")
     }
 
     data class CrocPreferences(
@@ -39,6 +40,7 @@ class UserPreferencesRepository(private val context: Context) {
         val multicastAddress: String = "239.255.255.250",
         val useInternalDns: Boolean = true,
         val themeMode: String = "system",
+        val amoledDark: Boolean = false,
         val defaultCodePhrase: String = "",
         val savedCodePhrases: List<String> = emptyList()
     )
@@ -61,6 +63,7 @@ class UserPreferencesRepository(private val context: Context) {
             // Android devices often have a broken localhost DNS path for the croc CLI.
             useInternalDns = if (prefs.contains(USE_INTERNAL_DNS)) prefs[USE_INTERNAL_DNS] ?: true else true,
             themeMode = prefs[THEME_MODE] ?: "system",
+            amoledDark = prefs[AMOLED_DARK] ?: false,
             defaultCodePhrase = normalizeCodePhrase(prefs[DEFAULT_CODE_PHRASE] ?: ""),
             savedCodePhrases = savedCodes
         )
@@ -100,6 +103,10 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun updateThemeMode(value: String) {
         context.dataStore.edit { it[THEME_MODE] = value }
+    }
+
+    suspend fun updateAmoledDark(value: Boolean) {
+        context.dataStore.edit { it[AMOLED_DARK] = value }
     }
 
     suspend fun updateDefaultCodePhrase(value: String) {

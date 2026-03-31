@@ -4,11 +4,14 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
@@ -50,10 +54,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,10 +82,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.crocworks.app.croc.CrocTransferState
 import com.crocworks.app.ui.components.TransferProgressCard
-import com.crocworks.app.ui.components.formatBytes
+import com.crocworks.app.ui.components.progressBorder
 
 private const val MAX_VISIBLE_FILES = 6
-private const val MAX_VISIBLE_CODES = 5
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -93,10 +100,9 @@ fun ReceiveScreen(
     var hideCodePhrase by remember { mutableStateOf(true) }
     var showAllFiles by remember { mutableStateOf(false) }
 
-    val isTransferActive = uiState.transferState !is CrocTransferState.Idle &&
-            uiState.transferState !is CrocTransferState.Completed &&
-            uiState.transferState !is CrocTransferState.Error &&
-            uiState.transferState !is CrocTransferState.Cancelled
+    val isTransferActive = uiState.transferState is CrocTransferState.Preparing ||
+            uiState.transferState is CrocTransferState.WaitingForPeer ||
+            uiState.transferState is CrocTransferState.Transferring
     val isTransferFinished = uiState.transferState is CrocTransferState.Completed ||
             uiState.transferState is CrocTransferState.Error ||
             uiState.transferState is CrocTransferState.Cancelled
@@ -106,6 +112,20 @@ fun ReceiveScreen(
         is CrocTransferState.Error, CrocTransferState.Cancelled -> "Retry"
         else -> "Receive"
     }
+
+    // Animated progress for the code card border
+    val transferProgress = when (val state = uiState.transferState) {
+        is CrocTransferState.Transferring -> state.progress
+        is CrocTransferState.Completed -> 1f
+        else -> 0f
+    }
+    val animatedBorderProgress by animateFloatAsState(
+        targetValue = transferProgress,
+        animationSpec = tween(400),
+        label = "codeBorderProgress"
+    )
+    val showCodeBorder = isTransferActive || uiState.transferState is CrocTransferState.Completed
+    val borderColor = MaterialTheme.colorScheme.tertiary
 
     Scaffold(
         topBar = {
@@ -117,6 +137,19 @@ fun ReceiveScreen(
                     )
                 },
                 actions = {
+                    TooltipBox(
+                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                        tooltip = {
+                            PlainTooltip {
+                                Text("Enter a code or scan a QR to receive files")
+                            }
+                        },
+                        state = rememberTooltipState()
+                    ) {
+                        IconButton(onClick = {}) {
+                            Icon(Icons.Outlined.Info, contentDescription = "Info")
+                        }
+                    }
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(Icons.Outlined.History, contentDescription = "History")
                     }
@@ -162,53 +195,19 @@ fun ReceiveScreen(
         ) {
             Spacer(modifier = Modifier.height(2.dp))
 
-            // Hero Section
+            // ──── Code Entry Card — with animated progress border ────
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f)
-                ),
-                shape = MaterialTheme.shapes.extraLarge
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.tertiaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Rounded.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                            tint = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            text = "Receive files",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Enter a code or scan a QR to receive",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            // Code Entry Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (showCodeBorder) {
+                            Modifier.progressBorder(
+                                progress = animatedBorderProgress,
+                                color = borderColor,
+                                cornerRadius = 28.dp
+                            )
+                        } else Modifier
+                    ),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 ),
@@ -297,42 +296,41 @@ fun ReceiveScreen(
                         )
                     }
 
-                    // Saved codes — limited
+                    // Saved codes — scrollable 2-row horizontal grid
                     if (uiState.savedCodePhrases.isNotEmpty()) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            maxLines = 1
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            uiState.savedCodePhrases.take(MAX_VISIBLE_CODES).forEach { savedCode ->
-                                AssistChip(
-                                    onClick = { viewModel.startReceiveWithCode(savedCode) },
-                                    enabled = !isTransferActive,
-                                    label = {
-                                        Text(
-                                            savedCode,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                            uiState.savedCodePhrases.chunked(2).forEach { column ->
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    column.forEach { savedCode ->
+                                        AssistChip(
+                                            onClick = { viewModel.startReceiveWithCode(savedCode) },
+                                            enabled = !isTransferActive,
+                                            label = {
+                                                Text(
+                                                    savedCode,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
                                         )
                                     }
-                                )
-                            }
-                            if (uiState.savedCodePhrases.size > MAX_VISIBLE_CODES) {
-                                AssistChip(
-                                    onClick = { /* handled by settings */ },
-                                    label = { Text("+${uiState.savedCodePhrases.size - MAX_VISIBLE_CODES}") }
-                                )
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Transfer Progress — inline
+            // ──── Transfer Progress — between code and received files ────
             AnimatedVisibility(
-                visible = uiState.transferState !is CrocTransferState.Idle,
-                enter = fadeIn() + slideInVertically(),
-                exit = fadeOut() + slideOutVertically()
+                visible = isTransferActive || isTransferFinished,
+                enter = fadeIn() + slideInVertically { it / 2 },
+                exit = fadeOut() + slideOutVertically { it / 2 }
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     TransferProgressCard(
@@ -340,7 +338,6 @@ fun ReceiveScreen(
                         isSending = false,
                         onCancel = { viewModel.cancelTransfer() }
                     )
-
                     if (isTransferFinished) {
                         OutlinedButton(
                             onClick = { viewModel.dismissTransferResult() },
@@ -353,7 +350,7 @@ fun ReceiveScreen(
                 }
             }
 
-            // Received Files
+            // ──── Received Files ────
             if (uiState.receivedFiles.isNotEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),

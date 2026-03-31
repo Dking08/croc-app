@@ -60,7 +60,7 @@ fun TransferProgressCard(
                         icon = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
-                        title = "Preparing transfer...",
+                        title = if (isSending) "Preparing upload..." else "Preparing download...",
                         subtitle = null
                     )
                     LinearProgressIndicator(
@@ -79,8 +79,8 @@ fun TransferProgressCard(
                         icon = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
-                        title = "Waiting for peer...",
-                        subtitle = "Share the code with the other device"
+                        title = if (isSending) "Waiting for peer..." else "Connecting to sender...",
+                        subtitle = if (isSending) "Share the code with the receiver" else "Verifying code phrase..."
                     )
                     LinearProgressIndicator(
                         modifier = Modifier
@@ -105,7 +105,7 @@ fun TransferProgressCard(
                         icon = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
-                        title = if (isSending) "Sending" else "Receiving",
+                        title = if (isSending) "Uploading..." else "Downloading...",
                         subtitle = "${state.fileName} (${state.currentFile}/${state.totalFiles})"
                     )
 
@@ -157,7 +157,7 @@ fun TransferProgressCard(
                         icon = Icons.Rounded.CheckCircle,
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
-                        title = "Transfer Complete!",
+                        title = if (isSending) "Upload Complete!" else "Download Complete!",
                         subtitle = "${state.fileNames.size} file(s) — ${formatBytes(state.totalBytes)}",
                         titleColor = MaterialTheme.colorScheme.primary
                     )
