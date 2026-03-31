@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -24,13 +25,10 @@ class UserPreferencesRepository(private val context: Context) {
         val MULTICAST_ADDRESS = stringPreferencesKey("multicast_address")
         val USE_INTERNAL_DNS = booleanPreferencesKey("use_internal_dns")
         val THEME_MODE = stringPreferencesKey("theme_mode")
+        val DEFAULT_CODE_PHRASE = stringPreferencesKey("default_code_phrase")
+        val SAVED_CODE_PHRASES = stringSetPreferencesKey("saved_code_phrases")
     }
 
-    /**
-     * Preferences aligned with croc v10.4.2 CLI flags.
-     * Removed: hashAlgorithm (--hash removed), relayPorts, disableLocal (--no-local removed),
-     *          disableMultiplexing (--no-multi removed)
-     */
     data class CrocPreferences(
         val relayAddress: String = "croc.schollz.com:9009",
         val relayPassword: String = "pass123",
@@ -40,10 +38,18 @@ class UserPreferencesRepository(private val context: Context) {
         val uploadThrottle: String = "",
         val multicastAddress: String = "239.255.255.250",
         val useInternalDns: Boolean = true,
-        val themeMode: String = "system"
+        val themeMode: String = "system",
+        val defaultCodePhrase: String = "",
+        val savedCodePhrases: List<String> = emptyList()
     )
 
     val preferencesFlow: Flow<CrocPreferences> = context.dataStore.data.map { prefs ->
+        val savedCodes = prefs[SAVED_CODE_PHRASES]
+            ?.map(::normalizeCodePhrase)
+            ?.filter { it.isNotBlank() }
+            ?.sorted()
+            .orEmpty()
+
         CrocPreferences(
             relayAddress = prefs[RELAY_ADDRESS] ?: "croc.schollz.com:9009",
             relayPassword = prefs[RELAY_PASSWORD] ?: "pass123",
@@ -54,7 +60,9 @@ class UserPreferencesRepository(private val context: Context) {
             multicastAddress = prefs[MULTICAST_ADDRESS] ?: "239.255.255.250",
             // Android devices often have a broken localhost DNS path for the croc CLI.
             useInternalDns = if (prefs.contains(USE_INTERNAL_DNS)) prefs[USE_INTERNAL_DNS] ?: true else true,
-            themeMode = prefs[THEME_MODE] ?: "system"
+            themeMode = prefs[THEME_MODE] ?: "system",
+            defaultCodePhrase = normalizeCodePhrase(prefs[DEFAULT_CODE_PHRASE] ?: ""),
+            savedCodePhrases = savedCodes
         )
     }
 
@@ -92,5 +100,44 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun updateThemeMode(value: String) {
         context.dataStore.edit { it[THEME_MODE] = value }
+    }
+
+    suspend fun updateDefaultCodePhrase(value: String) {
+        val normalized = normalizeCodePhrase(value)
+        context.dataStore.edit { prefs ->
+            if (normalized.isBlank()) {
+                prefs.remove(DEFAULT_CODE_PHRASE)
+            } else {
+                prefs[DEFAULT_CODE_PHRASE] = normalized
+            }
+        }
+    }
+
+    suspend fun saveCodePhrase(value: String) {
+        val normalized = normalizeCodePhrase(value)
+        if (normalized.isBlank()) return
+
+        context.dataStore.edit { prefs ->
+            val updated = prefs[SAVED_CODE_PHRASES].orEmpty().toMutableSet()
+            updated.add(normalized)
+            prefs[SAVED_CODE_PHRASES] = updated
+        }
+    }
+
+    suspend fun deleteCodePhrase(value: String) {
+        val normalized = normalizeCodePhrase(value)
+        context.dataStore.edit { prefs ->
+            val updated = prefs[SAVED_CODE_PHRASES].orEmpty().toMutableSet()
+            updated.remove(normalized)
+            if (updated.isEmpty()) {
+                prefs.remove(SAVED_CODE_PHRASES)
+            } else {
+                prefs[SAVED_CODE_PHRASES] = updated
+            }
+        }
+    }
+
+    private fun normalizeCodePhrase(value: String): String {
+        return value.trim().replace(" ", "-")
     }
 }

@@ -32,7 +32,7 @@ fun QrCodeImage(
     val backgroundColor = MaterialTheme.colorScheme.surface.toArgb()
 
     val bitmap = remember(data, foregroundColor, backgroundColor) {
-        generateQrCode(data, 512, foregroundColor, backgroundColor)
+        generateQrCodeBitmap(data, 512, foregroundColor, backgroundColor)
     }
 
     if (bitmap != null) {
@@ -52,7 +52,7 @@ fun QrCodeImage(
     }
 }
 
-private fun generateQrCode(
+fun generateQrCodeBitmap(
     text: String,
     size: Int,
     foregroundColor: Int,

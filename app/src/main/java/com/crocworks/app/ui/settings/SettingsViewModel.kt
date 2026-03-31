@@ -27,4 +27,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updateMulticastAddress(value: String) = viewModelScope.launch { prefsRepo.updateMulticastAddress(value) }
     fun updateUseInternalDns(value: Boolean) = viewModelScope.launch { prefsRepo.updateUseInternalDns(value) }
     fun updateThemeMode(value: String) = viewModelScope.launch { prefsRepo.updateThemeMode(value) }
+    fun updateDefaultCodePhrase(value: String) = viewModelScope.launch { prefsRepo.updateDefaultCodePhrase(value) }
+    fun saveCodePhrase(value: String) = viewModelScope.launch { prefsRepo.saveCodePhrase(value) }
+    fun deleteCodePhrase(value: String) = viewModelScope.launch { prefsRepo.deleteCodePhrase(value) }
 }

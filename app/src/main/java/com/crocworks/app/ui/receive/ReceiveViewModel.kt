@@ -2,10 +2,12 @@ package com.crocworks.app.ui.receive
 
 import android.app.Application
 import android.content.ContentValues
+import android.net.Uri
 import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.crocworks.app.CrocApp
@@ -24,10 +26,19 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.net.URLConnection
 
+data class ReceivedFile(
+    val name: String,
+    val savedLocation: String,
+    val uri: Uri,
+    val mimeType: String
+)
+
 data class ReceiveUiState(
     val codePhrase: String = "",
     val transferState: CrocTransferState = CrocTransferState.Idle,
-    val receivedFilePaths: List<String> = emptyList()
+    val defaultCodePhrase: String = "",
+    val savedCodePhrases: List<String> = emptyList(),
+    val receivedFiles: List<ReceivedFile> = emptyList()
 )
 
 class ReceiveViewModel(application: Application) : AndroidViewModel(application) {
@@ -46,9 +57,28 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             crocProcess.state.collect { state ->
                 _uiState.update { it.copy(transferState = state) }
                 if (state is CrocTransferState.Completed) {
-                    val savedPaths = publishReceivedFiles(state.fileNames)
-                    _uiState.update { it.copy(receivedFilePaths = savedPaths) }
+                    val receivedFiles = publishReceivedFiles(state.fileNames)
+                    _uiState.update { it.copy(receivedFiles = receivedFiles) }
                     saveToHistory(state)
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            prefsRepo.preferencesFlow.collect { prefs ->
+                val quickCodes = buildList {
+                    if (prefs.defaultCodePhrase.isNotBlank()) {
+                        add(prefs.defaultCodePhrase)
+                    }
+                    addAll(prefs.savedCodePhrases)
+                }.distinct()
+
+                _uiState.update { state ->
+                    state.copy(
+                        codePhrase = if (state.codePhrase.isBlank()) prefs.defaultCodePhrase else state.codePhrase,
+                        defaultCodePhrase = prefs.defaultCodePhrase,
+                        savedCodePhrases = quickCodes
+                    )
                 }
             }
         }
@@ -60,7 +90,18 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setCodeFromQr(code: String) {
-        _uiState.update { it.copy(codePhrase = code.trim()) }
+        _uiState.update { it.copy(codePhrase = normalizeCodePhrase(code)) }
+    }
+
+    fun startReceiveWithCode(code: String) {
+        updateCodePhrase(code)
+        startReceive()
+    }
+
+    fun saveCurrentCode() {
+        viewModelScope.launch {
+            prefsRepo.saveCodePhrase(_uiState.value.codePhrase)
+        }
     }
 
     fun startReceive() {
@@ -68,12 +109,20 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         if (code.isBlank()) return
 
         viewModelScope.launch {
+            if (_uiState.value.transferState is CrocTransferState.Completed ||
+                _uiState.value.transferState is CrocTransferState.Error ||
+                _uiState.value.transferState is CrocTransferState.Cancelled
+            ) {
+                crocProcess.reset()
+            }
+
             val outputDir = File(
                 getApplication<CrocApp>().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
                 "croc-received"
             ).apply { mkdirs() }
             currentOutputDir = outputDir
 
+            _uiState.update { it.copy(receivedFiles = emptyList()) }
             crocProcess.receive(code, outputDir)
         }
     }
@@ -82,9 +131,18 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         crocProcess.cancel()
     }
 
+    fun dismissTransferResult() {
+        crocProcess.reset()
+    }
+
     fun resetTransfer() {
         crocProcess.reset()
-        _uiState.update { it.copy(codePhrase = "", receivedFilePaths = emptyList()) }
+        _uiState.update {
+            it.copy(
+                codePhrase = it.defaultCodePhrase,
+                receivedFiles = emptyList()
+            )
+        }
     }
 
     private suspend fun saveToHistory(state: CrocTransferState.Completed) {
@@ -102,7 +160,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun publishReceivedFiles(fileNames: List<String>): List<String> {
+    private fun publishReceivedFiles(fileNames: List<String>): List<ReceivedFile> {
         val outputDir = currentOutputDir ?: return emptyList()
         return fileNames.mapNotNull { fileName ->
             val source = File(outputDir, File(fileName).name)
@@ -116,7 +174,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun publishToMediaStore(source: File): String? {
+    private fun publishToMediaStore(source: File): ReceivedFile? {
         val resolver = getApplication<Application>().contentResolver
         val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/croc-received"
         val mimeType = URLConnection.guessContentTypeFromName(source.name) ?: "application/octet-stream"
@@ -144,7 +202,12 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 put(MediaStore.Downloads.IS_PENDING, 0)
             }
             resolver.update(uri, readyValues, null, null)
-            "Downloads/croc-received/${source.name}"
+            ReceivedFile(
+                name = source.name,
+                savedLocation = "Downloads/croc-received/${source.name}",
+                uri = uri,
+                mimeType = mimeType
+            )
         } catch (e: Exception) {
             resolver.delete(uri, null, null)
             null
@@ -172,7 +235,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         return null
     }
 
-    private fun publishToPublicDownloads(source: File): String? {
+    private fun publishToPublicDownloads(source: File): ReceivedFile? {
         val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val targetDir = File(downloadsDir, "croc-received").apply { mkdirs() }
         val target = File(targetDir, source.name)
@@ -185,9 +248,22 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 null,
                 null
             )
-            target.absolutePath
+            ReceivedFile(
+                name = target.name,
+                savedLocation = target.absolutePath,
+                uri = FileProvider.getUriForFile(
+                    getApplication(),
+                    "${getApplication<Application>().packageName}.fileprovider",
+                    target
+                ),
+                mimeType = URLConnection.guessContentTypeFromName(target.name) ?: "application/octet-stream"
+            )
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun normalizeCodePhrase(code: String): String {
+        return code.trim().replace(" ", "-")
     }
 }

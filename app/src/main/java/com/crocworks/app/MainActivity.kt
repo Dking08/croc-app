@@ -17,16 +17,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -91,8 +92,8 @@ fun CrocApp(sharedUris: List<Uri> = emptyList()) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // Track if bottom bar should be visible
-    val showBottomBar = currentRoute in CrocDestination.all.map { it.route }
+    // Bottom bar visible only on the 2 primary destinations
+    val showBottomBar = currentRoute in CrocDestination.bottomNavItems.map { it.route }
 
     // Shared ViewModels for cross-screen communication
     val sendViewModel: SendViewModel = viewModel()
@@ -113,9 +114,10 @@ fun CrocApp(sharedUris: List<Uri> = emptyList()) {
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
             ) {
                 NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    tonalElevation = 0.dp
                 ) {
-                    CrocDestination.all.forEach { destination ->
+                    CrocDestination.bottomNavItems.forEach { destination ->
                         val selected = currentRoute == destination.route
                         NavigationBarItem(
                             selected = selected,
@@ -139,7 +141,14 @@ fun CrocApp(sharedUris: List<Uri> = emptyList()) {
                                     text = destination.label,
                                     style = MaterialTheme.typography.labelMedium
                                 )
-                            }
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         )
                     }
                 }
@@ -152,13 +161,27 @@ fun CrocApp(sharedUris: List<Uri> = emptyList()) {
             modifier = Modifier.padding(paddingValues)
         ) {
             composable(CrocDestination.Send.route) {
-                SendScreen(viewModel = sendViewModel)
+                SendScreen(
+                    viewModel = sendViewModel,
+                    onNavigateToHistory = {
+                        navController.navigate(CrocDestination.History.route)
+                    },
+                    onNavigateToSettings = {
+                        navController.navigate(CrocDestination.Settings.route)
+                    }
+                )
             }
             composable(CrocDestination.Receive.route) {
                 ReceiveScreen(
                     viewModel = receiveViewModel,
                     onOpenScanner = {
                         navController.navigate("scanner")
+                    },
+                    onNavigateToHistory = {
+                        navController.navigate(CrocDestination.History.route)
+                    },
+                    onNavigateToSettings = {
+                        navController.navigate(CrocDestination.Settings.route)
                     }
                 )
             }
@@ -172,16 +195,25 @@ fun CrocApp(sharedUris: List<Uri> = emptyList()) {
                             }
                             launchSingleTop = true
                         }
+                    },
+                    onNavigateBack = {
+                        navController.popBackStack()
                     }
                 )
             }
             composable(CrocDestination.Settings.route) {
-                SettingsScreen()
+                SettingsScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
             }
             composable("scanner") {
                 QrScannerScreen(
                     onCodeScanned = { code ->
                         receiveViewModel.setCodeFromQr(code)
+                        receiveViewModel.startReceive()
+                        navController.popBackStack()
                     },
                     onNavigateBack = {
                         navController.popBackStack()

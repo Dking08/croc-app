@@ -2,6 +2,7 @@ package com.crocworks.app.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -28,6 +30,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.crocworks.app.croc.CrocTransferState
@@ -48,78 +52,62 @@ fun TransferProgressCard(
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             when (state) {
                 is CrocTransferState.Preparing -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "Preparing transfer...",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+                    TransferHeader(
+                        icon = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        iconBackground = MaterialTheme.colorScheme.primaryContainer,
+                        title = "Preparing transfer...",
+                        subtitle = null
+                    )
                     LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(MaterialTheme.shapes.small),
                         color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        strokeCap = StrokeCap.Round
                     )
                 }
 
                 is CrocTransferState.WaitingForPeer -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "Waiting for peer...",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                    TransferHeader(
+                        icon = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        iconBackground = MaterialTheme.colorScheme.primaryContainer,
+                        title = "Waiting for peer...",
+                        subtitle = "Share the code with the other device"
                     )
-                    FilledTonalButton(onClick = onCancel) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(MaterialTheme.shapes.small),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        strokeCap = StrokeCap.Round
+                    )
+                    FilledTonalButton(
+                        onClick = onCancel,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large
+                    ) {
                         Text("Cancel")
                     }
                 }
 
                 is CrocTransferState.Transferring -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = if (isSending) "Sending" else "Receiving",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "${state.fileName} (${state.currentFile}/${state.totalFiles})",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    TransferHeader(
+                        icon = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        iconBackground = MaterialTheme.colorScheme.primaryContainer,
+                        title = if (isSending) "Sending" else "Receiving",
+                        subtitle = "${state.fileName} (${state.currentFile}/${state.totalFiles})"
+                    )
 
                     val animatedProgress by animateFloatAsState(
                         targetValue = state.progress,
@@ -131,9 +119,11 @@ fun TransferProgressCard(
                         progress = { animatedProgress },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(8.dp),
+                            .height(8.dp)
+                            .clip(MaterialTheme.shapes.small),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        strokeCap = StrokeCap.Round
                     )
 
                     Row(
@@ -142,7 +132,7 @@ fun TransferProgressCard(
                     ) {
                         Text(
                             text = "${state.progressPercent}%",
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold
                         )
@@ -153,79 +143,92 @@ fun TransferProgressCard(
                         )
                     }
 
-                    FilledTonalButton(onClick = onCancel) {
+                    FilledTonalButton(
+                        onClick = onCancel,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large
+                    ) {
                         Text("Cancel")
                     }
                 }
 
                 is CrocTransferState.Completed -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Rounded.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Transfer Complete!",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "${state.fileNames.size} file(s) — ${formatBytes(state.totalBytes)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    TransferHeader(
+                        icon = Icons.Rounded.CheckCircle,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        iconBackground = MaterialTheme.colorScheme.primaryContainer,
+                        title = "Transfer Complete!",
+                        subtitle = "${state.fileNames.size} file(s) — ${formatBytes(state.totalBytes)}",
+                        titleColor = MaterialTheme.colorScheme.primary
+                    )
                 }
 
                 is CrocTransferState.Error -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Rounded.Error,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Transfer Failed",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                            Text(
-                                text = state.message,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    TransferHeader(
+                        icon = Icons.Rounded.Error,
+                        iconTint = MaterialTheme.colorScheme.error,
+                        iconBackground = MaterialTheme.colorScheme.errorContainer,
+                        title = "Transfer Failed",
+                        subtitle = state.message,
+                        titleColor = MaterialTheme.colorScheme.error
+                    )
                 }
 
                 is CrocTransferState.Cancelled -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Rounded.Cancel,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "Transfer Cancelled",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
+                    TransferHeader(
+                        icon = Icons.Rounded.Cancel,
+                        iconTint = MaterialTheme.colorScheme.outline,
+                        iconBackground = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        title = "Transfer Cancelled",
+                        subtitle = null
+                    )
                 }
 
                 else -> {}
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransferHeader(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconTint: androidx.compose.ui.graphics.Color,
+    iconBackground: androidx.compose.ui.graphics.Color,
+    title: String,
+    subtitle: String?,
+    titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        // Tinted circle behind the icon
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(iconBackground),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = titleColor
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

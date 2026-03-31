@@ -30,11 +30,17 @@ data class SelectedFile(
 
 data class SendUiState(
     val selectedFiles: List<SelectedFile> = emptyList(),
+    val selectedBytes: Long = 0,
     val codePhrase: String = "",
+    val defaultCodePhrase: String = "",
+    val savedCodePhrases: List<String> = emptyList(),
     val isTextMode: Boolean = false,
     val textToSend: String = "",
     val transferState: CrocTransferState = CrocTransferState.Idle
-)
+) {
+    val hasContent: Boolean
+        get() = if (isTextMode) textToSend.isNotBlank() else selectedFiles.isNotEmpty()
+}
 
 class SendViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -43,9 +49,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
     private val binaryManager = CrocBinaryManager(application)
     private val crocProcess = CrocProcess(application, binaryManager, prefsRepo)
 
-    private val _uiState = MutableStateFlow(SendUiState(
-        codePhrase = generateRandomCode()
-    ))
+    private val _uiState = MutableStateFlow(SendUiState())
     val uiState: StateFlow<SendUiState> = _uiState.asStateFlow()
 
     init {
@@ -56,6 +60,27 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                 // Save to history on completion
                 if (state is CrocTransferState.Completed) {
                     saveToHistory(state)
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            prefsRepo.preferencesFlow.collect { prefs ->
+                val quickCodes = buildList {
+                    if (prefs.defaultCodePhrase.isNotBlank()) {
+                        add(prefs.defaultCodePhrase)
+                    }
+                    addAll(prefs.savedCodePhrases)
+                }.distinct()
+
+                _uiState.update { state ->
+                    state.copy(
+                        codePhrase = if (state.codePhrase.isBlank()) {
+                            prefs.defaultCodePhrase.ifBlank { generateRandomCode() }
+                        } else state.codePhrase,
+                        defaultCodePhrase = prefs.defaultCodePhrase,
+                        savedCodePhrases = quickCodes
+                    )
                 }
             }
         }
@@ -76,22 +101,46 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                         if (sizeIdx >= 0) size = it.getLong(sizeIdx)
                     }
                 }
-                SelectedFile(uri = uri, name = name, size = size)
+                SelectedFile(uri = uri, name = name, size = size.coerceAtLeast(0))
             } catch (e: Exception) {
                 null
             }
         }
-        _uiState.update { it.copy(selectedFiles = it.selectedFiles + newFiles) }
+        _uiState.update { state ->
+            val merged = (state.selectedFiles + newFiles).distinctBy { it.uri.toString() }
+            state.copy(
+                selectedFiles = merged,
+                selectedBytes = merged.sumOf { it.size }
+            )
+        }
     }
 
     fun removeFile(file: SelectedFile) {
         _uiState.update { state ->
-            state.copy(selectedFiles = state.selectedFiles.filter { it.uri != file.uri })
+            val updatedFiles = state.selectedFiles.filter { it.uri != file.uri }
+            state.copy(
+                selectedFiles = updatedFiles,
+                selectedBytes = updatedFiles.sumOf { it.size }
+            )
         }
     }
 
+    fun clearFiles() {
+        _uiState.update { it.copy(selectedFiles = emptyList(), selectedBytes = 0) }
+    }
+
     fun updateCodePhrase(code: String) {
-        _uiState.update { it.copy(codePhrase = code) }
+        _uiState.update { it.copy(codePhrase = normalizeCodePhrase(code)) }
+    }
+
+    fun useCodePhrase(code: String) {
+        _uiState.update { it.copy(codePhrase = normalizeCodePhrase(code)) }
+    }
+
+    fun saveCurrentCode() {
+        viewModelScope.launch {
+            prefsRepo.saveCodePhrase(_uiState.value.codePhrase)
+        }
     }
 
     fun regenerateCode() {
@@ -109,6 +158,15 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
     fun startSend() {
         viewModelScope.launch {
             val state = _uiState.value
+            if (!state.hasContent) return@launch
+
+            if (state.transferState is CrocTransferState.Completed ||
+                state.transferState is CrocTransferState.Error ||
+                state.transferState is CrocTransferState.Cancelled
+            ) {
+                crocProcess.reset()
+            }
+
             if (state.isTextMode) {
                 if (state.textToSend.isNotBlank()) {
                     crocProcess.sendText(state.textToSend, state.codePhrase)
@@ -126,12 +184,17 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         crocProcess.cancel()
     }
 
-    fun resetTransfer() {
+    fun dismissTransferResult() {
+        crocProcess.reset()
+    }
+
+    fun resetSession() {
         crocProcess.reset()
         _uiState.update {
             it.copy(
                 selectedFiles = emptyList(),
-                codePhrase = generateRandomCode(),
+                selectedBytes = 0,
+                codePhrase = it.defaultCodePhrase.ifBlank { generateRandomCode() },
                 textToSend = ""
             )
         }
@@ -192,5 +255,9 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         )
         val num = (1..9999).random()
         return "${adjectives.random()}-${nouns.random()}-$num"
+    }
+
+    private fun normalizeCodePhrase(code: String): String {
+        return code.trim().replace(" ", "-")
     }
 }

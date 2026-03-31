@@ -1,22 +1,34 @@
 package com.crocworks.app.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.CompareArrows
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -24,7 +36,10 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
@@ -40,18 +55,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+private const val MAX_VISIBLE_CODES = 6
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
-    viewModel: SettingsViewModel = viewModel()
+    viewModel: SettingsViewModel = viewModel(),
+    onNavigateBack: () -> Unit = {}
 ) {
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
+    var relayPasswordVisible by remember { mutableStateOf(false) }
+    var defaultCodeVisible by remember { mutableStateOf(false) }
+    var savedCodeDraft by remember { mutableStateOf("") }
+    var showAllCodes by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -61,6 +87,11 @@ fun SettingsScreen(
                         "Settings",
                         fontWeight = FontWeight.Bold
                     )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -74,9 +105,53 @@ fun SettingsScreen(
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // App Header Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                ),
+                shape = MaterialTheme.shapes.extraLarge
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.CompareArrows,
+                            contentDescription = null,
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            text = "Croc Works",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "v1.5.0 • croc v10.4.2",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
 
             // Appearance
             SettingsSection(icon = Icons.Rounded.Palette, title = "Appearance") {
@@ -96,27 +171,113 @@ fun SettingsScreen(
                     onValueChange = { viewModel.updateRelayAddress(it) },
                     placeholder = "croc.schollz.com:9009"
                 )
-                TextFieldSetting(
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+                PasswordTextFieldSetting(
                     label = "Password",
                     value = prefs.relayPassword,
                     onValueChange = { viewModel.updateRelayPassword(it) },
-                    placeholder = "pass123"
+                    placeholder = "pass123",
+                    visible = relayPasswordVisible,
+                    onToggleVisibility = { relayPasswordVisible = !relayPasswordVisible }
                 )
+            }
+
+            // Secret Codes
+            SettingsSection(icon = Icons.Rounded.Security, title = "Secret Codes") {
+                PasswordTextFieldSetting(
+                    label = "Default Secret Code",
+                    value = prefs.defaultCodePhrase,
+                    onValueChange = { viewModel.updateDefaultCodePhrase(it) },
+                    placeholder = "leave blank to randomize",
+                    visible = defaultCodeVisible,
+                    onToggleVisibility = { defaultCodeVisible = !defaultCodeVisible }
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = savedCodeDraft,
+                        onValueChange = { savedCodeDraft = it },
+                        label = { Text("Add Saved Code") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        placeholder = { Text("autumn-river-4532") },
+                        shape = MaterialTheme.shapes.large
+                    )
+                    FilledTonalButton(
+                        onClick = {
+                            viewModel.saveCodePhrase(savedCodeDraft)
+                            savedCodeDraft = ""
+                        },
+                        enabled = savedCodeDraft.isNotBlank(),
+                        shape = MaterialTheme.shapes.large
+                    ) {
+                        Icon(Icons.Rounded.Save, contentDescription = null, modifier = Modifier.size(20.dp))
+                    }
+                }
+                if (prefs.savedCodePhrases.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    val codesToShow = if (showAllCodes) prefs.savedCodePhrases
+                    else prefs.savedCodePhrases.take(MAX_VISIBLE_CODES)
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        codesToShow.forEach { code ->
+                            SavedCodeRow(
+                                code = code,
+                                onDelete = { viewModel.deleteCodePhrase(code) }
+                            )
+                        }
+                    }
+
+                    if (prefs.savedCodePhrases.size > MAX_VISIBLE_CODES) {
+                        val remaining = prefs.savedCodePhrases.size - MAX_VISIBLE_CODES
+                        FilledTonalButton(
+                            onClick = { showAllCodes = !showAllCodes },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Text(
+                                if (showAllCodes) "Show less"
+                                else "Show all ${prefs.savedCodePhrases.size} codes"
+                            )
+                        }
+                    }
+                }
             }
 
             // Network
             SettingsSection(icon = Icons.Rounded.Wifi, title = "Network") {
                 SwitchSetting(
+                    icon = Icons.Rounded.Wifi,
                     label = "Local Only",
                     description = "Only use local network connections",
                     checked = prefs.forceLocal,
                     onCheckedChange = { viewModel.updateForceLocal(it) }
                 )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
                 SwitchSetting(
+                    icon = Icons.Rounded.Cloud,
                     label = "Built-in DNS",
-                    description = "Use internal DNS resolver instead of system",
+                    description = "Use internal DNS resolver",
                     checked = prefs.useInternalDns,
                     onCheckedChange = { viewModel.updateUseInternalDns(it) }
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                 )
                 TextFieldSetting(
                     label = "Multicast Address",
@@ -126,7 +287,7 @@ fun SettingsScreen(
                 )
             }
 
-            // Security
+            // Encryption
             SettingsSection(icon = Icons.Rounded.Security, title = "Encryption") {
                 DropdownSetting(
                     label = "PAKE Curve",
@@ -139,10 +300,15 @@ fun SettingsScreen(
             // Transfer
             SettingsSection(icon = Icons.Rounded.Speed, title = "Transfer Options") {
                 SwitchSetting(
+                    icon = Icons.Rounded.Speed,
                     label = "Disable Compression",
                     description = "Transfer files without compression",
                     checked = prefs.disableCompression,
                     onCheckedChange = { viewModel.updateDisableCompression(it) }
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                 )
                 TextFieldSetting(
                     label = "Upload Speed Limit",
@@ -154,48 +320,27 @@ fun SettingsScreen(
 
             // About
             SettingsSection(icon = Icons.Rounded.Info, title = "About") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "App Version",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "1.5.0",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "croc Version",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "v10.4.2",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+                InfoRow(label = "App Version", value = "1.5.0")
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+                InfoRow(label = "croc Version", value = "v10.4.2")
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "Built with ❤️ by Dastageer",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "using croc: github.com/schollz/croc",
+                    text = "github.com/schollz/croc",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium
                 )
             }
 
@@ -217,23 +362,99 @@ private fun SettingsSection(
         ),
         shape = MaterialTheme.shapes.extraLarge
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
             }
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             content()
         }
+    }
+}
+
+@Composable
+private fun SavedCodeRow(
+    code: String,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Rounded.Code,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = code,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        IconButton(
+            onClick = onDelete,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                Icons.Rounded.Close,
+                contentDescription = "Delete code",
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoRow(
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 
@@ -250,7 +471,7 @@ private fun TextFieldSetting(
         label = { Text(label) },
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 2.dp),
         singleLine = true,
         placeholder = if (placeholder.isNotBlank()) {
             { Text(placeholder) }
@@ -260,7 +481,41 @@ private fun TextFieldSetting(
 }
 
 @Composable
+private fun PasswordTextFieldSetting(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String = "",
+    visible: Boolean,
+    onToggleVisibility: () -> Unit
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        singleLine = true,
+        placeholder = if (placeholder.isNotBlank()) {
+            { Text(placeholder) }
+        } else null,
+        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            IconButton(onClick = onToggleVisibility) {
+                Icon(
+                    imageVector = if (visible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                    contentDescription = if (visible) "Hide value" else "Show value"
+                )
+            }
+        },
+        shape = MaterialTheme.shapes.large
+    )
+}
+
+@Composable
 private fun SwitchSetting(
+    icon: ImageVector,
     label: String,
     description: String,
     checked: Boolean,
@@ -269,22 +524,28 @@ private fun SwitchSetting(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline
-            )
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange
@@ -307,7 +568,7 @@ private fun DropdownSetting(
         onExpandedChange = { expanded = it },
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(vertical = 2.dp)
     ) {
         OutlinedTextField(
             value = value,
