@@ -6,10 +6,20 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,6 +50,8 @@ import androidx.navigation.compose.rememberNavController
 import com.crocworks.app.data.preferences.UserPreferencesRepository
 import com.crocworks.app.ui.history.HistoryScreen
 import com.crocworks.app.ui.navigation.CrocDestination
+import com.crocworks.app.ui.quick.QuickScreen
+import com.crocworks.app.ui.quick.QuickViewModel
 import com.crocworks.app.ui.receive.ReceiveScreen
 import com.crocworks.app.ui.receive.ReceiveViewModel
 import com.crocworks.app.ui.scanner.QrScannerScreen
@@ -114,12 +126,16 @@ fun CrocApp(
 
     val sendViewModel: SendViewModel = viewModel()
     val receiveViewModel: ReceiveViewModel = viewModel()
+    val quickViewModel: QuickViewModel = viewModel()
 
     var handledSharedUris by rememberSaveable { mutableStateOf(false) }
     if (sharedUris.isNotEmpty() && !handledSharedUris) {
         handledSharedUris = true
         sendViewModel.addFiles(sharedUris)
     }
+
+    // Determine tab indices for directional animations
+    val tabRoutes = CrocDestination.bottomNavItems.map { it.route }
 
     Scaffold(
         bottomBar = {
@@ -173,9 +189,90 @@ fun CrocApp(
     ) { paddingValues ->
         NavHost(
             navController = navController,
-            startDestination = CrocDestination.Send.route,
-            modifier = Modifier.padding(paddingValues)
+            startDestination = CrocDestination.Quick.route,
+            modifier = Modifier.padding(paddingValues),
+            enterTransition = {
+                // Determine direction based on tab index
+                val fromIndex = tabRoutes.indexOf(initialState.destination.route)
+                val toIndex = tabRoutes.indexOf(targetState.destination.route)
+                when {
+                    fromIndex >= 0 && toIndex >= 0 -> {
+                        // Tab-to-tab: slide horizontally with spring
+                        val direction = if (toIndex > fromIndex) 1 else -1
+                        slideInHorizontally(
+                            initialOffsetX = { direction * it / 4 },
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + fadeIn(
+                            animationSpec = tween(220)
+                        )
+                    }
+                    else -> {
+                        // Push screens: slide up
+                        fadeIn(animationSpec = tween(300)) +
+                                slideInVertically(
+                                    initialOffsetY = { it / 6 },
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioLowBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    )
+                                )
+                    }
+                }
+            },
+            exitTransition = {
+                val fromIndex = tabRoutes.indexOf(initialState.destination.route)
+                val toIndex = tabRoutes.indexOf(targetState.destination.route)
+                when {
+                    fromIndex >= 0 && toIndex >= 0 -> {
+                        val direction = if (toIndex > fromIndex) -1 else 1
+                        slideOutHorizontally(
+                            targetOffsetX = { direction * it / 4 },
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + fadeOut(
+                            animationSpec = tween(220)
+                        )
+                    }
+                    else -> {
+                        fadeOut(animationSpec = tween(200))
+                    }
+                }
+            },
+            popEnterTransition = {
+                fadeIn(animationSpec = tween(300)) +
+                        slideInVertically(
+                            initialOffsetY = { -it / 8 },
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        )
+            },
+            popExitTransition = {
+                fadeOut(animationSpec = tween(200)) +
+                        slideOutVertically(
+                            targetOffsetY = { it / 6 },
+                            animationSpec = tween(250)
+                        )
+            }
         ) {
+            composable(CrocDestination.Quick.route) {
+                QuickScreen(
+                    viewModel = quickViewModel,
+                    onOpenScanner = { onCodeScanned ->
+                        // Store callback and navigate to scanner
+                        navController.navigate("scanner_quick")
+                    },
+                    onNavigateToSettings = {
+                        navController.navigate(CrocDestination.Settings.route)
+                    }
+                )
+            }
             composable(CrocDestination.Send.route) {
                 SendScreen(
                     viewModel = sendViewModel,
@@ -230,8 +327,24 @@ fun CrocApp(
                     onCodeScanned = { code ->
                         receiveViewModel.setCodeFromQr(code)
                         receiveViewModel.startReceive()
-                        // Navigate back to Receive tab (not just popBackStack which could land on Send)
                         navController.navigate(CrocDestination.Receive.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+            composable("scanner_quick") {
+                QrScannerScreen(
+                    onCodeScanned = { code ->
+                        quickViewModel.startReceiveFromQr(code)
+                        navController.navigate(CrocDestination.Quick.route) {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true
                             }

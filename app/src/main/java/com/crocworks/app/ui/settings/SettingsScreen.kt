@@ -266,6 +266,36 @@ fun SettingsScreen(
                 }
             }
 
+            // Quick Transfer
+            SettingsSection(icon = Icons.Rounded.Speed, title = "Quick Transfer") {
+                TextFieldSetting(
+                    label = "Quick Send Code",
+                    value = prefs.quickSendCode,
+                    onValueChange = { viewModel.updateQuickSendCode(it) },
+                    placeholder = if (prefs.defaultCodePhrase.isNotBlank())
+                        "using default: ${prefs.defaultCodePhrase}"
+                    else "leave blank to use default code"
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+                TextFieldSetting(
+                    label = "Quick Receive Code",
+                    value = prefs.quickReceiveCode,
+                    onValueChange = { viewModel.updateQuickReceiveCode(it) },
+                    placeholder = if (prefs.defaultCodePhrase.isNotBlank())
+                        "using default: ${prefs.defaultCodePhrase}"
+                    else "leave blank to use default code"
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Quick tab uses these codes. Falls back to Default Secret Code if blank.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             // Network
             SettingsSection(icon = Icons.Rounded.Wifi, title = "Network") {
                 SwitchSetting(
@@ -476,9 +506,15 @@ private fun TextFieldSetting(
     onValueChange: (String) -> Unit,
     placeholder: String = ""
 ) {
+    // Buffer locally to prevent cursor jumps from DataStore recomposition
+    var localValue by remember(value) { mutableStateOf(value) }
+
     OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
+        value = localValue,
+        onValueChange = { newValue ->
+            localValue = newValue
+            onValueChange(newValue)
+        },
         label = { Text(label) },
         modifier = Modifier
             .fillMaxWidth()
@@ -500,9 +536,15 @@ private fun PasswordTextFieldSetting(
     visible: Boolean,
     onToggleVisibility: () -> Unit
 ) {
+    // Buffer locally to prevent cursor jumps from DataStore recomposition
+    var localValue by remember(value) { mutableStateOf(value) }
+
     OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
+        value = localValue,
+        onValueChange = { newValue ->
+            localValue = newValue
+            onValueChange(newValue)
+        },
         label = { Text(label) },
         modifier = Modifier
             .fillMaxWidth()

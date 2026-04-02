@@ -13,7 +13,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +43,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Refresh
@@ -492,7 +495,10 @@ fun SendScreen(
                             AssistChip(
                                 onClick = { viewModel.useCodePhrase(uiState.defaultCodePhrase) },
                                 enabled = !isTransferActive,
-                                label = { Text("Default") }
+                                label = { Text("Reset") },
+                                leadingIcon = {
+                                    Icon(Icons.Rounded.Home, contentDescription = "Use default code", modifier = Modifier.size(18.dp))
+                                }
                             )
                         }
                         AssistChip(
@@ -531,14 +537,25 @@ fun SendScreen(
                             uiState.savedCodePhrases.chunked(2).forEach { column ->
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     column.forEach { savedCode ->
-                                        AssistChip(
-                                            onClick = { viewModel.useCodePhrase(savedCode) },
+                                        SavedCodeChipWithActions(
+                                            code = savedCode,
                                             enabled = !isTransferActive,
-                                            label = {
-                                                Text(
-                                                    savedCode,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
+                                            onUse = { viewModel.useCodePhrase(savedCode) },
+                                            onCopy = { clipboardManager.setText(AnnotatedString(savedCode)) },
+                                            onShare = {
+                                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                    type = "text/plain"
+                                                    putExtra(Intent.EXTRA_TEXT, savedCode)
+                                                    putExtra(Intent.EXTRA_SUBJECT, "croc code")
+                                                }
+                                                context.startActivity(Intent.createChooser(shareIntent, "Share code"))
+                                            },
+                                            onShareQr = {
+                                                shareQrCode(
+                                                    context = context,
+                                                    codePhrase = savedCode,
+                                                    foregroundColor = qrForegroundColor,
+                                                    backgroundColor = qrBackgroundColor
                                                 )
                                             }
                                         )
@@ -655,5 +672,83 @@ private fun shareQrCode(
         }
 
         context.startActivity(Intent.createChooser(shareIntent, "Share QR code"))
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SavedCodeChipWithActions(
+    code: String,
+    enabled: Boolean,
+    onUse: () -> Unit,
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
+    onShareQr: () -> Unit = {}
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    Box {
+        AssistChip(
+            onClick = onUse,
+            enabled = enabled,
+            label = {
+                Text(
+                    code,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            modifier = Modifier.combinedClickable(
+                enabled = enabled,
+                onClick = onUse,
+                onLongClick = { showMenu = true }
+            )
+        )
+
+        androidx.compose.material3.DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false }
+        ) {
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Use Code") },
+                onClick = {
+                    showMenu = false
+                    onUse()
+                },
+                leadingIcon = {
+                    Icon(Icons.Rounded.Upload, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            )
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Copy") },
+                onClick = {
+                    showMenu = false
+                    onCopy()
+                },
+                leadingIcon = {
+                    Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            )
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Share") },
+                onClick = {
+                    showMenu = false
+                    onShare()
+                },
+                leadingIcon = {
+                    Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            )
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Share QR") },
+                onClick = {
+                    showMenu = false
+                    onShareQr()
+                },
+                leadingIcon = {
+                    Icon(Icons.Rounded.QrCode2, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            )
+        }
     }
 }

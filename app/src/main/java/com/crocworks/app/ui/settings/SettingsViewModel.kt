@@ -31,4 +31,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updateDefaultCodePhrase(value: String) = viewModelScope.launch { prefsRepo.updateDefaultCodePhrase(value) }
     fun saveCodePhrase(value: String) = viewModelScope.launch { prefsRepo.saveCodePhrase(value) }
     fun deleteCodePhrase(value: String) = viewModelScope.launch { prefsRepo.deleteCodePhrase(value) }
+    fun updateQuickSendCode(value: String) = viewModelScope.launch { prefsRepo.updateQuickSendCode(value) }
+    fun updateQuickReceiveCode(value: String) = viewModelScope.launch { prefsRepo.updateQuickReceiveCode(value) }
 }

@@ -10,7 +10,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -82,6 +84,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.crocworks.app.croc.CrocTransferState
 import com.crocworks.app.ui.components.TransferProgressCard
+import com.crocworks.app.ui.components.formatBytes
 import com.crocworks.app.ui.components.progressBorder
 
 private const val MAX_VISIBLE_FILES = 6
@@ -294,15 +297,22 @@ fun ReceiveScreen(
                             uiState.savedCodePhrases.chunked(2).forEach { column ->
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     column.forEach { savedCode ->
-                                        AssistChip(
-                                            onClick = { viewModel.startReceiveWithCode(savedCode) },
+                                        SavedCodeChipWithActions(
+                                            code = savedCode,
                                             enabled = !isTransferActive,
-                                            label = {
-                                                Text(
-                                                    savedCode,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
+                                            onUse = { viewModel.startReceiveWithCode(savedCode) },
+                                            onCopy = {
+                                                clipboardManager.setText(
+                                                    androidx.compose.ui.text.AnnotatedString(savedCode)
                                                 )
+                                            },
+                                            onShare = {
+                                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                    type = "text/plain"
+                                                    putExtra(android.content.Intent.EXTRA_TEXT, savedCode)
+                                                    putExtra(android.content.Intent.EXTRA_SUBJECT, "croc code")
+                                                }
+                                                context.startActivity(android.content.Intent.createChooser(shareIntent, "Share code"))
                                             }
                                         )
                                     }
@@ -390,6 +400,63 @@ fun ReceiveScreen(
                                 }
                             )
                         }
+                    }
+                }
+            }
+
+            // ──── Received Text ────
+            val completedState = uiState.transferState as? CrocTransferState.Completed
+            if (completedState?.receivedText != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                    ),
+                    shape = MaterialTheme.shapes.extraLarge
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Received Text",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Row {
+                                Text(
+                                    text = formatBytes(completedState.totalBytes),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.align(Alignment.CenterVertically)
+                                )
+                                IconButton(
+                                    onClick = {
+                                        clipboardManager.setText(
+                                            androidx.compose.ui.text.AnnotatedString(completedState.receivedText ?: "")
+                                        )
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.ContentPaste,
+                                        contentDescription = "Copy text",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = completedState.receivedText ?: "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 12,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
@@ -488,5 +555,72 @@ private fun shareReceivedFile(context: Context, file: ReceivedFile) {
     try {
         context.startActivity(Intent.createChooser(shareIntent, "Share file"))
     } catch (_: ActivityNotFoundException) {
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SavedCodeChipWithActions(
+    code: String,
+    enabled: Boolean,
+    onUse: () -> Unit,
+    onCopy: () -> Unit,
+    onShare: () -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    Box {
+        AssistChip(
+            onClick = onUse,
+            enabled = enabled,
+            label = {
+                Text(
+                    code,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            modifier = Modifier.combinedClickable(
+                enabled = enabled,
+                onClick = onUse,
+                onLongClick = { showMenu = true }
+            )
+        )
+
+        androidx.compose.material3.DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false }
+        ) {
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Receive on Code") },
+                onClick = {
+                    showMenu = false
+                    onUse()
+                },
+                leadingIcon = {
+                    Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            )
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Copy") },
+                onClick = {
+                    showMenu = false
+                    onCopy()
+                },
+                leadingIcon = {
+                    Icon(Icons.Rounded.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            )
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Share") },
+                onClick = {
+                    showMenu = false
+                    onShare()
+                },
+                leadingIcon = {
+                    Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            )
+        }
     }
 }

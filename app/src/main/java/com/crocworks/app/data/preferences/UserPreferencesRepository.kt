@@ -28,6 +28,8 @@ class UserPreferencesRepository(private val context: Context) {
         val DEFAULT_CODE_PHRASE = stringPreferencesKey("default_code_phrase")
         val SAVED_CODE_PHRASES = stringSetPreferencesKey("saved_code_phrases")
         val AMOLED_DARK = booleanPreferencesKey("amoled_dark")
+        val QUICK_SEND_CODE = stringPreferencesKey("quick_send_code")
+        val QUICK_RECEIVE_CODE = stringPreferencesKey("quick_receive_code")
     }
 
     data class CrocPreferences(
@@ -42,8 +44,17 @@ class UserPreferencesRepository(private val context: Context) {
         val themeMode: String = "system",
         val amoledDark: Boolean = false,
         val defaultCodePhrase: String = "",
-        val savedCodePhrases: List<String> = emptyList()
-    )
+        val savedCodePhrases: List<String> = emptyList(),
+        val quickSendCode: String = "",
+        val quickReceiveCode: String = ""
+    ) {
+        /** Effective Quick Send code: explicit quick code → defaultCodePhrase → empty */
+        val effectiveQuickSendCode: String
+            get() = quickSendCode.ifBlank { defaultCodePhrase }
+        /** Effective Quick Receive code: explicit quick code → defaultCodePhrase → empty */
+        val effectiveQuickReceiveCode: String
+            get() = quickReceiveCode.ifBlank { defaultCodePhrase }
+    }
 
     val preferencesFlow: Flow<CrocPreferences> = context.dataStore.data.map { prefs ->
         val savedCodes = prefs[SAVED_CODE_PHRASES]
@@ -65,7 +76,9 @@ class UserPreferencesRepository(private val context: Context) {
             themeMode = prefs[THEME_MODE] ?: "system",
             amoledDark = prefs[AMOLED_DARK] ?: false,
             defaultCodePhrase = normalizeCodePhrase(prefs[DEFAULT_CODE_PHRASE] ?: ""),
-            savedCodePhrases = savedCodes
+            savedCodePhrases = savedCodes,
+            quickSendCode = normalizeCodePhrase(prefs[QUICK_SEND_CODE] ?: ""),
+            quickReceiveCode = normalizeCodePhrase(prefs[QUICK_RECEIVE_CODE] ?: "")
         )
     }
 
@@ -140,6 +153,28 @@ class UserPreferencesRepository(private val context: Context) {
                 prefs.remove(SAVED_CODE_PHRASES)
             } else {
                 prefs[SAVED_CODE_PHRASES] = updated
+            }
+        }
+    }
+
+    suspend fun updateQuickSendCode(value: String) {
+        val normalized = normalizeCodePhrase(value)
+        context.dataStore.edit { prefs ->
+            if (normalized.isBlank()) {
+                prefs.remove(QUICK_SEND_CODE)
+            } else {
+                prefs[QUICK_SEND_CODE] = normalized
+            }
+        }
+    }
+
+    suspend fun updateQuickReceiveCode(value: String) {
+        val normalized = normalizeCodePhrase(value)
+        context.dataStore.edit { prefs ->
+            if (normalized.isBlank()) {
+                prefs.remove(QUICK_RECEIVE_CODE)
+            } else {
+                prefs[QUICK_RECEIVE_CODE] = normalized
             }
         }
     }

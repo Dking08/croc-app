@@ -52,7 +52,8 @@ class CrocProcess(
         val totalBytes: Long,
         val outputTail: List<String>,
         val peerIp: String = "",
-        val totalFileCount: Int = 0
+        val totalFileCount: Int = 0,
+        val receivedText: String? = null
     )
 
     private val homeDir: File
@@ -273,7 +274,8 @@ class CrocProcess(
                 fileNames = result.fileNames,
                 totalBytes = result.totalBytes,
                 peerIp = result.peerIp,
-                totalFileCount = result.totalFileCount.coerceAtLeast(result.fileNames.size)
+                totalFileCount = result.totalFileCount.coerceAtLeast(result.fileNames.size),
+                receivedText = result.receivedText
             )
         } else {
             _state.value = CrocTransferState.Error(errorMessageFor(result))
@@ -396,6 +398,9 @@ class CrocProcess(
         var peerIp = ""
         var totalFilesFromProgress = 0
         val outputTail = ArrayDeque<String>()
+        var isTextTransfer = false
+        var capturingText = false
+        val receivedTextLines = mutableListOf<String>()
 
         // Regex patterns for the v10.4.2 output format
         // Matches: "Sending (->1.2.3.4:9009)" or "Receiving (<-1.2.3.4:9009)"
@@ -430,10 +435,34 @@ class CrocProcess(
                     continue
                 }
 
+                // Detect text transfer: "Receiving text message (5 B)"
+                // MUST be checked before the generic "Receiving" check below
+                if (l.contains("Receiving text message")) {
+                    isTextTransfer = true
+                    // Parse text size from the prompt
+                    oldSizeRegex.find(l)?.let { match ->
+                        val num = match.groupValues[1].toDoubleOrNull() ?: 0.0
+                        val unit = match.groupValues[2]
+                        totalBytes = parseSize(num, unit)
+                    }
+                    continue
+                }
+
+                // If we are capturing text content, collect lines
+                if (capturingText) {
+                    receivedTextLines.add(l)
+                    continue
+                }
+
                 // Peer connection line: "Sending (->IP:PORT)" or "Receiving (<-IP:PORT)"
                 if (l.contains("Sending") || l.contains("Receiving")) {
                     peerIpRegex.find(l)?.let { match ->
                         peerIp = match.groupValues[1]
+                    }
+                    // If this is a text transfer, start capturing text after the Receiving line
+                    if (isTextTransfer && l.contains("Receiving")) {
+                        capturingText = true
+                        continue
                     }
                     // Old format: Sending 'filename' (100 kB)
                     oldSendingRegex.find(l)?.let { match ->
@@ -528,13 +557,17 @@ class CrocProcess(
             }
 
             val exitCode = waitForExitCode(process)
+            val receivedText = if (isTextTransfer && receivedTextLines.isNotEmpty()) {
+                receivedTextLines.joinToString("\n")
+            } else null
             return ProcessResult(
                 exitCode = exitCode,
                 fileNames = fileNames,
                 totalBytes = totalBytes,
                 outputTail = outputTail.toList(),
                 peerIp = peerIp,
-                totalFileCount = totalFilesFromProgress
+                totalFileCount = totalFilesFromProgress,
+                receivedText = receivedText
             )
         } catch (e: InterruptedIOException) {
             val exitCode = waitForExitCode(process)

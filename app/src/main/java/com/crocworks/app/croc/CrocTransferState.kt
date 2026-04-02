@@ -44,11 +44,16 @@ sealed class CrocTransferState {
         val fileNames: List<String>,
         val totalBytes: Long,
         val peerIp: String = "",
-        val totalFileCount: Int = 0
+        val totalFileCount: Int = 0,
+        val receivedText: String? = null
     ) : CrocTransferState() {
         /** Actual number of files transferred. Prefers N/M from parser. */
         val fileCount: Int
             get() = if (totalFileCount > 0) totalFileCount else fileNames.size.coerceAtLeast(1)
+
+        /** True when this transfer was a text-only transfer */
+        val isTextTransfer: Boolean
+            get() = receivedText != null
     }
 
     data class Error(

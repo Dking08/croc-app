@@ -2,8 +2,10 @@ package com.crocworks.app.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.FlashOn
 import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -13,6 +15,13 @@ sealed class CrocDestination(
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector
 ) {
+    data object Quick : CrocDestination(
+        route = "quick",
+        label = "Quick",
+        selectedIcon = Icons.Filled.FlashOn,
+        unselectedIcon = Icons.Outlined.FlashOn
+    )
+
     data object Send : CrocDestination(
         route = "send",
         label = "Send",
@@ -42,7 +51,7 @@ sealed class CrocDestination(
     )
 
     companion object {
-        /** Only Send & Receive appear in the bottom navigation */
-        val bottomNavItems = listOf(Send, Receive)
+        /** Send, Quick, Receive appear in the bottom navigation */
+        val bottomNavItems = listOf(Send, Quick, Receive)
     }
 }
