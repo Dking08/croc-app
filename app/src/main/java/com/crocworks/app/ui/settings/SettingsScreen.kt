@@ -145,7 +145,7 @@ fun SettingsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "v2.0.0 • croc v10.4.2",
+                            text = "v2.5.1 • croc v10.4.2",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -361,7 +361,7 @@ fun SettingsScreen(
 
             // About
             SettingsSection(icon = Icons.Rounded.Info, title = "About") {
-                InfoRow(label = "App Version", value = "2.0.0")
+                InfoRow(label = "App Version", value = "2.5.1")
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 2.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)

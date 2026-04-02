@@ -3,19 +3,13 @@ package com.crocworks.app.ui.quick
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -30,10 +24,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
@@ -62,7 +54,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -74,6 +68,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.crocworks.app.croc.CrocTransferState
 import com.crocworks.app.ui.components.TransferProgressCard
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,10 +109,7 @@ fun QuickScreen(
                             tint = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            "Quick",
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text("Quick", fontWeight = FontWeight.Bold)
                     }
                 },
                 actions = {
@@ -195,7 +189,7 @@ fun QuickScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 24.dp)
+                    .padding(bottom = 32.dp)
             )
         }
     }
@@ -236,7 +230,7 @@ private fun IdleStatusSection() {
         )
 
         Text(
-            text = "Send files, text, or receive instantly",
+            text = "Send files, text, or receive instantly\nHold Receive for saved codes",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
@@ -264,7 +258,6 @@ private fun TransferStatusSection(
             onCancel = onCancel
         )
 
-        // Received text display
         if (state is CrocTransferState.Completed && receivedText != null) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -325,7 +318,7 @@ private fun TransferStatusSection(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Section B: Quick Action Buttons — proper grid layout
+// Section B: Quick Action Buttons — diamond cluster layout
 // ═══════════════════════════════════════════════════════════════
 
 @Composable
@@ -341,118 +334,228 @@ private fun QuickActionButtons(
 ) {
     var showSavedCodesMenu by remember { mutableStateOf(false) }
 
-    // Clean two-row layout:
-    //   Row 1 (small):   [Clipboard]          [QR Scan]
-    //   Row 2 (large):       [SEND]    [RECEIVE ▾]
-    Column(
-        modifier = modifier
-            .padding(horizontal = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+    // Use a custom layout to position 4 buttons in a diamond:
+    //
+    //         [Clipboard]
+    //   [SEND]           [RECEIVE]
+    //         [QR Scan]
+    //
+    // Small buttons are at the 12 and 6 o'clock positions (top/bottom)
+    // Large buttons are at the 9 and 3 o'clock positions (left/right)
+    //
+    // But user wants small at ~45°: Clipboard near Send (10-11 o'clock), QR near Receive (1-2 o'clock)
+    // So layout is:
+    //
+    //  [Clip]               [QR]
+    //       [SEND]    [RECEIVE]
+    //
+    // Using trigonometry with the large buttons as anchors.
+
+    val mainSize = 100.dp
+    val smallSize = 48.dp
+    val mainIconSize = 36.dp
+    val smallIconSize = 20.dp
+
+    DiamondButtonCluster(
+        modifier = modifier,
+        mainSize = mainSize,
+        smallSize = smallSize,
+        gapBetweenMains = 24.dp,
+        smallAngleDeg = 50f,      // angle above horizontal
+        smallRadiusExtra = 16.dp  // distance from edge of main button to center of small button
     ) {
-        // Row 1: Small auxiliary buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            QuickCircleButton(
-                icon = Icons.Rounded.ContentPaste,
-                label = "Clipboard",
-                size = 56.dp,
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        // Slot 0: Send (left main)
+        QuickCircleButton(
+            icon = Icons.Rounded.Upload,
+            label = "Send",
+            size = mainSize,
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            enabled = enabled,
+            onClick = onSendTap,
+            elevation = 6.dp,
+            iconSize = mainIconSize
+        )
+
+        // Slot 1: Receive (right main) — with long-press
+        Box {
+            QuickCircleButtonWithLongPress(
+                icon = Icons.Rounded.Download,
+                label = "Receive",
+                size = mainSize,
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                 enabled = enabled,
-                onClick = onClipboardSendTap,
-                elevation = 3.dp,
-                iconSize = 22.dp
-            )
-
-            QuickCircleButton(
-                icon = Icons.Rounded.QrCodeScanner,
-                label = "QR Scan",
-                size = 56.dp,
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                enabled = enabled,
-                onClick = onQrReceiveTap,
-                elevation = 3.dp,
-                iconSize = 22.dp
-            )
-        }
-
-        // Row 2: Main Send & Receive buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.Top
-        ) {
-            QuickCircleButton(
-                icon = Icons.Rounded.Upload,
-                label = "Send",
-                size = 88.dp,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                enabled = enabled,
-                onClick = onSendTap,
-                elevation = 6.dp,
-                iconSize = 32.dp
-            )
-
-            // Receive button with long-press for saved codes
-            Box {
-                QuickCircleButtonWithLongPress(
-                    icon = Icons.Rounded.Download,
-                    label = "Receive",
-                    size = 88.dp,
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                    enabled = enabled,
-                    onClick = onReceiveTap,
-                    onLongPress = {
-                        if (savedCodes.isNotEmpty()) {
-                            showSavedCodesMenu = true
-                        } else {
-                            onReceiveTap()
-                        }
-                    },
-                    elevation = 6.dp,
-                    iconSize = 32.dp
-                )
-
-                // Dropdown menu for saved codes (appears on long-press)
-                DropdownMenu(
-                    expanded = showSavedCodesMenu,
-                    onDismissRequest = { showSavedCodesMenu = false }
-                ) {
-                    savedCodes.take(10).forEach { code ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = code,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            },
-                            onClick = {
-                                showSavedCodesMenu = false
-                                onReceiveWithCode(code)
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Rounded.Download,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        )
+                onClick = onReceiveTap,
+                onLongPress = {
+                    if (savedCodes.isNotEmpty()) {
+                        showSavedCodesMenu = true
+                    } else {
+                        onReceiveTap()
                     }
+                },
+                elevation = 6.dp,
+                iconSize = mainIconSize
+            )
+
+            DropdownMenu(
+                expanded = showSavedCodesMenu,
+                onDismissRequest = { showSavedCodesMenu = false }
+            ) {
+                savedCodes.take(10).forEach { code ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = code,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.Medium
+                            )
+                        },
+                        onClick = {
+                            showSavedCodesMenu = false
+                            onReceiveWithCode(code)
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Rounded.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        // Slot 2: Clipboard Send (small, upper-left of Send)
+        SmallCircleButton(
+            icon = Icons.Rounded.ContentPaste,
+            size = smallSize,
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            enabled = enabled,
+            onClick = onClipboardSendTap,
+            iconSize = smallIconSize
+        )
+
+        // Slot 3: QR Receive (small, upper-right of Receive)
+        SmallCircleButton(
+            icon = Icons.Rounded.QrCodeScanner,
+            size = smallSize,
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            enabled = enabled,
+            onClick = onQrReceiveTap,
+            iconSize = smallIconSize
+        )
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Custom Layout: Diamond Button Cluster
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Places 4 children in a diamond cluster:
+ *   child[0] = left main button (Send)
+ *   child[1] = right main button (Receive)
+ *   child[2] = small button orbiting child[0] at upper-left angle
+ *   child[3] = small button orbiting child[1] at upper-right angle
+ *
+ * This uses Compose [Layout] so positioning is pixel-perfect and never overlaps.
+ */
+@Composable
+private fun DiamondButtonCluster(
+    modifier: Modifier = Modifier,
+    mainSize: Dp,
+    smallSize: Dp,
+    gapBetweenMains: Dp,
+    smallAngleDeg: Float,
+    smallRadiusExtra: Dp,
+    content: @Composable () -> Unit
+) {
+    Layout(
+        content = content,
+        modifier = modifier
+    ) { measurables, constraints ->
+        require(measurables.size == 4) { "DiamondButtonCluster requires exactly 4 children" }
+
+        val mainPx = mainSize.roundToPx()
+        val smallPx = smallSize.roundToPx()
+        val gapPx = gapBetweenMains.roundToPx()
+        val radiusExtraPx = smallRadiusExtra.roundToPx()
+
+        // Measure all children
+        val mainConstraints = constraints.copy(
+            minWidth = 0, minHeight = 0,
+            maxWidth = mainPx + 80, // allow for label text
+            maxHeight = mainPx + 60 // allow for label below
+        )
+        val smallConstraints = constraints.copy(
+            minWidth = 0, minHeight = 0,
+            maxWidth = smallPx,
+            maxHeight = smallPx
+        )
+
+        val sendPlaceable = measurables[0].measure(mainConstraints)
+        val receivePlaceable = measurables[1].measure(mainConstraints)
+        val clipPlaceable = measurables[2].measure(smallConstraints)
+        val qrPlaceable = measurables[3].measure(smallConstraints)
+
+        // Calculate positions
+        // Total width = sendWidth + gap + receiveWidth
+        val totalMainWidth = sendPlaceable.width + gapPx + receivePlaceable.width
+        val centerX = constraints.maxWidth / 2
+
+        // Send button center
+        val sendCenterX = centerX - gapPx / 2 - sendPlaceable.width / 2
+        // Receive button center
+        val recvCenterX = centerX + gapPx / 2 + receivePlaceable.width / 2
+
+        // Orbit radius: from center of main to center of small
+        val orbitRadius = mainPx / 2 + radiusExtraPx + smallPx / 2
+
+        // Clipboard: orbits Send at upper-left (angle measured from horizontal, going up-left)
+        val clipAngleRad = Math.toRadians(smallAngleDeg.toDouble())
+        val clipCenterX = sendCenterX - (orbitRadius * cos(clipAngleRad)).roundToInt()
+        val clipCenterY = -(orbitRadius * sin(clipAngleRad)).roundToInt() // negative = up
+
+        // QR: orbits Receive at upper-right (mirrored)
+        val qrCenterX = recvCenterX + (orbitRadius * cos(clipAngleRad)).roundToInt()
+        val qrCenterY = -(orbitRadius * sin(clipAngleRad)).roundToInt()
+
+        // We need to find the bounding box. Main buttons are at y=0 (their top).
+        // Small buttons are above, so we need to offset everything down.
+        val smallTopOffset = minOf(clipCenterY, qrCenterY) - smallPx / 2
+        val yShift = if (smallTopOffset < 0) -smallTopOffset else 0
+
+        // Main button Y: centered vertically on their circle center
+        val mainY = yShift
+        val totalHeight = yShift + maxOf(sendPlaceable.height, receivePlaceable.height)
+
+        layout(constraints.maxWidth, totalHeight) {
+            // Place Send
+            sendPlaceable.place(
+                x = sendCenterX - sendPlaceable.width / 2,
+                y = mainY
+            )
+            // Place Receive
+            receivePlaceable.place(
+                x = recvCenterX - receivePlaceable.width / 2,
+                y = mainY
+            )
+            // Place Clipboard (small, upper-left of Send)
+            clipPlaceable.place(
+                x = clipCenterX - clipPlaceable.width / 2,
+                y = yShift + clipCenterY - clipPlaceable.height / 2
+            )
+            // Place QR (small, upper-right of Receive)
+            qrPlaceable.place(
+                x = qrCenterX - qrPlaceable.width / 2,
+                y = yShift + qrCenterY - qrPlaceable.height / 2
+            )
+        }
     }
 }
 
@@ -465,8 +568,8 @@ private fun QuickCircleButton(
     icon: ImageVector,
     label: String,
     size: Dp,
-    containerColor: androidx.compose.ui.graphics.Color,
-    contentColor: androidx.compose.ui.graphics.Color,
+    containerColor: Color,
+    contentColor: Color,
     enabled: Boolean,
     onClick: () -> Unit,
     elevation: Dp = 4.dp,
@@ -528,14 +631,62 @@ private fun QuickCircleButton(
     }
 }
 
+@Composable
+private fun SmallCircleButton(
+    icon: ImageVector,
+    size: Dp,
+    containerColor: Color,
+    contentColor: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    iconSize: Dp = 20.dp
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.90f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "scale"
+    )
+
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = CircleShape,
+        color = if (enabled) containerColor else containerColor.copy(alpha = 0.4f),
+        contentColor = contentColor,
+        tonalElevation = 1.dp,
+        shadowElevation = 3.dp,
+        interactionSource = interactionSource,
+        modifier = Modifier
+            .size(size)
+            .scale(scale)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(iconSize)
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun QuickCircleButtonWithLongPress(
     icon: ImageVector,
     label: String,
     size: Dp,
-    containerColor: androidx.compose.ui.graphics.Color,
-    contentColor: androidx.compose.ui.graphics.Color,
+    containerColor: Color,
+    contentColor: Color,
     enabled: Boolean,
     onClick: () -> Unit,
     onLongPress: () -> Unit,

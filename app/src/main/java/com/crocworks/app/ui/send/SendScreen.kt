@@ -472,8 +472,7 @@ fun SendScreen(
                     // Action chips
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        maxLines = 2
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         AssistChip(
                             onClick = { viewModel.regenerateCode() },

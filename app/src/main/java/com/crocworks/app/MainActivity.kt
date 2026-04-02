@@ -132,6 +132,16 @@ fun CrocApp(
     if (sharedUris.isNotEmpty() && !handledSharedUris) {
         handledSharedUris = true
         sendViewModel.addFiles(sharedUris)
+        // Navigate to Send tab so user sees shared files
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            navController.navigate(CrocDestination.Send.route) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
     }
 
     // Determine tab indices for directional animations
