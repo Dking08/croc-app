@@ -94,7 +94,3 @@ The app tries to stay true to `croc` while feeling native on Android:
 
 - [`croc-gui`](https://github.com/howeyc/crocgui) - earlier mobile-oriented GUI work around `croc`
 - [`croc`](https://github.com/schollz/croc) - croc
-
-## License
-
-No license file has been added to this repository yet. If you are making the repo public, adding a `LICENSE` file would be a good next step.
