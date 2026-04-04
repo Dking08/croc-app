@@ -1,4 +1,11 @@
-# croc-app
+<div align="center">
+
+<img src="https://github.com/Dking08/croc-app/blob/master/others/croc-icon.png" alt="Croc app icon" width="150" />
+
+# `croc-app`
+
+<br/>
+</div>
 
 `croc-app` is an Android client for [`croc`](https://github.com/schollz/croc) with a modern, mobile-first UI built in Kotlin and Jetpack Compose.
 
