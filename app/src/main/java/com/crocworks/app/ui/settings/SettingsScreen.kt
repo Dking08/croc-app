@@ -64,6 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.crocworks.app.BuildConfig
 
 private const val MAX_VISIBLE_CODES = 6
 
@@ -145,7 +146,7 @@ fun SettingsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "v2.5.1 • croc v10.4.2",
+                            text = "v${BuildConfig.VERSION_NAME} • croc v10.4.2",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -361,7 +362,7 @@ fun SettingsScreen(
 
             // About
             SettingsSection(icon = Icons.Rounded.Info, title = "About") {
-                InfoRow(label = "App Version", value = "2.5.1")
+                InfoRow(label = "App Version", value = BuildConfig.VERSION_NAME)
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 2.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
