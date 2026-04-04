@@ -7,6 +7,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -27,16 +28,16 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-//import androidx.compose.foundation.layout.RowScope.weight
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Upload
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -50,6 +51,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -61,11 +63,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -74,6 +77,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dking.crocapp.R
 import com.dking.crocapp.croc.CrocTransferState
 import com.dking.crocapp.ui.components.QrCodeImage
 import com.dking.crocapp.ui.components.formatBytes
@@ -91,6 +95,7 @@ fun QuickScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
+    var showInfoDialog by remember { mutableStateOf(false) }
 
     val isTransferActive = uiState.transferState is CrocTransferState.Preparing ||
         uiState.transferState is CrocTransferState.WaitingForPeer ||
@@ -112,18 +117,12 @@ fun QuickScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Rounded.FlashOn,
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Quick", fontWeight = FontWeight.Bold)
-                    }
+                    Text("Quick", fontWeight = FontWeight.Bold)
                 },
                 actions = {
+                    IconButton(onClick = { showInfoDialog = true }) {
+                        Icon(Icons.Outlined.Info, contentDescription = "Quick help")
+                    }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Outlined.Settings, contentDescription = "Settings")
                     }
@@ -134,6 +133,10 @@ fun QuickScreen(
             )
         }
     ) { paddingValues ->
+        if (showInfoDialog) {
+            QuickInfoDialog(onDismiss = { showInfoDialog = false })
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -206,15 +209,7 @@ private fun QuickBrandHeader() {
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.extraLarge)
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f),
-                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f),
-                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.86f)
-                    )
-                )
-            )
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .padding(18.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -226,14 +221,14 @@ private fun QuickBrandHeader() {
                     modifier = Modifier
                         .size(46.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
+                        .background(MaterialTheme.colorScheme.surface),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Rounded.FlashOn,
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                    Image(
+                        painter = painterResource(id = R.drawable.croc_icon),
+                        contentDescription = "croc-app icon",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(46.dp).clip(CircleShape)
                     )
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -257,6 +252,46 @@ private fun QuickBrandHeader() {
             )
         }
     }
+}
+
+@Composable
+private fun QuickInfoDialog(
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "About croc-app",
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "croc-app is an Android client for croc. It helps you send and receive files or text with short shared codes.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "Secret codes are shared phrases used to pair the sender and receiver. Both sides must use the same code for a transfer.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "Use Send to share files or clipboard text. Use Receive to wait on a code. Quick is for fast one-tap flows with your saved defaults.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "Share the code or QR only with the person you want to connect with. Received files are saved to Downloads/croc-received.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }
 
 @Composable

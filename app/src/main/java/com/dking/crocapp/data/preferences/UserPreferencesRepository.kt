@@ -82,6 +82,15 @@ class UserPreferencesRepository(private val context: Context) {
         )
     }
 
+    suspend fun ensureDefaultCodePhrase() {
+        context.dataStore.edit { prefs ->
+            val existing = normalizeCodePhrase(prefs[DEFAULT_CODE_PHRASE] ?: "")
+            if (existing.isBlank()) {
+                prefs[DEFAULT_CODE_PHRASE] = generateRandomThreeWordCode()
+            }
+        }
+    }
+
     suspend fun updateRelayAddress(value: String) {
         context.dataStore.edit { it[RELAY_ADDRESS] = value }
     }
@@ -181,5 +190,19 @@ class UserPreferencesRepository(private val context: Context) {
 
     private fun normalizeCodePhrase(value: String): String {
         return value.trim().replace(" ", "-")
+    }
+
+    private fun generateRandomThreeWordCode(): String {
+        val words = listOf(
+            "amber", "apple", "ash", "bamboo", "berry", "bird", "blue", "brook",
+            "cedar", "cloud", "copper", "coral", "dawn", "delta", "drift", "ember",
+            "field", "flame", "forest", "glow", "gold", "grain", "harbor", "hazel",
+            "ivory", "juniper", "lake", "leaf", "linen", "meadow", "mist", "moss",
+            "north", "ocean", "olive", "pebble", "pine", "plum", "prairie", "raven",
+            "river", "rose", "sage", "shadow", "silver", "sky", "snow", "stone",
+            "storm", "sunset", "timber", "violet", "water", "willow", "wind", "wood"
+        ).shuffled()
+
+        return words.take(3).joinToString("-")
     }
 }
