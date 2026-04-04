@@ -11,6 +11,9 @@ data class TransferHistory(
     val type: TransferType,
     val fileName: String,
     val fileSize: Long = 0,
+    val fileUri: String? = null,
+    val mimeType: String? = null,
+    val savedLocation: String? = null,
     val timestamp: Long = System.currentTimeMillis(),
     val status: TransferStatus = TransferStatus.COMPLETED,
     val isFavorite: Boolean = false

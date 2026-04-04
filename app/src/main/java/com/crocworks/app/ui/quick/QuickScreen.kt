@@ -8,8 +8,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -23,13 +23,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+//import androidx.compose.foundation.layout.RowScope.weight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FlashOn
+import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material3.Card
@@ -40,6 +45,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -53,7 +59,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
@@ -67,7 +75,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.crocworks.app.croc.CrocTransferState
-import com.crocworks.app.ui.components.TransferProgressCard
+import com.crocworks.app.ui.components.QrCodeImage
+import com.crocworks.app.ui.components.formatBytes
+import com.crocworks.app.ui.receive.ReceivedFile
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -83,11 +93,12 @@ fun QuickScreen(
     val clipboardManager = LocalClipboardManager.current
 
     val isTransferActive = uiState.transferState is CrocTransferState.Preparing ||
-            uiState.transferState is CrocTransferState.WaitingForPeer ||
-            uiState.transferState is CrocTransferState.Transferring
+        uiState.transferState is CrocTransferState.WaitingForPeer ||
+        uiState.transferState is CrocTransferState.Transferring
     val isTransferFinished = uiState.transferState is CrocTransferState.Completed ||
-            uiState.transferState is CrocTransferState.Error ||
-            uiState.transferState is CrocTransferState.Cancelled
+        uiState.transferState is CrocTransferState.Error ||
+        uiState.transferState is CrocTransferState.Cancelled
+    val showActionButtons = !isTransferActive && !isTransferFinished
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -105,7 +116,7 @@ fun QuickScreen(
                         Icon(
                             Icons.Rounded.FlashOn,
                             contentDescription = null,
-                            modifier = Modifier.size(24.dp),
+                            modifier = Modifier.size(22.dp),
                             tint = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -123,118 +134,128 @@ fun QuickScreen(
             )
         }
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues),
-            verticalArrangement = Arrangement.SpaceBetween
+                .padding(paddingValues)
         ) {
-            // ═══════════════════════════════════════════
-            // Section A: Status / Info Area (top half)
-            // ═══════════════════════════════════════════
             Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .padding(bottom = if (showActionButtons) 244.dp else 24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                QuickBrandHeader()
+
                 if (isTransferActive || isTransferFinished) {
                     TransferStatusSection(
                         state = uiState.transferState,
                         lastAction = uiState.lastAction,
+                        activeCode = uiState.activeCode,
+                        sharePreview = uiState.sharePreview,
                         receivedText = uiState.receivedText,
+                        receivedFiles = uiState.receivedFiles,
                         onCancel = { viewModel.cancelTransfer() },
                         onDismiss = { viewModel.dismissResult() },
                         onCopyText = { text ->
                             clipboardManager.setText(AnnotatedString(text))
                         }
                     )
-                } else {
-                    IdleStatusSection()
                 }
             }
 
-            // ═══════════════════════════════════════════
-            // Section B: Action Buttons (bottom half)
-            // ═══════════════════════════════════════════
-            QuickActionButtons(
-                enabled = !isTransferActive,
-                savedCodes = uiState.savedCodePhrases,
-                onSendTap = {
-                    if (isTransferFinished) viewModel.dismissResult()
-                    filePickerLauncher.launch(arrayOf("*/*"))
-                },
-                onClipboardSendTap = {
-                    if (isTransferFinished) viewModel.dismissResult()
-                    val text = clipboardManager.getText()?.text ?: ""
-                    if (text.isNotBlank()) {
-                        viewModel.sendClipboardText(text)
-                    }
-                },
-                onReceiveTap = {
-                    if (isTransferFinished) viewModel.dismissResult()
-                    viewModel.startReceive()
-                },
-                onReceiveWithCode = { code ->
-                    if (isTransferFinished) viewModel.dismissResult()
-                    viewModel.startReceiveWithCode(code)
-                },
-                onQrReceiveTap = {
-                    if (isTransferFinished) viewModel.dismissResult()
-                    onOpenScanner { code ->
-                        viewModel.startReceiveFromQr(code)
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 32.dp)
-            )
+            if (showActionButtons) {
+                QuickActionButtons(
+                    enabled = true,
+                    savedCodes = uiState.savedCodePhrases,
+                    onSendTap = {
+                        filePickerLauncher.launch(arrayOf("*/*"))
+                    },
+                    onClipboardSendTap = {
+                        val text = clipboardManager.getText()?.text ?: ""
+                        if (text.isNotBlank()) {
+                            viewModel.sendClipboardText(text)
+                        }
+                    },
+                    onReceiveTap = {
+                        viewModel.startReceive()
+                    },
+                    onReceiveWithCode = { code ->
+                        viewModel.startReceiveWithCode(code)
+                    },
+                    onQrReceiveTap = {
+                        onOpenScanner { code ->
+                            viewModel.startReceiveFromQr(code)
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 24.dp)
+                )
+            }
         }
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Section A: Status Components
-// ═══════════════════════════════════════════════════════════════
-
 @Composable
-private fun IdleStatusSection() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+private fun QuickBrandHeader() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.extraLarge)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f),
+                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f),
+                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.86f)
+                    )
+                )
+            )
+            .padding(18.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .background(
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                    CircleShape
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Rounded.FlashOn,
-                contentDescription = null,
-                modifier = Modifier.size(36.dp),
-                tint = MaterialTheme.colorScheme.primary
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Rounded.FlashOn,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "croc-app",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Send files, text, or receive instantly",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Text(
+                text = "Hold Receive for saved codes",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-
-        Text(
-            text = "Quick Transfer",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-
-        Text(
-            text = "Send files, text, or receive instantly\nHold Receive for saved codes",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
     }
 }
 
@@ -242,78 +263,620 @@ private fun IdleStatusSection() {
 private fun TransferStatusSection(
     state: CrocTransferState,
     lastAction: String,
+    activeCode: String,
+    sharePreview: List<QuickSharePreview>,
     receivedText: String?,
+    receivedFiles: List<ReceivedFile>,
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
     onCopyText: (String) -> Unit
 ) {
+    val isSending = lastAction == "send" || lastAction == "clipboard"
+    val isFinished = state is CrocTransferState.Completed ||
+        state is CrocTransferState.Error ||
+        state is CrocTransferState.Cancelled
+
     Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        TransferProgressCard(
-            state = state,
-            isSending = lastAction in listOf("send", "clipboard"),
-            onCancel = onCancel
-        )
+        if (isSending) {
+            QuickSendTransferCard(
+                state = state,
+                code = activeCode,
+                sharePreview = sharePreview
+            )
+        } else {
+            QuickReceiveTransferCard(
+                state = state,
+                code = activeCode,
+                receivedFiles = receivedFiles
+            )
+        }
+
+        if (state is CrocTransferState.Completed && receivedFiles.isNotEmpty()) {
+            QuickReceivedFilesCard(receivedFiles = receivedFiles)
+        }
 
         if (state is CrocTransferState.Completed && receivedText != null) {
-            Card(
+            QuickReceivedTextCard(
+                receivedText = receivedText,
+                totalBytes = state.totalBytes,
+                onCopyText = onCopyText
+            )
+        }
+
+        FilledTonalButton(
+            onClick = if (isFinished) onDismiss else onCancel,
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large
+        ) {
+            Text(if (isFinished) "Dismiss" else "Cancel")
+        }
+    }
+}
+
+@Composable
+private fun QuickSendTransferCard(
+    state: CrocTransferState,
+    code: String,
+    sharePreview: List<QuickSharePreview>
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        shape = MaterialTheme.shapes.extraLarge
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-                ),
-                shape = MaterialTheme.shapes.large
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Quick Send",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = quickTransferTitle(state, isSending = true),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = quickTransferSubtitle(state, isSending = true),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    QuickManifestList(
+                        items = sharePreview,
+                        emptyLabel = "Preparing your selection..."
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.widthIn(min = 108.dp, max = 126.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Received Text",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
+                    if (code.isNotBlank()) {
+                        QrCodeImage(
+                            data = code,
+                            size = 86.dp,
+                            padding = 8.dp
                         )
-                        IconButton(
-                            onClick = { onCopyText(receivedText) },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                Icons.Rounded.ContentCopy,
-                                contentDescription = "Copy text",
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
+                    } else {
+                        QuickStatusBadge(
+                            icon = Icons.Rounded.Upload,
+                            label = "Preparing"
+                        )
                     }
                     Text(
-                        text = receivedText,
+                        text = if (code.isNotBlank()) code else "Generating code",
+                        style = MaterialTheme.typography.labelMedium,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            QuickTransferProgress(state = state, isSending = true)
+        }
+    }
+}
+
+@Composable
+private fun QuickReceiveTransferCard(
+    state: CrocTransferState,
+    code: String,
+    receivedFiles: List<ReceivedFile>
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        shape = MaterialTheme.shapes.extraLarge
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Quick Receive",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = quickTransferTitle(state, isSending = false),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = quickTransferSubtitle(state, isSending = false),
                         style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 8,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    QuickDetailPill(
+                        label = if (state is CrocTransferState.Completed && receivedFiles.isNotEmpty()) {
+                            "Saved to Downloads/croc-received"
+                        } else {
+                            "Incoming files will land in Downloads/croc-received"
+                        }
+                    )
+                    if (state is CrocTransferState.Transferring && state.fileName.isNotBlank()) {
+                        QuickManifestList(
+                            items = listOf(
+                                QuickSharePreview(
+                                    title = state.fileName,
+                                    subtitle = "${state.currentFile}/${state.totalFiles} in progress"
+                                )
+                            ),
+                            emptyLabel = ""
+                        )
+                    }
+                }
+
+                QuickReceiveStatusTile(
+                    state = state,
+                    code = code,
+                    receivedFiles = receivedFiles
+                )
+            }
+
+            QuickTransferProgress(state = state, isSending = false)
+        }
+    }
+}
+
+@Composable
+private fun QuickReceiveStatusTile(
+    state: CrocTransferState,
+    code: String,
+    receivedFiles: List<ReceivedFile>
+) {
+    Column(
+        modifier = Modifier
+            .size(108.dp)
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 10.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.75f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Rounded.Download,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.tertiary
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        val completedFileCount = (state as? CrocTransferState.Completed)?.fileCount ?: 0
+        val fileCount = if (receivedFiles.isNotEmpty()) receivedFiles.size else completedFileCount
+        val headline = when (state) {
+            is CrocTransferState.Completed -> {
+                if (state.receivedText != null) "Text"
+                else "${fileCount} file${if (fileCount == 1) "" else "s"}"
+            }
+            is CrocTransferState.Transferring -> "${state.progressPercent}%"
+            is CrocTransferState.Error -> "Issue"
+            is CrocTransferState.Cancelled -> "Stopped"
+            else -> if (code.isNotBlank()) code else "Waiting"
+        }
+
+        Text(
+            text = headline,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = when (state) {
+                is CrocTransferState.Completed -> "Downloads"
+                is CrocTransferState.Transferring -> "Saving"
+                is CrocTransferState.Error -> "Retry"
+                is CrocTransferState.Cancelled -> "Idle"
+                else -> "Secret code"
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun QuickManifestList(
+    items: List<QuickSharePreview>,
+    emptyLabel: String
+) {
+    if (items.isEmpty()) {
+        if (emptyLabel.isNotBlank()) {
+            QuickDetailPill(label = emptyLabel)
+        }
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items.take(4).forEach { item ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.large)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Rounded.InsertDriveFile,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = item.subtitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
         }
 
-        val isFinished = state is CrocTransferState.Completed ||
-                state is CrocTransferState.Error ||
-                state is CrocTransferState.Cancelled
+        if (items.size > 4) {
+            QuickDetailPill(label = "+${items.size - 4} more item${if (items.size - 4 == 1) "" else "s"}")
+        }
+    }
+}
 
-        if (isFinished) {
-            FilledTonalButton(
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large
-            ) {
-                Text("Dismiss")
+@Composable
+private fun QuickTransferProgress(
+    state: CrocTransferState,
+    isSending: Boolean
+) {
+    val targetProgress = when (state) {
+        is CrocTransferState.Transferring -> state.progress
+        is CrocTransferState.Completed -> 1f
+        else -> 0f
+    }
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "quickTransferProgress"
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        when (state) {
+            is CrocTransferState.Preparing,
+            is CrocTransferState.WaitingForPeer -> {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(MaterialTheme.shapes.small)
+                )
+            }
+            is CrocTransferState.Transferring,
+            is CrocTransferState.Completed -> {
+                LinearProgressIndicator(
+                    progress = { animatedProgress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(MaterialTheme.shapes.small)
+                )
+            }
+            else -> Unit
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = quickProgressLabel(state, isSending),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            val trailing = quickProgressMetric(state)
+            if (trailing.isNotBlank()) {
+                Text(
+                    text = trailing,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun QuickReceivedFilesCard(receivedFiles: List<ReceivedFile>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        shape = MaterialTheme.shapes.extraLarge
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Received Files",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            receivedFiles.take(5).forEach { file ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.large)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.InsertDriveFile,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = file.name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = file.savedLocation,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            if (receivedFiles.size > 5) {
+                QuickDetailPill(label = "+${receivedFiles.size - 5} more saved")
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickReceivedTextCard(
+    receivedText: String,
+    totalBytes: Long,
+    onCopyText: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+        ),
+        shape = MaterialTheme.shapes.extraLarge
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "Received Text",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = formatBytes(totalBytes),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(
+                    onClick = { onCopyText(receivedText) },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.ContentCopy,
+                        contentDescription = "Copy text",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+            Text(
+                text = receivedText,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 12,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickStatusBadge(
+    icon: ImageVector,
+    label: String
+) {
+    Column(
+        modifier = Modifier
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 14.dp, vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun QuickDetailPill(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
+            .padding(horizontal = 12.dp, vertical = 9.dp)
+    )
+}
+
+private fun quickTransferTitle(state: CrocTransferState, isSending: Boolean): String {
+    return when (state) {
+        is CrocTransferState.Preparing -> if (isSending) "Preparing your quick share" else "Getting ready to receive"
+        is CrocTransferState.WaitingForPeer -> if (isSending) "Waiting for your peer" else "Listening for the sender"
+        is CrocTransferState.Transferring -> if (isSending) "Sharing in progress" else "Receiving in progress"
+        is CrocTransferState.Completed -> if (isSending) "Quick share delivered" else "Quick receive complete"
+        is CrocTransferState.Error -> if (isSending) "Quick send hit an issue" else "Quick receive hit an issue"
+        is CrocTransferState.Cancelled -> if (isSending) "Quick send cancelled" else "Quick receive cancelled"
+        else -> "Quick transfer"
+    }
+}
+
+private fun quickTransferSubtitle(state: CrocTransferState, isSending: Boolean): String {
+    return when (state) {
+        is CrocTransferState.Preparing -> "Setting up the encrypted transfer session."
+        is CrocTransferState.WaitingForPeer -> {
+            if (isSending) "Share the QR or code so the receiver can join."
+            else "Using the active code to connect and save directly into Downloads."
+        }
+        is CrocTransferState.Transferring -> {
+            if (isSending) "${state.fileName} is on the wire right now."
+            else "Incoming data is being written and prepared for Downloads."
+        }
+        is CrocTransferState.Completed -> {
+            if (isSending) {
+                "${state.fileCount} item${if (state.fileCount == 1) "" else "s"} shared successfully."
+            } else if (state.receivedText != null) {
+                "The text payload is ready below."
+            } else {
+                "${state.fileCount} item${if (state.fileCount == 1) "" else "s"} saved for you."
+            }
+        }
+        is CrocTransferState.Error -> state.message
+        is CrocTransferState.Cancelled -> "Start another transfer whenever you're ready."
+        else -> ""
+    }
+}
+
+private fun quickProgressLabel(state: CrocTransferState, isSending: Boolean): String {
+    return when (state) {
+        is CrocTransferState.Preparing -> "Preparing"
+        is CrocTransferState.WaitingForPeer -> if (isSending) "Waiting for receiver" else "Waiting for sender"
+        is CrocTransferState.Transferring -> if (isSending) "Live transfer" else "Saving to Downloads"
+        is CrocTransferState.Completed -> "Complete"
+        is CrocTransferState.Error -> "Needs attention"
+        is CrocTransferState.Cancelled -> "Stopped"
+        else -> ""
+    }
+}
+
+private fun quickProgressMetric(state: CrocTransferState): String {
+    return when (state) {
+        is CrocTransferState.Transferring -> "${state.progressPercent}% • ${formatBytes(state.bytesTransferred)} / ${formatBytes(state.totalBytes)}"
+        is CrocTransferState.Completed -> formatBytes(state.totalBytes)
+        else -> ""
     }
 }
 

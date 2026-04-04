@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Search
@@ -53,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,6 +65,7 @@ import com.crocworks.app.data.db.TransferHistory
 import com.crocworks.app.data.db.TransferType
 import com.crocworks.app.ui.components.EmptyState
 import com.crocworks.app.ui.components.formatBytes
+import com.crocworks.app.ui.receive.openHistoryTransfer
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -76,6 +79,7 @@ fun HistoryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -180,6 +184,7 @@ fun HistoryScreen(
                     ) { transfer ->
                         CompactHistoryCard(
                             transfer = transfer,
+                            onOpenTransfer = { openHistoryTransfer(context, transfer) },
                             onCodeSelected = onCodeSelected,
                             onCopyCode = {
                                 clipboardManager.setText(AnnotatedString(transfer.code))
@@ -201,12 +206,14 @@ fun HistoryScreen(
 @Composable
 private fun CompactHistoryCard(
     transfer: TransferHistory,
+    onOpenTransfer: () -> Boolean,
     onCodeSelected: (String) -> Unit,
     onCopyCode: () -> Unit,
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    val canOpenTransfer = transfer.type == TransferType.RECEIVE && transfer.fileUri != null && transfer.mimeType != null
 
     Card(
         modifier = Modifier
@@ -216,7 +223,11 @@ private fun CompactHistoryCard(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         shape = MaterialTheme.shapes.large,
-        onClick = { onCodeSelected(transfer.code) }
+        onClick = {
+            if (!canOpenTransfer || !onOpenTransfer()) {
+                onCodeSelected(transfer.code)
+            }
+        }
     ) {
         Row(
             modifier = Modifier
@@ -326,13 +337,19 @@ private fun CompactHistoryCard(
                     onDismissRequest = { showMenu = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Use Code") },
+                        text = { Text(if (canOpenTransfer) "Open File" else "Use Code") },
                         onClick = {
                             showMenu = false
-                            onCodeSelected(transfer.code)
+                            if (!canOpenTransfer || !onOpenTransfer()) {
+                                onCodeSelected(transfer.code)
+                            }
                         },
                         leadingIcon = {
-                            Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Icon(
+                                if (canOpenTransfer) Icons.Rounded.FolderOpen else Icons.Rounded.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     )
                     DropdownMenuItem(

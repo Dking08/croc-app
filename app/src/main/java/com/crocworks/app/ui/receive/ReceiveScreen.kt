@@ -1,8 +1,5 @@
 package com.crocworks.app.ui.receive
 
-import android.content.ActivityNotFoundException
-import android.content.Context
-import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -528,33 +525,6 @@ private fun ReceivedFileRow(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-    }
-}
-
-private fun openReceivedFile(context: Context, file: ReceivedFile) {
-    val openIntent = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(file.uri, file.mimeType)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-
-    try {
-        context.startActivity(Intent.createChooser(openIntent, "Open file"))
-    } catch (_: ActivityNotFoundException) {
-    }
-}
-
-private fun shareReceivedFile(context: Context, file: ReceivedFile) {
-    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-        type = file.mimeType
-        putExtra(Intent.EXTRA_STREAM, file.uri)
-        putExtra(Intent.EXTRA_SUBJECT, file.name)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-
-    try {
-        context.startActivity(Intent.createChooser(shareIntent, "Share file"))
-    } catch (_: ActivityNotFoundException) {
     }
 }
 

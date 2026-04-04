@@ -14,6 +14,8 @@ import com.crocworks.app.data.db.TransferHistory
 import com.crocworks.app.data.db.TransferStatus
 import com.crocworks.app.data.db.TransferType
 import com.crocworks.app.data.preferences.UserPreferencesRepository
+import com.crocworks.app.ui.receive.ReceivedFile
+import com.crocworks.app.ui.receive.ReceivedFilePublisher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,15 +25,23 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 
+data class QuickSharePreview(
+    val title: String,
+    val subtitle: String
+)
+
 data class QuickUiState(
     val transferState: CrocTransferState = CrocTransferState.Idle,
     val quickSendCode: String = "",
     val quickReceiveCode: String = "",
+    val activeCode: String = "",
     val savedCodePhrases: List<String> = emptyList(),
     val lastAction: String = "", // "send", "clipboard", "receive", "qr"
+    val sharePreview: List<QuickSharePreview> = emptyList(),
     val statusMessage: String = "Ready",
     val statusDetail: String = "Tap Send or Receive to start",
-    val receivedText: String? = null
+    val receivedText: String? = null,
+    val receivedFiles: List<ReceivedFile> = emptyList()
 )
 
 class QuickViewModel(application: Application) : AndroidViewModel(application) {
@@ -77,18 +87,38 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     is CrocTransferState.Completed -> {
                         val receivedText = state.receivedText
+                        val receivedFiles = if (state.isTextTransfer) {
+                            emptyList()
+                        } else {
+                            publishReceivedFiles()
+                        }
+                        val actualNames = if (receivedFiles.isNotEmpty()) {
+                            receivedFiles.map { it.name }
+                        } else {
+                            state.fileNames
+                        }
+                        val historyState = state.copy(
+                            fileNames = actualNames,
+                            totalFileCount = if (receivedFiles.isNotEmpty()) {
+                                receivedFiles.size
+                            } else {
+                                state.totalFileCount
+                            }
+                        )
                         _uiState.update {
                             it.copy(
+                                transferState = historyState,
                                 statusMessage = if (state.isTextTransfer) "Text Received!" else "Transfer Complete!",
                                 statusDetail = if (state.isTextTransfer) {
                                     receivedText?.take(100) ?: "Text transfer done"
                                 } else {
-                                    "${state.fileCount} file${if (state.fileCount != 1) "s" else ""} transferred"
+                                    "${historyState.fileCount} file${if (historyState.fileCount != 1) "s" else ""} transferred"
                                 },
-                                receivedText = receivedText
+                                receivedText = receivedText,
+                                receivedFiles = receivedFiles
                             )
                         }
-                        saveToHistory(state)
+                        saveToHistory(historyState, receivedFiles)
                     }
                     is CrocTransferState.Error -> {
                         _uiState.update {
@@ -129,11 +159,29 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         if (code.isBlank() || uris.isEmpty()) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(lastAction = "send") }
+            _uiState.update {
+                it.copy(
+                    lastAction = "send",
+                    activeCode = code,
+                    sharePreview = buildFileSharePreview(uris),
+                    receivedText = null,
+                    receivedFiles = emptyList()
+                )
+            }
             crocProcess.reset()
             kotlinx.coroutines.delay(50)
 
             val filePaths = copyFilesToInternal(uris)
+            if (filePaths.isEmpty()) {
+                _uiState.update {
+                    it.copy(
+                        transferState = CrocTransferState.Error("Could not prepare the selected files."),
+                        statusMessage = "Error",
+                        statusDetail = "Could not prepare the selected files."
+                    )
+                }
+                return@launch
+            }
             crocProcess.send(filePaths, code)
         }
     }
@@ -143,7 +191,20 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         if (code.isBlank() || text.isBlank()) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(lastAction = "clipboard") }
+            _uiState.update {
+                it.copy(
+                    lastAction = "clipboard",
+                    activeCode = code,
+                    sharePreview = listOf(
+                        QuickSharePreview(
+                            title = "Clipboard text",
+                            subtitle = buildClipboardSubtitle(text)
+                        )
+                    ),
+                    receivedText = null,
+                    receivedFiles = emptyList()
+                )
+            }
             crocProcess.reset()
             kotlinx.coroutines.delay(50)
             crocProcess.sendText(text, code)
@@ -153,12 +214,28 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
     fun startReceive() {
         val code = _uiState.value.quickReceiveCode
         if (code.isBlank()) return
-        startReceiveWithCode(code)
+        startReceiveInternal(code, "receive")
     }
 
     fun startReceiveWithCode(code: String) {
+        startReceiveInternal(code, "receive")
+    }
+
+    fun startReceiveFromQr(code: String) {
+        startReceiveInternal(code, "qr")
+    }
+
+    private fun startReceiveInternal(code: String, action: String) {
         viewModelScope.launch {
-            _uiState.update { it.copy(lastAction = "receive") }
+            _uiState.update {
+                it.copy(
+                    lastAction = action,
+                    activeCode = code,
+                    sharePreview = emptyList(),
+                    receivedText = null,
+                    receivedFiles = emptyList()
+                )
+            }
             crocProcess.reset()
             kotlinx.coroutines.delay(50)
 
@@ -172,11 +249,6 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun startReceiveFromQr(code: String) {
-        _uiState.update { it.copy(lastAction = "qr") }
-        startReceiveWithCode(code)
-    }
-
     fun cancelTransfer() {
         crocProcess.cancel()
     }
@@ -185,9 +257,13 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         crocProcess.reset()
         _uiState.update {
             it.copy(
+                lastAction = "",
+                sharePreview = emptyList(),
                 statusMessage = "Ready",
                 statusDetail = "Tap Send or Receive to start",
-                receivedText = null
+                activeCode = "",
+                receivedText = null,
+                receivedFiles = emptyList()
             )
         }
     }
@@ -205,14 +281,7 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         val sendDir = File(context.cacheDir, "croc-send").apply { mkdirs() }
         return uris.mapNotNull { uri ->
             try {
-                val cursor = context.contentResolver.query(uri, null, null, null, null)
-                var name = "unknown"
-                cursor?.use {
-                    if (it.moveToFirst()) {
-                        val nameIdx = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                        if (nameIdx >= 0) name = it.getString(nameIdx)
-                    }
-                }
+                val name = resolveDisplayName(uri)
                 val dest = File(sendDir, name)
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(dest).use { output ->
@@ -226,10 +295,77 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun saveToHistory(state: CrocTransferState.Completed) {
+    private fun buildFileSharePreview(uris: List<Uri>): List<QuickSharePreview> {
+        return uris.map { uri ->
+            val name = resolveDisplayName(uri)
+            val size = resolveFileSize(uri)
+            QuickSharePreview(
+                title = name,
+                subtitle = size?.let(::formatBytes) ?: "Ready to share"
+            )
+        }
+    }
+
+    private fun resolveDisplayName(uri: Uri): String {
+        val context = getApplication<CrocApp>()
+        var name = "unknown"
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIdx >= 0) {
+                    name = cursor.getString(nameIdx) ?: name
+                }
+            }
+        }
+        return name
+    }
+
+    private fun resolveFileSize(uri: Uri): Long? {
+        val context = getApplication<CrocApp>()
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (sizeIdx >= 0 && !cursor.isNull(sizeIdx)) {
+                    return cursor.getLong(sizeIdx)
+                }
+            }
+        }
+        return null
+    }
+
+    private fun buildClipboardSubtitle(text: String): String {
+        val trimmed = text.trim()
+        val headline = trimmed.lineSequence().firstOrNull().orEmpty()
+        val preview = if (headline.length > 56) {
+            headline.take(53).trimEnd() + "..."
+        } else {
+            headline
+        }
+        val charCount = trimmed.length
+        return if (preview.isBlank()) {
+            "$charCount characters"
+        } else {
+            "$preview • $charCount characters"
+        }
+    }
+
+    private fun publishReceivedFiles(): List<ReceivedFile> {
+        val outputDir = currentOutputDir ?: return emptyList()
+        return ReceivedFilePublisher.publish(getApplication(), outputDir)
+    }
+
+    private suspend fun saveToHistory(
+        state: CrocTransferState.Completed,
+        receivedFiles: List<ReceivedFile>
+    ) {
         val code = _uiState.value.let {
-            if (it.lastAction == "send" || it.lastAction == "clipboard") it.quickSendCode
-            else it.quickReceiveCode
+            if (it.activeCode.isNotBlank()) {
+                it.activeCode
+            } else if (it.lastAction == "send" || it.lastAction == "clipboard") {
+                it.quickSendCode
+            } else {
+                it.quickReceiveCode
+            }
         }
         val type = if (_uiState.value.lastAction in listOf("send", "clipboard")) TransferType.SEND else TransferType.RECEIVE
 
@@ -244,6 +380,30 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
                 )
             )
         } else {
+            val filesForHistory = if (type == TransferType.RECEIVE && receivedFiles.isNotEmpty()) {
+                receivedFiles
+            } else {
+                emptyList()
+            }
+
+            if (filesForHistory.isNotEmpty()) {
+                filesForHistory.forEach { file ->
+                    app.database.transferHistoryDao().insert(
+                        TransferHistory(
+                            code = code,
+                            type = type,
+                            fileName = file.name,
+                            fileSize = state.totalBytes,
+                            fileUri = file.uri.toString(),
+                            mimeType = file.mimeType,
+                            savedLocation = file.savedLocation,
+                            status = TransferStatus.COMPLETED
+                        )
+                    )
+                }
+                return
+            }
+
             state.fileNames.forEach { fileName ->
                 app.database.transferHistoryDao().insert(
                     TransferHistory(
@@ -255,6 +415,15 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 )
             }
+        }
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        return when {
+            bytes < 1024 -> "$bytes B"
+            bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
+            bytes < 1024 * 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024))
+            else -> "%.2f GB".format(bytes / (1024.0 * 1024 * 1024))
         }
     }
 }
