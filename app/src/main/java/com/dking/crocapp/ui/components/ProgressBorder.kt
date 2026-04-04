@@ -1,4 +1,4 @@
-package com.crocworks.app.ui.components
+package com.dking.crocapp.ui.components
 
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent

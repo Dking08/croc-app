@@ -1,4 +1,4 @@
-package com.crocworks.app.ui.receive
+package com.dking.crocapp.ui.receive
 
 import android.app.Application
 import android.content.ContentValues

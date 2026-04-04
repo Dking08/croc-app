@@ -1,10 +1,10 @@
-package com.crocworks.app.ui.receive
+package com.dking.crocapp.ui.receive
 
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import com.crocworks.app.data.db.TransferHistory
+import com.dking.crocapp.data.db.TransferHistory
 
 fun openReceivedFile(context: Context, file: ReceivedFile) {
     openTransferUri(context, file.uri, file.mimeType)

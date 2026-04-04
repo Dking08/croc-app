@@ -1,4 +1,4 @@
-package com.crocworks.app.data.db
+package com.dking.crocapp.data.db
 
 import android.content.Context
 import androidx.room.Database

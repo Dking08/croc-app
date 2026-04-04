@@ -1,11 +1,11 @@
-package com.crocworks.app.ui.history
+package com.dking.crocapp.ui.history
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.crocworks.app.CrocApp
-import com.crocworks.app.data.db.TransferHistory
-import com.crocworks.app.data.db.TransferType
+import com.dking.crocapp.CrocApp
+import com.dking.crocapp.data.db.TransferHistory
+import com.dking.crocapp.data.db.TransferType
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

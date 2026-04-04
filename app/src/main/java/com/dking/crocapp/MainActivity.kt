@@ -1,4 +1,4 @@
-package com.crocworks.app
+package com.dking.crocapp
 
 import android.content.Intent
 import android.net.Uri
@@ -47,19 +47,19 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.crocworks.app.data.preferences.UserPreferencesRepository
-import com.crocworks.app.ui.history.HistoryScreen
-import com.crocworks.app.ui.navigation.CrocDestination
-import com.crocworks.app.ui.quick.QuickScreen
-import com.crocworks.app.ui.quick.QuickViewModel
-import com.crocworks.app.ui.receive.ReceiveScreen
-import com.crocworks.app.ui.receive.ReceiveViewModel
-import com.crocworks.app.ui.scanner.QrScannerScreen
-import com.crocworks.app.ui.send.SendScreen
-import com.crocworks.app.ui.send.SendViewModel
-import com.crocworks.app.ui.settings.SettingsScreen
-import com.crocworks.app.ui.settings.SettingsViewModel
-import com.crocworks.app.ui.theme.CrocTheme
+import com.dking.crocapp.data.preferences.UserPreferencesRepository
+import com.dking.crocapp.ui.history.HistoryScreen
+import com.dking.crocapp.ui.navigation.CrocDestination
+import com.dking.crocapp.ui.quick.QuickScreen
+import com.dking.crocapp.ui.quick.QuickViewModel
+import com.dking.crocapp.ui.receive.ReceiveScreen
+import com.dking.crocapp.ui.receive.ReceiveViewModel
+import com.dking.crocapp.ui.scanner.QrScannerScreen
+import com.dking.crocapp.ui.send.SendScreen
+import com.dking.crocapp.ui.send.SendViewModel
+import com.dking.crocapp.ui.settings.SettingsScreen
+import com.dking.crocapp.ui.settings.SettingsViewModel
+import com.dking.crocapp.ui.theme.CrocTheme
 
 class MainActivity : ComponentActivity() {
 

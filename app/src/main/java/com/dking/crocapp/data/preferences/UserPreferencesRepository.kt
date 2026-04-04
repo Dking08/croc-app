@@ -1,4 +1,4 @@
-package com.crocworks.app.data.preferences
+package com.dking.crocapp.data.preferences
 
 import android.content.Context
 import androidx.datastore.core.DataStore

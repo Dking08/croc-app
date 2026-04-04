@@ -1,4 +1,4 @@
-package com.crocworks.app.croc
+package com.dking.crocapp.croc
 
 import android.content.Context
 import android.system.Os

@@ -1,4 +1,4 @@
-package com.crocworks.app.ui.quick
+package com.dking.crocapp.ui.quick
 
 import android.app.Application
 import android.net.Uri
@@ -6,16 +6,16 @@ import android.os.Environment
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.crocworks.app.CrocApp
-import com.crocworks.app.croc.CrocBinaryManager
-import com.crocworks.app.croc.CrocProcess
-import com.crocworks.app.croc.CrocTransferState
-import com.crocworks.app.data.db.TransferHistory
-import com.crocworks.app.data.db.TransferStatus
-import com.crocworks.app.data.db.TransferType
-import com.crocworks.app.data.preferences.UserPreferencesRepository
-import com.crocworks.app.ui.receive.ReceivedFile
-import com.crocworks.app.ui.receive.ReceivedFilePublisher
+import com.dking.crocapp.CrocApp
+import com.dking.crocapp.croc.CrocBinaryManager
+import com.dking.crocapp.croc.CrocProcess
+import com.dking.crocapp.croc.CrocTransferState
+import com.dking.crocapp.data.db.TransferHistory
+import com.dking.crocapp.data.db.TransferStatus
+import com.dking.crocapp.data.db.TransferType
+import com.dking.crocapp.data.preferences.UserPreferencesRepository
+import com.dking.crocapp.ui.receive.ReceivedFile
+import com.dking.crocapp.ui.receive.ReceivedFilePublisher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

@@ -1,4 +1,4 @@
-package com.crocworks.app.ui.theme
+package com.dking.crocapp.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme

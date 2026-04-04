@@ -1,4 +1,4 @@
-package com.crocworks.app.ui.components
+package com.dking.crocapp.ui.components
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons

@@ -1,4 +1,4 @@
-package com.crocworks.app.ui.components
+package com.dking.crocapp.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -34,7 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.crocworks.app.croc.CrocTransferState
+import com.dking.crocapp.croc.CrocTransferState
 
 @Composable
 fun TransferProgressCard(

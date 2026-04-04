@@ -1,4 +1,4 @@
-package com.crocworks.app.ui.history
+package com.dking.crocapp.ui.history
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -61,11 +61,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.crocworks.app.data.db.TransferHistory
-import com.crocworks.app.data.db.TransferType
-import com.crocworks.app.ui.components.EmptyState
-import com.crocworks.app.ui.components.formatBytes
-import com.crocworks.app.ui.receive.openHistoryTransfer
+import com.dking.crocapp.data.db.TransferHistory
+import com.dking.crocapp.data.db.TransferType
+import com.dking.crocapp.ui.components.EmptyState
+import com.dking.crocapp.ui.components.formatBytes
+import com.dking.crocapp.ui.receive.openHistoryTransfer
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

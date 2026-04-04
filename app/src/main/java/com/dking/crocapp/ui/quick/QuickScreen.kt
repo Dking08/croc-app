@@ -1,4 +1,4 @@
-package com.crocworks.app.ui.quick
+package com.dking.crocapp.ui.quick
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -74,10 +74,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.crocworks.app.croc.CrocTransferState
-import com.crocworks.app.ui.components.QrCodeImage
-import com.crocworks.app.ui.components.formatBytes
-import com.crocworks.app.ui.receive.ReceivedFile
+import com.dking.crocapp.croc.CrocTransferState
+import com.dking.crocapp.ui.components.QrCodeImage
+import com.dking.crocapp.ui.components.formatBytes
+import com.dking.crocapp.ui.receive.ReceivedFile
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin

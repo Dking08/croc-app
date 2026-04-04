@@ -1,4 +1,4 @@
-package com.crocworks.app.data.db
+package com.dking.crocapp.data.db
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey

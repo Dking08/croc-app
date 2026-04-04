@@ -1,4 +1,4 @@
-package com.crocworks.app.ui.receive
+package com.dking.crocapp.ui.receive
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -79,10 +79,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.crocworks.app.croc.CrocTransferState
-import com.crocworks.app.ui.components.TransferProgressCard
-import com.crocworks.app.ui.components.formatBytes
-import com.crocworks.app.ui.components.progressBorder
+import com.dking.crocapp.croc.CrocTransferState
+import com.dking.crocapp.ui.components.TransferProgressCard
+import com.dking.crocapp.ui.components.formatBytes
+import com.dking.crocapp.ui.components.progressBorder
 
 private const val MAX_VISIBLE_FILES = 6
 

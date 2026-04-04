@@ -1,4 +1,4 @@
-package com.crocworks.app.ui.scanner
+package com.dking.crocapp.ui.scanner
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -49,7 +49,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
-import com.crocworks.app.ui.components.EmptyState
+import com.dking.crocapp.ui.components.EmptyState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

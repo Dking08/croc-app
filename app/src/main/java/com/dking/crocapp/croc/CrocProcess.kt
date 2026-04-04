@@ -1,8 +1,8 @@
-package com.crocworks.app.croc
+package com.dking.crocapp.croc
 
 import android.content.Context
 import android.util.Log
-import com.crocworks.app.data.preferences.UserPreferencesRepository
+import com.dking.crocapp.data.preferences.UserPreferencesRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

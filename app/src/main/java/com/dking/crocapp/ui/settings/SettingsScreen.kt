@@ -1,4 +1,4 @@
-package com.crocworks.app.ui.settings
+package com.dking.crocapp.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -64,7 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.crocworks.app.BuildConfig
+import com.dking.crocapp.BuildConfig
 
 private const val MAX_VISIBLE_CODES = 6
 

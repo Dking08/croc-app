@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.crocworks.app"
+    namespace = "com.dking.crocapp"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.crocworks.app"
+        applicationId = "com.dking.crocapp"
         minSdk = 26
         targetSdk = 35
         versionCode = 4

@@ -1,4 +1,4 @@
-package com.crocworks.app.service
+package com.dking.crocapp.service
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -14,9 +14,9 @@ class TransferService : Service() {
         const val CHANNEL_ID = "croc_transfer_channel"
         const val NOTIFICATION_ID = 1001
 
-        const val ACTION_START_SEND = "com.crocworks.app.START_SEND"
-        const val ACTION_START_RECEIVE = "com.crocworks.app.START_RECEIVE"
-        const val ACTION_CANCEL = "com.crocworks.app.CANCEL"
+        const val ACTION_START_SEND = "com.dking.crocapp.START_SEND"
+        const val ACTION_START_RECEIVE = "com.dking.crocapp.START_RECEIVE"
+        const val ACTION_CANCEL = "com.dking.crocapp.CANCEL"
     }
 
     override fun onCreate() {

@@ -1,9 +1,9 @@
-package com.crocworks.app
+package com.dking.crocapp
 
 import android.app.Application
 import android.util.Log
-import com.crocworks.app.croc.CrocBinaryManager
-import com.crocworks.app.data.db.AppDatabase
+import com.dking.crocapp.croc.CrocBinaryManager
+import com.dking.crocapp.data.db.AppDatabase
 
 class CrocApp : Application() {
 

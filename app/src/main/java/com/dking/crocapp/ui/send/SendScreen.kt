@@ -1,4 +1,4 @@
-package com.crocworks.app.ui.send
+package com.dking.crocapp.ui.send
 
 import android.content.Context
 import android.content.Intent
@@ -97,12 +97,12 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.crocworks.app.croc.CrocTransferState
-import com.crocworks.app.ui.components.QrCodeImage
-import com.crocworks.app.ui.components.TransferProgressCard
-import com.crocworks.app.ui.components.formatBytes
-import com.crocworks.app.ui.components.generateQrCodeBitmap
-import com.crocworks.app.ui.components.progressBorder
+import com.dking.crocapp.croc.CrocTransferState
+import com.dking.crocapp.ui.components.QrCodeImage
+import com.dking.crocapp.ui.components.TransferProgressCard
+import com.dking.crocapp.ui.components.formatBytes
+import com.dking.crocapp.ui.components.generateQrCodeBitmap
+import com.dking.crocapp.ui.components.progressBorder
 import java.io.File
 import java.io.FileOutputStream
 
