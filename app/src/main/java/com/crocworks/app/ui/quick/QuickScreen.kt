@@ -322,6 +322,8 @@ private fun QuickSendTransferCard(
     code: String,
     sharePreview: List<QuickSharePreview>
 ) {
+    val hasSidePanel = state !is CrocTransferState.Error
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -358,35 +360,40 @@ private fun QuickSendTransferCard(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (state is CrocTransferState.Error) {
+                        QuickErrorPanel(message = state.message)
+                    }
                     QuickManifestList(
                         items = sharePreview,
                         emptyLabel = "Preparing your selection..."
                     )
                 }
 
-                Column(
-                    modifier = Modifier.widthIn(min = 108.dp, max = 126.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (code.isNotBlank()) {
-                        QrCodeImage(
-                            data = code,
-                            size = 86.dp,
-                            padding = 8.dp
-                        )
-                    } else {
-                        QuickStatusBadge(
-                            icon = Icons.Rounded.Upload,
-                            label = "Preparing"
+                if (hasSidePanel) {
+                    Column(
+                        modifier = Modifier.widthIn(min = 108.dp, max = 126.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (code.isNotBlank()) {
+                            QrCodeImage(
+                                data = code,
+                                size = 86.dp,
+                                padding = 8.dp
+                            )
+                        } else {
+                            QuickStatusBadge(
+                                icon = Icons.Rounded.Upload,
+                                label = "Preparing"
+                            )
+                        }
+                        Text(
+                            text = if (code.isNotBlank()) code else "Generating code",
+                            style = MaterialTheme.typography.labelMedium,
+                            textAlign = TextAlign.Center,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
-                    Text(
-                        text = if (code.isNotBlank()) code else "Generating code",
-                        style = MaterialTheme.typography.labelMedium,
-                        textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.SemiBold
-                    )
                 }
             }
 
@@ -401,6 +408,8 @@ private fun QuickReceiveTransferCard(
     code: String,
     receivedFiles: List<ReceivedFile>
 ) {
+    val hasSideTile = state !is CrocTransferState.Error
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -437,30 +446,40 @@ private fun QuickReceiveTransferCard(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    QuickDetailPill(
-                        label = if (state is CrocTransferState.Completed && receivedFiles.isNotEmpty()) {
-                            "Saved to Downloads/croc-received"
-                        } else {
-                            "Incoming files will land in Downloads/croc-received"
-                        }
-                    )
-                    if (state is CrocTransferState.Transferring && state.fileName.isNotBlank()) {
-                        QuickManifestList(
-                            items = listOf(
-                                QuickSharePreview(
-                                    title = state.fileName,
-                                    subtitle = "${state.currentFile}/${state.totalFiles} in progress"
-                                )
-                            ),
-                            emptyLabel = ""
-                        )
+                    if (state is CrocTransferState.Error) {
+                        QuickErrorPanel(message = state.message)
                     }
                 }
 
-                QuickReceiveStatusTile(
-                    state = state,
-                    code = code,
-                    receivedFiles = receivedFiles
+                if (hasSideTile) {
+                    QuickReceiveStatusTile(
+                        state = state,
+                        code = code,
+                        receivedFiles = receivedFiles
+                    )
+                }
+            }
+
+            if (state !is CrocTransferState.Error) {
+                QuickDetailPill(
+                    label = if (state is CrocTransferState.Completed && receivedFiles.isNotEmpty()) {
+                        "Saved to Downloads/croc-received"
+                    } else {
+                        "Incoming files will land in Downloads/croc-received"
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            if (state is CrocTransferState.Transferring && state.fileName.isNotBlank()) {
+                QuickManifestList(
+                    items = listOf(
+                        QuickSharePreview(
+                            title = state.fileName,
+                            subtitle = "${state.currentFile}/${state.totalFiles} in progress"
+                        )
+                    ),
+                    emptyLabel = ""
                 )
             }
 
@@ -810,12 +829,29 @@ private fun QuickStatusBadge(
 }
 
 @Composable
-private fun QuickDetailPill(label: String) {
+private fun QuickErrorPanel(message: String) {
+    Text(
+        text = message,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onErrorContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.errorContainer)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    )
+}
+
+@Composable
+private fun QuickDetailPill(
+    label: String,
+    modifier: Modifier = Modifier
+) {
     Text(
         text = label,
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier
+        modifier = modifier
             .clip(MaterialTheme.shapes.large)
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
             .padding(horizontal = 12.dp, vertical = 9.dp)
@@ -854,7 +890,11 @@ private fun quickTransferSubtitle(state: CrocTransferState, isSending: Boolean):
                 "${state.fileCount} item${if (state.fileCount == 1) "" else "s"} saved for you."
             }
         }
-        is CrocTransferState.Error -> state.message
+        is CrocTransferState.Error -> if (isSending) {
+            "The share stopped before completion."
+        } else {
+            "The receive stopped before completion."
+        }
         is CrocTransferState.Cancelled -> "Start another transfer whenever you're ready."
         else -> ""
     }
