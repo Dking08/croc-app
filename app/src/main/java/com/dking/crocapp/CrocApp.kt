@@ -33,12 +33,9 @@ class CrocApp : Application() {
             UserPreferencesRepository(this@CrocApp).ensureDefaultCodePhrase()
         }
 
-        // Eagerly check binary availability
-        val ready = binaryManager.initialize()
-        Log.i(TAG, "Croc binary ready: $ready")
-        if (ready) {
-            val version = binaryManager.getVersion()
-            Log.i(TAG, "Croc version: $version")
+        appScope.launch {
+            val ready = binaryManager.initialize()
+            Log.i(TAG, "Croc binary ready: $ready")
         }
     }
 }

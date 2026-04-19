@@ -34,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -48,6 +49,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.dking.crocapp.data.preferences.UserPreferencesRepository
+import com.dking.crocapp.croc.BinarySetupPhase
+import com.dking.crocapp.croc.CrocBinaryManager
 import com.dking.crocapp.ui.history.HistoryScreen
 import com.dking.crocapp.ui.navigation.CrocDestination
 import com.dking.crocapp.ui.quick.QuickScreen
@@ -57,9 +60,12 @@ import com.dking.crocapp.ui.receive.ReceiveViewModel
 import com.dking.crocapp.ui.scanner.QrScannerScreen
 import com.dking.crocapp.ui.send.SendScreen
 import com.dking.crocapp.ui.send.SendViewModel
+import com.dking.crocapp.ui.setup.CrocBinarySetupScreen
 import com.dking.crocapp.ui.settings.SettingsScreen
 import com.dking.crocapp.ui.settings.SettingsViewModel
 import com.dking.crocapp.ui.theme.CrocTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -68,6 +74,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val sharedUris = handleShareIntent(intent)
+        val binaryManager = (application as CrocApp).binaryManager
 
         setContent {
             val settingsViewModel: SettingsViewModel = viewModel()
@@ -87,7 +94,11 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    CrocApp(sharedUris = sharedUris, settingsViewModel = settingsViewModel)
+                    CrocApp(
+                        sharedUris = sharedUris,
+                        settingsViewModel = settingsViewModel,
+                        binaryManager = binaryManager
+                    )
                 }
             }
         }
@@ -116,11 +127,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CrocApp(
     sharedUris: List<Uri> = emptyList(),
-    settingsViewModel: SettingsViewModel
+    settingsViewModel: SettingsViewModel,
+    binaryManager: CrocBinaryManager
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val setupState by binaryManager.setupState.collectAsStateWithLifecycle()
+    val retryScope = rememberCoroutineScope()
 
     val showBottomBar = currentRoute in CrocDestination.bottomNavItems.map { it.route }
 
@@ -146,6 +160,21 @@ fun CrocApp(
 
     // Determine tab indices for directional animations
     val tabRoutes = CrocDestination.bottomNavItems.map { it.route }
+
+    val shouldShowSetup = setupState.phase == BinarySetupPhase.Error ||
+            (!binaryManager.isBinaryReady() && setupState.phase != BinarySetupPhase.Ready)
+
+    if (shouldShowSetup) {
+        CrocBinarySetupScreen(
+            state = setupState,
+            onRetry = {
+                retryScope.launch(Dispatchers.IO) {
+                    binaryManager.initialize()
+                }
+            }
+        )
+        return
+    }
 
     Scaffold(
         bottomBar = {

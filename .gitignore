@@ -12,3 +12,7 @@ local.properties
 /app/release
 *.apk
 *.aab
+/.go-cache
+/.go-mod-cache
+/.go-telemetry
+/third_party/croc-src/build

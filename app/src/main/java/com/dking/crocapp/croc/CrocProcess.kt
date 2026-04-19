@@ -62,14 +62,6 @@ class CrocProcess(
     private val tmpDir: File
         get() = File(context.cacheDir, "croc-tmp").also { it.mkdirs() }
 
-    private fun setupEnv(pb: ProcessBuilder, extraEnv: Map<String, String> = emptyMap()) {
-        pb.environment()["HOME"] = homeDir.absolutePath
-        pb.environment()["TMPDIR"] = tmpDir.absolutePath
-        extraEnv.forEach { (key, value) ->
-            pb.environment()[key] = value
-        }
-    }
-
     private fun secretEnv(code: String?): Map<String, String> {
         return if (code.isNullOrBlank()) emptyMap() else mapOf("CROC_SECRET" to code)
     }
@@ -288,10 +280,16 @@ class CrocProcess(
         waitingState: CrocTransferState,
         extraEnv: Map<String, String>
     ): ProcessResult {
-        val pb = ProcessBuilder(command).directory(workDir).redirectErrorStream(true)
-        setupEnv(pb, extraEnv)
-
-        currentProcess = pb.start()
+        val env = buildMap {
+            put("HOME", homeDir.absolutePath)
+            put("TMPDIR", tmpDir.absolutePath)
+            putAll(extraEnv)
+        }
+        currentProcess = binaryManager.startProcess(
+            command = command,
+            workDir = workDir,
+            extraEnv = env
+        )
         _state.value = waitingState
         return parseOutput(currentProcess!!)
     }

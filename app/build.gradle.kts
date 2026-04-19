@@ -5,6 +5,60 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val crocSourceDir = rootProject.layout.projectDirectory.dir("third_party/croc-src")
+val crocJniLibsRootDir = layout.buildDirectory.dir("generated/jniLibs/croc")
+val crocOutputDir = crocJniLibsRootDir.map { it.dir("arm64-v8a") }
+val crocOutputFile = crocOutputDir.map { it.file("libcroc.so") }
+val goTelemetryDir = rootProject.layout.buildDirectory.dir("go/telemetry")
+val goCacheDir = rootProject.layout.buildDirectory.dir("go/cache")
+val goModCacheDir = rootProject.layout.buildDirectory.dir("go/mod-cache")
+
+val buildCrocAndroidArm64 by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Build croc v10.4.2 for Android arm64 from vendored source."
+    workingDir = crocSourceDir.asFile
+
+    inputs.files(
+        fileTree(crocSourceDir) {
+            exclude(".git/**")
+            exclude("build/**")
+        }
+    )
+    outputs.file(crocOutputFile)
+
+    doFirst {
+        val vendorDir = crocSourceDir.dir("vendor").asFile
+        check(vendorDir.exists()) {
+            "Vendored croc dependencies are missing at ${vendorDir.absolutePath}. Run `go mod vendor` in third_party/croc-src."
+        }
+
+        crocOutputDir.get().asFile.mkdirs()
+        goTelemetryDir.get().asFile.mkdirs()
+        goCacheDir.get().asFile.mkdirs()
+        goModCacheDir.get().asFile.mkdirs()
+    }
+
+    environment("GOENV", "off")
+    environment("GOWORK", "off")
+    environment("GOTELEMETRY", "off")
+    environment("GOTELEMETRYDIR", goTelemetryDir.get().asFile.absolutePath)
+    environment("GOCACHE", goCacheDir.get().asFile.absolutePath)
+    environment("GOMODCACHE", goModCacheDir.get().asFile.absolutePath)
+    environment("GOOS", "android")
+    environment("GOARCH", "arm64")
+    environment("CGO_ENABLED", "0")
+
+    commandLine(
+        "go",
+        "build",
+        "-mod=vendor",
+        "-trimpath",
+        "-o",
+        crocOutputFile.get().asFile.absolutePath,
+        "."
+    )
+}
+
 android {
     namespace = "com.dking.crocapp"
     compileSdk = 35
@@ -13,8 +67,8 @@ android {
         applicationId = "com.dking.crocapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "3.1.0"
+        versionCode = 5
+        versionName = "3.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -40,14 +94,15 @@ android {
         compose = true
         buildConfig = true
     }
-    androidResources {
-        noCompress += listOf("tar.gz", "gz", "croc")
-    }
-    packaging {
-        jniLibs {
-            useLegacyPackaging = true
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDir(crocJniLibsRootDir)
         }
     }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(buildCrocAndroidArm64)
 }
 
 dependencies {
@@ -84,9 +139,6 @@ dependencies {
     implementation("androidx.camera:camera-camera2:1.4.1")
     implementation("androidx.camera:camera-lifecycle:1.4.1")
     implementation("androidx.camera:camera-view:1.4.1")
-
-    // ML Kit Barcode Scanning
-    implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     // ZXing for QR Generation
     implementation("com.google.zxing:core:3.5.3")

@@ -2,11 +2,13 @@ package com.dking.crocapp.ui.scanner
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.ImageFormat
 import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -31,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,10 +49,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.common.InputImage
 import com.dking.crocapp.ui.components.EmptyState
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.DecodeHintType
+import com.google.zxing.MultiFormatReader
+import com.google.zxing.NotFoundException
+import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.Result
+import com.google.zxing.common.HybridBinarizer
+import java.util.EnumMap
+import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,17 +158,33 @@ fun QrScannerScreen(
 }
 
 @Composable
-@androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
 private fun CameraPreview(
     onCodeScanned: (String) -> Unit
 ) {
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var scanned by remember { mutableStateOf(false) }
+    val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
+    val qrReader = remember {
+        MultiFormatReader().apply {
+            setHints(
+                EnumMap<DecodeHintType, Any>(DecodeHintType::class.java).apply {
+                    put(DecodeHintType.POSSIBLE_FORMATS, listOf(BarcodeFormat.QR_CODE))
+                    put(DecodeHintType.TRY_HARDER, true)
+                }
+            )
+        }
+    }
+
+    DisposableEffect(analyzerExecutor) {
+        onDispose {
+            analyzerExecutor.shutdown()
+        }
+    }
 
     AndroidView(
         factory = { ctx ->
             val previewView = PreviewView(ctx)
+            val mainExecutor = ContextCompat.getMainExecutor(ctx)
 
             val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
             cameraProviderFuture.addListener({
@@ -173,34 +199,23 @@ private fun CameraPreview(
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
 
-                val scanner = BarcodeScanning.getClient()
-
-                imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(ctx)) { imageProxy ->
-                    val mediaImage = imageProxy.image
-                    if (mediaImage != null && !scanned) {
-                        val image = InputImage.fromMediaImage(
-                            mediaImage,
-                            imageProxy.imageInfo.rotationDegrees
-                        )
-                        scanner.process(image)
-                            .addOnSuccessListener { barcodes ->
-                                for (barcode in barcodes) {
-                                    if (barcode.valueType == Barcode.TYPE_TEXT ||
-                                        barcode.valueType == Barcode.TYPE_UNKNOWN
-                                    ) {
-                                        val value = barcode.rawValue ?: continue
-                                        if (value.isNotBlank() && !scanned) {
-                                            scanned = true
-                                            onCodeScanned(value)
-                                        }
-                                    }
-                                }
-                            }
-                            .addOnCompleteListener {
-                                imageProxy.close()
-                            }
-                    } else {
+                imageAnalysis.setAnalyzer(analyzerExecutor) { imageProxy ->
+                    if (scanned) {
                         imageProxy.close()
+                        return@setAnalyzer
+                    }
+
+                    val result = imageProxy.decodeQrCode(qrReader)
+                    imageProxy.close()
+
+                    val value = result?.text?.trim().orEmpty()
+                    if (value.isNotEmpty()) {
+                        mainExecutor.execute {
+                            if (!scanned) {
+                                scanned = true
+                                onCodeScanned(value)
+                            }
+                        }
                     }
                 }
 
@@ -217,10 +232,134 @@ private fun CameraPreview(
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-            }, ContextCompat.getMainExecutor(ctx))
+            }, mainExecutor)
 
             previewView
         },
         modifier = Modifier.fillMaxSize()
     )
+}
+
+private fun ImageProxy.decodeQrCode(reader: MultiFormatReader): Result? {
+    if (format != ImageFormat.YUV_420_888 || planes.isEmpty()) {
+        return null
+    }
+
+    return try {
+        val source = toQrLuminanceSource() ?: return null
+        reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
+    } catch (_: NotFoundException) {
+        null
+    } finally {
+        reader.reset()
+    }
+}
+
+private fun ImageProxy.toQrLuminanceSource(): PlanarYUVLuminanceSource? {
+    val luminance = extractLuminanceBytes() ?: return null
+
+    return when (imageInfo.rotationDegrees) {
+        90 -> PlanarYUVLuminanceSource(
+            rotate90(luminance, width, height),
+            height,
+            width,
+            0,
+            0,
+            height,
+            width,
+            false
+        )
+        180 -> PlanarYUVLuminanceSource(
+            rotate180(luminance),
+            width,
+            height,
+            0,
+            0,
+            width,
+            height,
+            false
+        )
+        270 -> PlanarYUVLuminanceSource(
+            rotate270(luminance, width, height),
+            height,
+            width,
+            0,
+            0,
+            height,
+            width,
+            false
+        )
+        else -> PlanarYUVLuminanceSource(
+            luminance,
+            width,
+            height,
+            0,
+            0,
+            width,
+            height,
+            false
+        )
+    }
+}
+
+private fun ImageProxy.extractLuminanceBytes(): ByteArray? {
+    val plane = planes.firstOrNull() ?: return null
+    val buffer = plane.buffer.duplicate().apply { rewind() }
+    val rowStride = plane.rowStride
+    val pixelStride = plane.pixelStride
+    val data = ByteArray(width * height)
+
+    if (pixelStride == 1 && rowStride == width) {
+        buffer.get(data)
+        return data
+    }
+
+    val rowBuffer = ByteArray(rowStride)
+    var outputOffset = 0
+
+    for (row in 0 until height) {
+        val bytesToRead = minOf(rowStride, buffer.remaining())
+        if (bytesToRead <= (width - 1) * pixelStride) {
+            return null
+        }
+
+        buffer.get(rowBuffer, 0, bytesToRead)
+        var inputOffset = 0
+        repeat(width) {
+            data[outputOffset++] = rowBuffer[inputOffset]
+            inputOffset += pixelStride
+        }
+    }
+
+    return data
+}
+
+private fun rotate90(data: ByteArray, width: Int, height: Int): ByteArray {
+    val rotated = ByteArray(data.size)
+    var index = 0
+    for (x in 0 until width) {
+        for (y in height - 1 downTo 0) {
+            rotated[index++] = data[y * width + x]
+        }
+    }
+    return rotated
+}
+
+private fun rotate180(data: ByteArray): ByteArray {
+    val rotated = ByteArray(data.size)
+    for (index in data.indices) {
+        rotated[index] = data[data.lastIndex - index]
+    }
+    return rotated
+}
+
+private fun rotate270(data: ByteArray, width: Int, height: Int): ByteArray {
+    val rotated = ByteArray(data.size)
+    var index = 0
+    for (x in width - 1 downTo 0) {
+        for (y in 0 until height) {
+            rotated[index++] = data[y * width + x]
+        }
+    }
+    return rotated
 }
