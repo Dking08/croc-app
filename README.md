@@ -17,6 +17,22 @@ This project was inspired by [`croc-gui`](https://github.com/howeyc/crocgui), wh
 
 But `croc-gui` is older, written in Go, and lacks a number of features and UX improvements we wanted in a modern Android app. `croc-app` is our attempt to build a more polished, more maintainable, and more feature-complete Android experience around `croc`.
 
+---
+<div align="center">
+
+<h1><a id="screenshots"></a>Screenshots</h1>
+
+<img src="https://github.com/Dking08/croc-app/blob/master/Screenshots/send.jpg" alt="Send screen" width="30%" />
+<img src="https://github.com/Dking08/croc-app/blob/master/Screenshots/quick.jpg" alt="Quick screen" width="30%" />
+<img src="https://github.com/Dking08/croc-app/blob/master/Screenshots/recieve.jpg" alt="Recieve screen" width="30%" />
+<img src="https://github.com/Dking08/croc-app/blob/master/Screenshots/send-files.jpg" alt="Send Mutliple Files" width="30%" />
+<img src="https://github.com/Dking08/croc-app/blob/master/Screenshots/quick-send.jpg" alt="Quick Send - Clipboard" width="30%" />
+<img src="https://github.com/Dking08/croc-app/blob/master/Screenshots/quick-rec.jpg" alt="Quick Recieve" width="30%" />
+
+</div>
+
+---
+
 ## Features
 
 - Quick send and quick receive flows
