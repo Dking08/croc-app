@@ -1,0 +1,1 @@
+croc-app is an Android client for croc with a modern, mobile-first UI built in Kotlin and Jetpack Compose.

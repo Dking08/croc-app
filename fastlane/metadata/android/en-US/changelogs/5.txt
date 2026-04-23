@@ -1,0 +1,15 @@
+F-Droid Support!
+
+- Removed Google MLKit, gzips, shared libraries
+
+---
+Features
+- Quick send and quick receive flows
+- Send files or clipboard text
+- QR code generation for fast pairing
+- QR scanning for receive
+- Saved send and receive codes
+- Transfer history and favorites
+- Android share-sheet support
+- Received files published to Downloads/croc-received
+- Material 3 UI designed specifically for Android
