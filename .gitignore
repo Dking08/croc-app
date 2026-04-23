@@ -15,4 +15,5 @@ local.properties
 /.go-cache
 /.go-mod-cache
 /.go-telemetry
+/.fdroid-go
 /third_party/croc-src/build

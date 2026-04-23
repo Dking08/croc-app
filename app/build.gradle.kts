@@ -12,6 +12,10 @@ val crocOutputFile = crocOutputDir.map { it.file("libcroc.so") }
 val goTelemetryDir = rootProject.layout.buildDirectory.dir("go/telemetry")
 val goCacheDir = rootProject.layout.buildDirectory.dir("go/cache")
 val goModCacheDir = rootProject.layout.buildDirectory.dir("go/mod-cache")
+val fdroidGoExecutable = rootProject.layout.projectDirectory.file(".fdroid-go/bin/go").asFile
+val goExecutable = providers.gradleProperty("crocGoExecutable")
+    .orElse(providers.environmentVariable("CROC_GO"))
+    .orElse(if (fdroidGoExecutable.exists()) fdroidGoExecutable.absolutePath else "go")
 
 val buildCrocAndroidArm64 by tasks.registering(Exec::class) {
     group = "build"
@@ -46,17 +50,26 @@ val buildCrocAndroidArm64 by tasks.registering(Exec::class) {
     environment("GOMODCACHE", goModCacheDir.get().asFile.absolutePath)
     environment("GOOS", "android")
     environment("GOARCH", "arm64")
+    environment("GOARM64", "v8.0")
     environment("CGO_ENABLED", "0")
 
     commandLine(
-        "go",
+        goExecutable.get(),
         "build",
         "-mod=vendor",
         "-trimpath",
+        "-buildvcs=false",
+        "-ldflags=-s -w -buildid=",
         "-o",
         crocOutputFile.get().asFile.absolutePath,
         "."
     )
+}
+
+tasks.whenTaskAdded {
+    if (name.contains("ArtProfile")) {
+        enabled = false
+    }
 }
 
 android {
@@ -97,6 +110,11 @@ android {
     sourceSets {
         getByName("main") {
             jniLibs.srcDir(crocJniLibsRootDir)
+        }
+    }
+    packaging {
+        jniLibs {
+            keepDebugSymbols += "**/libcroc.so"
         }
     }
 }

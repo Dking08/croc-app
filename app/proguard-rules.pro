@@ -7,3 +7,8 @@
 
 # ZXing
 -keep class com.google.zxing.** { *; }
+
+# Keep ServiceLoader targets stable for reproducible R8 output.
+-keep class kotlinx.coroutines.CoroutineExceptionHandler { *; }
+-keep class kotlinx.coroutines.internal.MainDispatcherFactory { *; }
+-keep class kotlinx.coroutines.android.AndroidDispatcherFactory { *; }
