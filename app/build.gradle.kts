@@ -66,8 +66,11 @@ val buildCrocAndroidArm64 by tasks.registering(Exec::class) {
     )
 }
 
-tasks.whenTaskAdded {
-    if (name.contains("ArtProfile")) {
+tasks.configureEach {
+    if (
+        name.contains("ArtProfile", ignoreCase = true) ||
+        name.contains("BaselineProfile", ignoreCase = true)
+    ) {
         enabled = false
     }
 }
