@@ -11,6 +11,28 @@
 
 It is designed to make file and text sharing feel much more natural on Android: quick send, quick receive, QR-assisted flows, saved codes, transfer history, and better handling for the small details that matter on phones.
 
+<div align="center">
+<h1><a id="download-now"></a>Download Now</h1>
+<table>
+  <tr>
+    <th align="center">F-Droid</th>
+    <th align="center">GitHub Release</th>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://f-droid.org/en/packages/com.dking.crocapp/">
+  <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" height="80">
+</a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Dking08/croc-app/releases/latest/download/croc-app.apk">
+        <img src="https://github.com/machiav3lli/oandbackupx/blob/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Download from GitHub" height="75">
+      </a>
+    </td>
+  </tr>
+</table>
+</div>
+
 ## Why this project exists
 
 This project was inspired by [`croc-gui`](https://github.com/howeyc/crocgui), which showed that a mobile-friendly `croc` experience could work.
