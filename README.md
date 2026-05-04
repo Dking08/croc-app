@@ -67,63 +67,136 @@ But `croc-gui` is older, written in Go, and lacks a number of features and UX im
 - Received files published to `Downloads/croc-received`
 - Material 3 UI designed specifically for Android
 
+## Current version
+
+- Version name: `4.0.0`
+
+## Project status
+
+`croc-app` is under active development.
+
+## How I use croc-app
+
+My primary use case is simple: **quick clipboard transfer between phone and desktop** — notes, code snippets, links, anything.
+
+On my desktop, I use a small PowerShell helper (`ccs`) that:
+
+* starts `croc` in sending mode with my saved code
+* automatically sends text from the clipboard
+
+### Desktop -> Phone workflow
+
+1. Run `ccs` in the desktop terminal
+2. Open **croc-app** and tap **Receive**
+3. The text appears on the phone, ready to copy or open
+
+A similar flow works in reverse for sending text from my phone to my desktop.
 
 ## Project structure
 
 - `app/` - main Android application module
 - `gradle/` - Gradle configuration used by the Android project
 
-## Current version
+## Building
 
-- Version name: `3.2.0`
+### Standard build (quick)
 
-## Requirements
+If you just want to build and run the app locally:
 
-- Android Studio
-- JDK 17
-- Android SDK 35
-- Android API 26+
+```bash
+./gradlew assembleRelease
+```
 
-## Getting started
+Or open the project in Android Studio and run the `app` configuration.
 
-1. Open the `croc-app` folder in Android Studio.
-2. Let Gradle sync and download dependencies.
-3. Run the `app` configuration on a device or emulator.
+This produces a working APK, but it may **not be reproducible**.
 
-Notes:
+---
 
-- This repo currently does not include Gradle wrapper scripts, so Android Studio is the easiest local workflow.
-- The app currently uses destructive Room migrations during development, so local history data can reset when the schema changes.
+### Reproducible build
 
-## Project status
+For deterministic builds (matching CI / F-Droid), use the scripts in:
 
-`croc-app` is under active development. Current focus areas include:
+```
+reproducible-build/
+```
 
-- transfer reliability
-- quick-transfer UX polish
-- better history and file actions
-- overall Android-specific usability
+This setup uses Docker to ensure:
+
+* consistent environment
+* reproducible dependency resolution
+* deterministic signing
+
+#### Steps (Linux/macOS)
+
+```bash
+cd reproducible-build
+
+docker build -t croc-app-build .
+docker run --rm \
+  -e REPO_BRANCH=main \
+  -e KEYSTORE_PASS=your_keystore_password \
+  -e KEY_ALIAS=your_key_alias \
+  -e KEY_PASS=your_key_password \
+  -v $(pwd)/key.jks:/secrets/release.jks:ro \
+  -v $(pwd)/output:/output \
+  croc-app-builder \
+  bash /build/build.sh
+```
+
+Output:
+
+```
+output/croc-app-release.apk
+```
+
+---
+
+### Reproducible build (Windows)
+
+You can use the provided batch script:
+
+```
+reproducible-build/run-build.bat
+```
+
+Before running, edit the script and configure:
+
+```bat
+set "KEYSTORE_FILE=%~dp0key.jks"
+set "KEY_ALIAS=ALIAS"
+set /p KEYSTORE_PASS=<kspass.txt
+set /p KEY_PASS=<kpass.txt
+```
+
+Then:
+
+1. Place your keystore:
+
+```
+reproducible-build/key.jks
+```
+
+2. Add passwords in:
+
+```
+reproducible-build/kspass.txt
+reproducible-build/kpass.txt
+```
+
+3. Run:
+
+```bat
+run-build.bat
+```
+
+The signed APK will be generated in the `output/` directory.
+
+---
 
 ## Contributing
 
-Contributions are welcome.
-
-If you want to help:
-
-1. Open an issue for the bug, idea, or improvement.
-2. If you plan to work on it, leave a short comment so effort does not overlap.
-3. Keep pull requests focused and easy to review.
-4. Include screenshots or recordings for UI changes when possible.
-5. Mention migration impact, behavior changes, and testing notes in the PR description.
-
-Areas where help is especially useful:
-
-- transfer edge cases
-- Android file handling
-- accessibility improvements
-- UI refinement
-- test coverage
-- documentation
+Contributions are welcome, checkout [CONTRIBUTING.md](https://github.com/Dking08/croc-app/blob/master/CONTRIBUTING.md).
 
 ## Design goals
 
@@ -131,8 +204,6 @@ The app tries to stay true to `croc` while feeling native on Android:
 
 - fast to use
 - easy to understand
-- touch friendly
-- practical for real file sharing
 - polished enough for daily use
 
 ## Related project

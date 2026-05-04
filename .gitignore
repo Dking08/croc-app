@@ -17,3 +17,5 @@ local.properties
 /.go-telemetry
 /.fdroid-go
 /third_party/croc-src/build
+/misc-visitors
+*.jks
