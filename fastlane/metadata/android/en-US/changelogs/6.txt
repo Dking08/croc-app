@@ -1,0 +1,8 @@
+Changes Made
+
+1. Dark Mode QR Codes Fixed
+2. Clipboard Send Icon Fixed
+3. Animation Consistency
+4. Shared Text from External Apps
+5. URL Detection in Received Text
+6. Version Bump
