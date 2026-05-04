@@ -56,7 +56,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -65,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dking.crocapp.BuildConfig
+import com.dking.crocapp.R
 
 private const val MAX_VISIBLE_CODES = 6
 
@@ -132,10 +135,12 @@ fun SettingsScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Rounded.CompareArrows,
-                            contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            painter = painterResource(id = R.drawable.croc_icon),
+                            contentDescription = "croc-app icon",
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape),
+                            tint = Color.Unspecified // 👈 IMPORTANT
                         )
                     }
                     Spacer(modifier = Modifier.width(16.dp))

@@ -73,7 +73,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val sharedUris = handleShareIntent(intent)
+        val sharedContent = handleShareIntent(intent)
         val binaryManager = (application as CrocApp).binaryManager
 
         setContent {
@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     CrocApp(
-                        sharedUris = sharedUris,
+                        sharedContent = sharedContent,
                         settingsViewModel = settingsViewModel,
                         binaryManager = binaryManager
                     )
@@ -108,25 +108,47 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
     }
 
-    private fun handleShareIntent(intent: Intent?): List<Uri> {
-        if (intent == null) return emptyList()
+    private fun handleShareIntent(intent: Intent?): SharedContent {
+        if (intent == null) return SharedContent.None
 
         return when (intent.action) {
             Intent.ACTION_SEND -> {
+                // Check for file URI first
                 val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-                if (uri != null) listOf(uri) else emptyList()
+                if (uri != null) {
+                    SharedContent.Files(listOf(uri))
+                } else {
+                    // Fallback to shared text (e.g. URLs, copied text from other apps)
+                    val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+                    if (!text.isNullOrBlank()) {
+                        SharedContent.Text(text)
+                    } else {
+                        SharedContent.None
+                    }
+                }
             }
             Intent.ACTION_SEND_MULTIPLE -> {
-                intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()
+                val uris = intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+                if (!uris.isNullOrEmpty()) {
+                    SharedContent.Files(uris)
+                } else {
+                    SharedContent.None
+                }
             }
-            else -> emptyList()
+            else -> SharedContent.None
         }
     }
 }
 
+sealed class SharedContent {
+    data object None : SharedContent()
+    data class Files(val uris: List<Uri>) : SharedContent()
+    data class Text(val text: String) : SharedContent()
+}
+
 @Composable
 fun CrocApp(
-    sharedUris: List<Uri> = emptyList(),
+    sharedContent: SharedContent = SharedContent.None,
     settingsViewModel: SettingsViewModel,
     binaryManager: CrocBinaryManager
 ) {
@@ -142,19 +164,37 @@ fun CrocApp(
     val receiveViewModel: ReceiveViewModel = viewModel()
     val quickViewModel: QuickViewModel = viewModel()
 
-    var handledSharedUris by rememberSaveable { mutableStateOf(false) }
-    if (sharedUris.isNotEmpty() && !handledSharedUris) {
-        handledSharedUris = true
-        sendViewModel.addFiles(sharedUris)
-        // Navigate to Send tab so user sees shared files
-        androidx.compose.runtime.LaunchedEffect(Unit) {
-            navController.navigate(CrocDestination.Send.route) {
-                popUpTo(navController.graph.findStartDestination().id) {
-                    saveState = true
+    var handledSharedContent by rememberSaveable { mutableStateOf(false) }
+    if (sharedContent !is SharedContent.None && !handledSharedContent) {
+        handledSharedContent = true
+        when (sharedContent) {
+            is SharedContent.Files -> {
+                sendViewModel.addFiles(sharedContent.uris)
+                // Navigate to Send tab so user sees shared files
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    navController.navigate(CrocDestination.Send.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 }
-                launchSingleTop = true
-                restoreState = true
             }
+            is SharedContent.Text -> {
+                sendViewModel.setSharedText(sharedContent.text)
+                // Navigate to Send tab in text mode
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    navController.navigate(CrocDestination.Send.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            }
+            else -> {}
         }
     }
 
@@ -241,21 +281,21 @@ fun CrocApp(
                         slideInHorizontally(
                             initialOffsetX = { direction * it / 4 },
                             animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioLowBouncy,
-                                stiffness = Spring.StiffnessMediumLow
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMedium
                             )
                         ) + fadeIn(
-                            animationSpec = tween(220)
+                            animationSpec = tween(200)
                         )
                     }
                     else -> {
                         // Push screens: slide up
-                        fadeIn(animationSpec = tween(300)) +
+                        fadeIn(animationSpec = tween(200)) +
                                 slideInVertically(
                                     initialOffsetY = { it / 6 },
                                     animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioLowBouncy,
-                                        stiffness = Spring.StiffnessMediumLow
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMedium
                                     )
                                 )
                     }
@@ -270,11 +310,11 @@ fun CrocApp(
                         slideOutHorizontally(
                             targetOffsetX = { direction * it / 4 },
                             animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioLowBouncy,
-                                stiffness = Spring.StiffnessMediumLow
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMedium
                             )
                         ) + fadeOut(
-                            animationSpec = tween(220)
+                            animationSpec = tween(200)
                         )
                     }
                     else -> {
@@ -283,12 +323,12 @@ fun CrocApp(
                 }
             },
             popEnterTransition = {
-                fadeIn(animationSpec = tween(300)) +
+                fadeIn(animationSpec = tween(200)) +
                         slideInVertically(
                             initialOffsetY = { -it / 8 },
                             animationSpec = spring(
                                 dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMediumLow
+                                stiffness = Spring.StiffnessMedium
                             )
                         )
             },
@@ -296,7 +336,7 @@ fun CrocApp(
                 fadeOut(animationSpec = tween(200)) +
                         slideOutVertically(
                             targetOffsetY = { it / 6 },
-                            animationSpec = tween(250)
+                            animationSpec = tween(200)
                         )
             }
         ) {

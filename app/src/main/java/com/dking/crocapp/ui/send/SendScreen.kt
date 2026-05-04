@@ -84,7 +84,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -137,8 +136,7 @@ fun SendScreen(
             uiState.transferState is CrocTransferState.Error ||
             uiState.transferState is CrocTransferState.Cancelled
     val canSend = uiState.codePhrase.isNotBlank() && uiState.hasContent
-    val qrForegroundColor = MaterialTheme.colorScheme.onSurface.toArgb()
-    val qrBackgroundColor = MaterialTheme.colorScheme.surface.toArgb()
+
     val fabLabel = when (uiState.transferState) {
         is CrocTransferState.Completed -> "Send Again"
         is CrocTransferState.Error, CrocTransferState.Cancelled -> "Retry"
@@ -512,9 +510,7 @@ fun SendScreen(
                             onClick = {
                                 shareQrCode(
                                     context = context,
-                                    codePhrase = uiState.codePhrase,
-                                    foregroundColor = qrForegroundColor,
-                                    backgroundColor = qrBackgroundColor
+                                    codePhrase = uiState.codePhrase
                                 )
                             },
                             enabled = uiState.codePhrase.isNotBlank(),
@@ -552,9 +548,7 @@ fun SendScreen(
                                             onShareQr = {
                                                 shareQrCode(
                                                     context = context,
-                                                    codePhrase = savedCode,
-                                                    foregroundColor = qrForegroundColor,
-                                                    backgroundColor = qrBackgroundColor
+                                                    codePhrase = savedCode
                                                 )
                                             }
                                         )
@@ -640,12 +634,15 @@ private fun CompactFileRow(
 
 private fun shareQrCode(
     context: Context,
-    codePhrase: String,
-    foregroundColor: Int,
-    backgroundColor: Int
+    codePhrase: String
 ) {
     if (codePhrase.isBlank()) return
-    val bitmap = generateQrCodeBitmap(codePhrase, 1024, foregroundColor, backgroundColor) ?: return
+    // Always use black-on-white for universally scannable QR codes
+    val bitmap = generateQrCodeBitmap(
+        codePhrase, 1024,
+        android.graphics.Color.BLACK,
+        android.graphics.Color.WHITE
+    ) ?: return
 
     runCatching {
         val shareDir = File(context.cacheDir, "qr-share").apply { mkdirs() }

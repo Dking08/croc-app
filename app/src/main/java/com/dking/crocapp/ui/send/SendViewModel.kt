@@ -148,6 +148,10 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(textToSend = text) }
     }
 
+    fun setSharedText(text: String) {
+        _uiState.update { it.copy(isTextMode = true, textToSend = text) }
+    }
+
     fun startSend() {
         viewModelScope.launch {
             val state = _uiState.value

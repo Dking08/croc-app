@@ -404,6 +404,11 @@ fun ReceiveScreen(
             // ──── Received Text ────
             val completedState = uiState.transferState as? CrocTransferState.Completed
             if (completedState?.receivedText != null) {
+                val receivedText = completedState.receivedText ?: ""
+                val isUrl = receivedText.trim().let {
+                    it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true)
+                }
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -425,17 +430,36 @@ fun ReceiveScreen(
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            Row {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = formatBytes(completedState.totalBytes),
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.align(Alignment.CenterVertically)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                if (isUrl) {
+                                    IconButton(
+                                        onClick = {
+                                            try {
+                                                val intent = android.content.Intent(
+                                                    android.content.Intent.ACTION_VIEW,
+                                                    android.net.Uri.parse(receivedText.trim())
+                                                )
+                                                context.startActivity(intent)
+                                            } catch (_: Exception) {}
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.FolderOpen,
+                                            contentDescription = "Open URL",
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
                                 IconButton(
                                     onClick = {
                                         clipboardManager.setText(
-                                            androidx.compose.ui.text.AnnotatedString(completedState.receivedText ?: "")
+                                            androidx.compose.ui.text.AnnotatedString(receivedText)
                                         )
                                     },
                                     modifier = Modifier.size(32.dp)
@@ -449,7 +473,7 @@ fun ReceiveScreen(
                             }
                         }
                         Text(
-                            text = completedState.receivedText ?: "",
+                            text = receivedText,
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 12,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis

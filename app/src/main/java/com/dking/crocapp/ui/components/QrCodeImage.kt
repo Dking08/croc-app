@@ -4,17 +4,17 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.google.zxing.BarcodeFormat
@@ -28,10 +28,12 @@ fun QrCodeImage(
     size: Dp = 200.dp,
     padding: Dp = 12.dp
 ) {
-    val foregroundColor = MaterialTheme.colorScheme.onSurface.toArgb()
-    val backgroundColor = MaterialTheme.colorScheme.surface.toArgb()
+    // Always use black-on-white for scannable QR codes regardless of theme.
+    // The outer container uses a white background to provide the quiet zone.
+    val foregroundColor = android.graphics.Color.BLACK
+    val backgroundColor = android.graphics.Color.WHITE
 
-    val bitmap = remember(data, foregroundColor, backgroundColor) {
+    val bitmap = remember(data) {
         generateQrCodeBitmap(data, 512, foregroundColor, backgroundColor)
     }
 
@@ -39,7 +41,7 @@ fun QrCodeImage(
         Box(
             modifier = modifier
                 .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surface)
+                .background(Color.White)
                 .padding(padding),
             contentAlignment = Alignment.Center
         ) {
@@ -47,6 +49,7 @@ fun QrCodeImage(
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = "QR Code for $data",
                 modifier = Modifier.size(size)
+//                modifier = Modifier.fillMaxSize()
             )
         }
     }

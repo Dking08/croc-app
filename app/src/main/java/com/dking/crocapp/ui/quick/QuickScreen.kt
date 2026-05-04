@@ -7,8 +7,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -32,9 +31,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.ContentCopy
-import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material3.AlertDialog
@@ -70,9 +69,12 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -267,7 +269,7 @@ private fun QuickInfoDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     text = "croc-app is an Android client for croc. It helps you send and receive files or text with short shared codes.",
                     style = MaterialTheme.typography.bodyMedium
@@ -276,12 +278,35 @@ private fun QuickInfoDialog(
                     text = "Secret codes are shared phrases used to pair the sender and receiver. Both sides must use the same code for a transfer.",
                     style = MaterialTheme.typography.bodyMedium
                 )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Send") }
+                            append(" — share files or clipboard text.")
+                        },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Receive") }
+                            append(" — wait on a code to receive files or clipboard text.")
+                        },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Quick") }
+                            append(" — fast one-tap flows with your saved defaults.")
+                        },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
                 Text(
-                    text = "Use Send to share files or clipboard text. Use Receive to wait on a code. Quick is for fast one-tap flows with your saved defaults.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = "Share the code or QR only with the person you want to connect with. Received files are saved to Downloads/croc-received.",
+                    text = buildAnnotatedString {
+                        append("Share the code or QR only with the person you want to connect with. Received files are saved to ")
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Downloads/croc-received") }
+                        append(".")
+                    },
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -413,8 +438,8 @@ private fun QuickSendTransferCard(
                         if (code.isNotBlank()) {
                             QrCodeImage(
                                 data = code,
-                                size = 86.dp,
-                                padding = 8.dp
+                                size = 100.dp,
+                                padding = 4.dp
                             )
                         } else {
                             QuickStatusBadge(
@@ -787,6 +812,11 @@ private fun QuickReceivedTextCard(
     totalBytes: Long,
     onCopyText: (String) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val isUrl = receivedText.trim().let {
+        it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true)
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -815,15 +845,37 @@ private fun QuickReceivedTextCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(
-                    onClick = { onCopyText(receivedText) },
-                    modifier = Modifier.size(34.dp)
-                ) {
-                    Icon(
-                        Icons.Rounded.ContentCopy,
-                        contentDescription = "Copy text",
-                        modifier = Modifier.size(18.dp)
-                    )
+                Row {
+                    if (isUrl) {
+                        IconButton(
+                            onClick = {
+                                try {
+                                    val intent = android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse(receivedText.trim())
+                                    )
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.OpenInNew,
+                                contentDescription = "Open URL",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = { onCopyText(receivedText) },
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.ContentCopy,
+                            contentDescription = "Copy text",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
             Text(
@@ -1068,7 +1120,7 @@ private fun QuickActionButtons(
 
         // Slot 2: Clipboard Send (small, upper-left of Send)
         SmallCircleButton(
-            icon = Icons.Rounded.ContentPaste,
+            icon = Icons.Rounded.ContentCopy,
             size = smallSize,
             containerColor = MaterialTheme.colorScheme.secondaryContainer,
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
