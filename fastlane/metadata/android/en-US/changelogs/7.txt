@@ -1,0 +1,4 @@
+Changes Made:
+
+1. Dark/Light mode sensitive Splash Screen
+2. Version Bump

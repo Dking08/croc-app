@@ -2,7 +2,6 @@
 <resources>
     <style name="Theme.CrocTransfer" parent="Theme.AppCompat.DayNight.NoActionBar" />
     <style name="Theme.CrocApp.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#121212</item>
         <item name="postSplashScreenTheme">@style/Theme.CrocTransfer</item>
     </style>
 </resources>
