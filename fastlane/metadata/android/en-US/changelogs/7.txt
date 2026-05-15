@@ -1,4 +1,5 @@
 Changes Made:
 
 1. Dark/Light mode sensitive Splash Screen
-2. Version Bump
+2. Upgrade croc to v10.4.3
+3. Version Bump
