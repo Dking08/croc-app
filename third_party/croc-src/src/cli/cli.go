@@ -36,7 +36,7 @@ func Run() (err error) {
 	app := cli.NewApp()
 	app.Name = "croc"
 	if Version == "" {
-		Version = "v10.4.2"
+		Version = "v10.4.3"
 	}
 	app.Version = Version
 	app.Compiled = time.Now()
@@ -69,7 +69,7 @@ func Run() (err error) {
 			ArgsUsage:   "[filename(s) or folder]",
 			Flags: []cli.Flag{
 				&cli.BoolFlag{Name: "zip", Usage: "zip folder before sending"},
-				&cli.StringFlag{Name: "code", Aliases: []string{"c"}, Usage: "codephrase used to connect to relay"},
+				&cli.StringFlag{Name: "code", Aliases: []string{"c"}, Usage: "codephrase used to connect to relay (at least 6 characters)"},
 				&cli.StringFlag{Name: "hash", Value: "xxhash", Usage: "hash algorithm (xxhash, imohash, md5)"},
 				&cli.StringFlag{Name: "text", Aliases: []string{"t"}, Usage: "send some text"},
 				&cli.BoolFlag{Name: "no-local", Usage: "disable local relay when sending"},

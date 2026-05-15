@@ -213,7 +213,7 @@ func New(ops Options) (c *Client, err error) {
 	}
 
 	if len(c.Options.SharedSecret) < 6 {
-		err = fmt.Errorf("code is too short")
+		err = fmt.Errorf("code is too short (must be at least 6 characters)")
 		return
 	}
 	// Create a hash of part of the shared secret to use as the room name
@@ -408,7 +408,7 @@ func GetFilesInfo(fnames []string, zipfolder bool, ignoreGit bool, exclusions []
 			}
 			fpath = filepath.Dir(fpath)
 			dest := filepath.Base(fpath) + ".zip"
-			utils.ZipDirectory(dest, fpath)
+			utils.ZipDirectory(dest, fpath, ignoredPaths, exclusions)
 			utils.MarkFileForRemoval(dest)
 			stat, errStat = os.Lstat(dest)
 			if errStat != nil {
