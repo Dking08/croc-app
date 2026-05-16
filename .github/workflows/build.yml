@@ -29,7 +29,32 @@ jobs:
       - name: Build release APK
         run: gradle assembleRelease
 
+      - name: Generate test signing key
+        run: |
+          keytool -genkeypair \
+            -v \
+            -keystore test-release.jks \
+            -alias test \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=Test, OU=Test, O=Test, L=Test, ST=Test, C=US"
+
+      - name: Sign APK
+        run: |
+          UNSIGNED=$(find app/build/outputs/apk/release -name '*-unsigned.apk' -o -name '*release*.apk' | head -1)
+          cp "$UNSIGNED" app/build/outputs/apk/release/croc-app-release.apk
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools/ | tail -1)/apksigner sign \
+            --ks test-release.jks \
+            --ks-pass pass:android \
+            --ks-key-alias test \
+            --key-pass pass:android \
+            --out app/build/outputs/apk/release/croc-app-signed.apk \
+            app/build/outputs/apk/release/croc-app-release.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: croc-app-release
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/croc-app-signed.apk
