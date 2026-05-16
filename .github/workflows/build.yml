@@ -104,8 +104,8 @@ jobs:
       - name: Extract version
         id: version
         run: |
-          VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | sed 's/.*versionName.*=.*"\(.*\)".*/\1/')
-          VERSION_CODE=$(grep 'versionCode' app/build.gradle.kts | sed 's/.*versionCode.*=.*\([0-9]*\).*/\1/')
+          VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+          VERSION_CODE=$(grep 'versionCode' app/build.gradle.kts | head -1 | grep -o '[0-9]\+')
           echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
@@ -130,8 +130,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           CHANGELOG="fastlane/metadata/android/en-US/changelogs/${{ steps.version.outputs.code }}.txt"
-          BODY=$(cat "$CHANGELOG" 2>/dev/null || echo "Release ${{ steps.version.outputs.name }}")
+          if [ -f "$CHANGELOG" ]; then
+            NOTES_FLAG="--notes-file $CHANGELOG"
+          else
+            NOTES_FLAG="--notes Release ${{ steps.version.outputs.name }}"
+          fi
           gh release create "v${{ steps.version.outputs.name }}" \
             app/build/outputs/apk/release/croc-app-release.apk \
             --title "croc-app v${{ steps.version.outputs.name }}" \
-            --notes "$BODY"
+            $NOTES_FLAG
