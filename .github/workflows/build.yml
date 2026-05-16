@@ -3,9 +3,10 @@ name: Build APK
 on: workflow_dispatch
 
 jobs:
-  build:
+  debug:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,17 +45,82 @@ jobs:
 
       - name: Sign APK
         run: |
-          UNSIGNED=$(find app/build/outputs/apk/release -name '*-unsigned.apk' -o -name '*release*.apk' | head -1)
-          cp "$UNSIGNED" app/build/outputs/apk/release/croc-app-release.apk
+          UNSIGNED=$(find app/build/outputs/apk/release -name '*release*.apk' | head -1)
           $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools/ | tail -1)/apksigner sign \
             --ks test-release.jks \
             --ks-pass pass:android \
             --ks-key-alias test \
             --key-pass pass:android \
-            --out app/build/outputs/apk/release/croc-app-signed.apk \
-            app/build/outputs/apk/release/croc-app-release.apk
+            --out app/build/outputs/apk/release/croc-app-debug.apk \
+            "$UNSIGNED"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: croc-app-debug
+          path: app/build/outputs/apk/release/croc-app-debug.apk
+
+  release:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: third_party/croc-src/go.mod
+
+      - name: Vendor Go dependencies
+        run: cd third_party/croc-src && go mod vendor
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK
+        run: gradle assembleRelease
+
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.jks
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | sed 's/.*versionName.*=.*"\(.*\)".*/\1/')
+          VERSION_CODE=$(grep 'versionCode' app/build.gradle.kts | sed 's/.*versionCode.*=.*\([0-9]*\).*/\1/')
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Sign APK
+        run: |
+          UNSIGNED=$(find app/build/outputs/apk/release -name '*release*.apk' | head -1)
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools/ | tail -1)/apksigner sign \
+            --ks release.jks \
+            --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
+            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+            --key-pass "pass:${{ secrets.KEY_PASSWORD }}" \
+            --out app/build/outputs/apk/release/croc-app-release.apk \
+            "$UNSIGNED"
 
       - uses: actions/upload-artifact@v4
         with:
           name: croc-app-release
-          path: app/build/outputs/apk/release/croc-app-signed.apk
+          path: app/build/outputs/apk/release/croc-app-release.apk
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CHANGELOG="fastlane/metadata/android/en-US/changelogs/${{ steps.version.outputs.code }}.txt"
+          BODY=$(cat "$CHANGELOG" 2>/dev/null || echo "Release ${{ steps.version.outputs.name }}")
+          gh release create "v${{ steps.version.outputs.name }}" \
+            app/build/outputs/apk/release/croc-app-release.apk \
+            --title "croc-app v${{ steps.version.outputs.name }}" \
+            --notes "$BODY"
