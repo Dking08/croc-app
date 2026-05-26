@@ -17,6 +17,7 @@ It is designed to make file and text sharing feel much more natural on Android: 
   <tr>
     <th align="center">F-Droid</th>
     <th align="center">GitHub Release</th>
+    <th align="center">Obtainium</th>
   </tr>
   <tr>
     <td align="center">
@@ -27,6 +28,11 @@ It is designed to make file and text sharing feel much more natural on Android: 
     <td align="center">
       <a href="https://github.com/Dking08/croc-app/releases/latest/download/croc-app.apk">
         <img src="https://github.com/machiav3lli/oandbackupx/blob/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Download from GitHub" height="75">
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Dking08/croc-app/">
+        <img src="https://github.com/ImranR98/Obtainium/blob/main/assets/graphics/badge_obtainium.png" alt="Download from Obtainium" height="50">
       </a>
     </td>
   </tr>
