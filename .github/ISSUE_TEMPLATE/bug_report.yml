@@ -1,0 +1,94 @@
+name: Bug Report
+description: Something isn't working as expected
+labels: [bug]
+assignees: [Dking08]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the fields below so we can investigate quickly.
+
+  - type: input
+    id: app_version
+    attributes:
+      label: App Version
+      description: Found in the app's About screen or the GitHub release tag
+      options:
+        - v4.1.0
+        - v4.0.0
+        - v3.2.0
+        - v3.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: android_version
+    attributes:
+      label: Android Version
+      placeholder: "e.g. Android 14 (API 34)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_source
+    attributes:
+      label: How did you install the app?
+      options:
+        - F-Droid
+        - GitHub Release (APK)
+        - Built from source
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug. What did you expect, and what actually occurred?
+      placeholder: "When I tap Send, the app crashes instead of showing the transfer code."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      placeholder: |
+        1. Open the app
+        2. Tap ...
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does this happen?
+      options:
+        - Always
+        - Sometimes
+        - Rarely / Once
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or Stack Trace
+      description: If you have logcat output or a crash log, paste it here.
+      render: shell
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, screen recordings, or additional context are very welcome. You can drag and drop files directly here.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this hasn't been reported yet
+          required: true
+        - label: I can reproduce this on the latest version of croc-app

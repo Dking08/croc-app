@@ -1,0 +1,63 @@
+name: Feature Request
+description: Suggest an idea or improvement for croc-app
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea that would make croc-app better? We'd love to hear it!
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area does this relate to?
+      options:
+        - Send flow
+        - Receive flow
+        - Quick Send / Quick Receive
+        - QR code
+        - Transfer history
+        - Settings
+        - UI / Design
+        - Notifications
+        - Translations / Localization
+        - Platform support (e.g. tablet, TV, desktop)
+        - Other / Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the idea?
+      description: A translation, a new platform, a UX tweak, a missing feature — anything goes. What are you thinking?
+      placeholder: "It'd be great if the app had a Spanish translation…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: How would it work? (optional)
+      description: If you have a specific implementation in mind, describe it. If not, no worries — the idea alone is enough.
+      placeholder: "I could help with the translation if there's a Weblate project or a strings file to edit."
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: Any workarounds you use today, or other approaches that could work?
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Mockups, screenshots from other apps, or extra context go here. Drag and drop files directly.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this hasn't been requested yet
+          required: true

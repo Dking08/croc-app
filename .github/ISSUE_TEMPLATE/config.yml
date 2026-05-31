@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 General Discussion
+    url: https://github.com/Dking08/croc-app/discussions
+    about: Questions, ideas, and general conversation about croc-app
+  - name: 📦 croc (the underlying tool)
+    url: https://github.com/schollz/croc/issues
+    about: Issues with the croc protocol or CLI itself (not the Android app)
