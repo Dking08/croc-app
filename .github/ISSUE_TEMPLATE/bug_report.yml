@@ -8,7 +8,7 @@ body:
       value: |
         Thanks for taking the time to report a bug! Please fill out the fields below so we can investigate quickly.
 
-  - type: input
+  - type: dropdown
     id: app_version
     attributes:
       label: App Version
