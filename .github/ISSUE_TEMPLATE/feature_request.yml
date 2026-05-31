@@ -1,4 +1,4 @@
-name: Feature Request
+name: 💡 Feature Request
 description: Suggest an idea or improvement for croc-app
 labels: [enhancement]
 body:
@@ -41,12 +41,6 @@ body:
       label: How would it work? (optional)
       description: If you have a specific implementation in mind, describe it. If not, no worries — the idea alone is enough.
       placeholder: "I could help with the translation if there's a Weblate project or a strings file to edit."
-
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: Alternatives you've considered
-      description: Any workarounds you use today, or other approaches that could work?
 
   - type: textarea
     id: extra
