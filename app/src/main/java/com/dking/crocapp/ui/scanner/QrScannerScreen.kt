@@ -170,6 +170,7 @@ private fun CameraPreview(
                 EnumMap<DecodeHintType, Any>(DecodeHintType::class.java).apply {
                     put(DecodeHintType.POSSIBLE_FORMATS, listOf(BarcodeFormat.QR_CODE))
                     put(DecodeHintType.TRY_HARDER, true)
+                    put(DecodeHintType.ALSO_INVERTED, true)
                 }
             )
         }
