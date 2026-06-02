@@ -1,0 +1,4 @@
+[submodule "third_party/croc-src"]
+	path = third_party/croc-src
+	url = https://github.com/abakCroc/croc
+	branch = main
