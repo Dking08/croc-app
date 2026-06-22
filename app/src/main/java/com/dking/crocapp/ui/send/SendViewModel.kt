@@ -3,6 +3,7 @@ package com.dking.crocapp.ui.send
 import android.app.Application
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dking.crocapp.CrocApp
@@ -28,18 +29,32 @@ data class SelectedFile(
     val localPath: String? = null
 )
 
+enum class SendMode { FILES, FOLDER, TEXT }
+
 data class SendUiState(
     val selectedFiles: List<SelectedFile> = emptyList(),
     val selectedBytes: Long = 0,
     val codePhrase: String = "",
     val defaultCodePhrase: String = "",
     val savedCodePhrases: List<String> = emptyList(),
-    val isTextMode: Boolean = false,
+    val sendMode: SendMode = SendMode.FILES,
     val textToSend: String = "",
-    val transferState: CrocTransferState = CrocTransferState.Idle
+    val transferState: CrocTransferState = CrocTransferState.Idle,
+    // Folder mode
+    val selectedFolderName: String? = null,
+    val selectedFolderFileCount: Int = 0,
+    val selectedFolderSize: Long = 0,
+    val selectedFolderPath: String? = null
 ) {
+    // Backward compat helper
+    val isTextMode: Boolean get() = sendMode == SendMode.TEXT
+
     val hasContent: Boolean
-        get() = if (isTextMode) textToSend.isNotBlank() else selectedFiles.isNotEmpty()
+        get() = when (sendMode) {
+            SendMode.FILES -> selectedFiles.isNotEmpty()
+            SendMode.FOLDER -> selectedFolderPath != null
+            SendMode.TEXT -> textToSend.isNotBlank()
+        }
 }
 
 class SendViewModel(application: Application) : AndroidViewModel(application) {
@@ -122,6 +137,65 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(selectedFiles = emptyList(), selectedBytes = 0) }
     }
 
+    fun addFolder(treeUri: Uri) {
+        val context = getApplication<CrocApp>()
+        val treeDoc = DocumentFile.fromTreeUri(context, treeUri) ?: return
+        val folderName = treeDoc.name ?: "folder"
+
+        // Stage the entire folder tree into cache so croc can access it as a filesystem path
+        val stagingDir = File(context.cacheDir, "croc-send-folder/$folderName").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+
+        var fileCount = 0
+        var totalSize = 0L
+
+        fun copyTree(doc: DocumentFile, destDir: File) {
+            doc.listFiles().forEach { child ->
+                if (child.isDirectory) {
+                    val subDir = File(destDir, child.name ?: "dir").apply { mkdirs() }
+                    copyTree(child, subDir)
+                } else if (child.isFile) {
+                    val destFile = File(destDir, child.name ?: "file")
+                    try {
+                        context.contentResolver.openInputStream(child.uri)?.use { input ->
+                            FileOutputStream(destFile).use { output -> input.copyTo(output) }
+                        }
+                        fileCount++
+                        totalSize += destFile.length()
+                    } catch (_: Exception) { }
+                }
+            }
+        }
+
+        copyTree(treeDoc, stagingDir)
+
+        _uiState.update {
+            it.copy(
+                selectedFolderName = folderName,
+                selectedFolderFileCount = fileCount,
+                selectedFolderSize = totalSize,
+                selectedFolderPath = stagingDir.absolutePath
+            )
+        }
+    }
+
+    fun clearFolder() {
+        val path = _uiState.value.selectedFolderPath
+        if (path != null) {
+            File(path).deleteRecursively()
+        }
+        _uiState.update {
+            it.copy(
+                selectedFolderName = null,
+                selectedFolderFileCount = 0,
+                selectedFolderSize = 0,
+                selectedFolderPath = null
+            )
+        }
+    }
+
     fun updateCodePhrase(code: String) {
         _uiState.update { it.copy(codePhrase = normalizeCodePhrase(code)) }
     }
@@ -140,8 +214,14 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(codePhrase = generateRandomCode()) }
     }
 
+    fun setSendMode(mode: SendMode) {
+        _uiState.update { it.copy(sendMode = mode) }
+    }
+
     fun toggleTextMode() {
-        _uiState.update { it.copy(isTextMode = !it.isTextMode) }
+        _uiState.update {
+            it.copy(sendMode = if (it.sendMode == SendMode.TEXT) SendMode.FILES else SendMode.TEXT)
+        }
     }
 
     fun updateTextToSend(text: String) {
@@ -149,7 +229,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSharedText(text: String) {
-        _uiState.update { it.copy(isTextMode = true, textToSend = text) }
+        _uiState.update { it.copy(sendMode = SendMode.TEXT, textToSend = text) }
     }
 
     fun startSend() {
@@ -162,14 +242,23 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
             // Give state a moment to settle
             kotlinx.coroutines.delay(50)
 
-            if (state.isTextMode) {
-                if (state.textToSend.isNotBlank()) {
-                    crocProcess.sendText(state.textToSend, state.codePhrase)
+            when (state.sendMode) {
+                SendMode.TEXT -> {
+                    if (state.textToSend.isNotBlank()) {
+                        crocProcess.sendText(state.textToSend, state.codePhrase)
+                    }
                 }
-            } else {
-                if (state.selectedFiles.isNotEmpty()) {
-                    val filePaths = copyFilesToInternal(state.selectedFiles)
-                    crocProcess.send(filePaths, state.codePhrase)
+                SendMode.FILES -> {
+                    if (state.selectedFiles.isNotEmpty()) {
+                        val filePaths = copyFilesToInternal(state.selectedFiles)
+                        crocProcess.send(filePaths, state.codePhrase)
+                    }
+                }
+                SendMode.FOLDER -> {
+                    val folderPath = state.selectedFolderPath
+                    if (folderPath != null) {
+                        crocProcess.send(listOf(folderPath), state.codePhrase)
+                    }
                 }
             }
         }
@@ -185,12 +274,20 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resetSession() {
         crocProcess.reset()
+        val path = _uiState.value.selectedFolderPath
+        if (path != null) {
+            File(path).deleteRecursively()
+        }
         _uiState.update {
             it.copy(
                 selectedFiles = emptyList(),
                 selectedBytes = 0,
                 codePhrase = it.defaultCodePhrase.ifBlank { generateRandomCode() },
-                textToSend = ""
+                textToSend = "",
+                selectedFolderName = null,
+                selectedFolderFileCount = 0,
+                selectedFolderSize = 0,
+                selectedFolderPath = null
             )
         }
     }
@@ -211,31 +308,58 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun saveToHistory(state: CrocTransferState.Completed) {
         val code = _uiState.value.codePhrase
-        val files = _uiState.value.selectedFiles
-        if (files.isNotEmpty()) {
-            // Use actual selected file names, not truncated parser names
-            files.forEach { file ->
+        val uiState = _uiState.value
+
+        when (uiState.sendMode) {
+            SendMode.FILES -> {
+                val files = uiState.selectedFiles
+                if (files.isNotEmpty()) {
+                    files.forEach { file ->
+                        app.database.transferHistoryDao().insert(
+                            TransferHistory(
+                                code = code,
+                                type = TransferType.SEND,
+                                fileName = file.name,
+                                fileSize = file.size,
+                                status = TransferStatus.COMPLETED
+                            )
+                        )
+                    }
+                } else {
+                    // Fallback: use parser data
+                    app.database.transferHistoryDao().insert(
+                        TransferHistory(
+                            code = code,
+                            type = TransferType.SEND,
+                            fileName = state.fileNames.firstOrNull() ?: "file",
+                            fileSize = state.totalBytes,
+                            status = TransferStatus.COMPLETED
+                        )
+                    )
+                }
+            }
+            SendMode.FOLDER -> {
                 app.database.transferHistoryDao().insert(
                     TransferHistory(
                         code = code,
                         type = TransferType.SEND,
-                        fileName = file.name,
-                        fileSize = file.size,
+                        fileName = uiState.selectedFolderName ?: "folder",
+                        fileSize = uiState.selectedFolderSize,
                         status = TransferStatus.COMPLETED
                     )
                 )
             }
-        } else {
-            // Fallback: use parser data (e.g. text mode)
-            app.database.transferHistoryDao().insert(
-                TransferHistory(
-                    code = code,
-                    type = TransferType.SEND,
-                    fileName = state.fileNames.firstOrNull() ?: "text",
-                    fileSize = state.totalBytes,
-                    status = TransferStatus.COMPLETED
+            SendMode.TEXT -> {
+                app.database.transferHistoryDao().insert(
+                    TransferHistory(
+                        code = code,
+                        type = TransferType.SEND,
+                        fileName = state.fileNames.firstOrNull() ?: "text",
+                        fileSize = state.totalBytes,
+                        status = TransferStatus.COMPLETED
+                    )
                 )
-            )
+            }
         }
     }
 
@@ -259,3 +383,4 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         return code.trim().replace(" ", "-")
     }
 }
+

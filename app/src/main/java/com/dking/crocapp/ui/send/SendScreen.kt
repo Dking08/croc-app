@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.QrCode2
@@ -86,6 +87,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -96,6 +98,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dking.crocapp.R
 import com.dking.crocapp.croc.CrocTransferState
 import com.dking.crocapp.ui.components.QrCodeImage
 import com.dking.crocapp.ui.components.TransferProgressCard
@@ -126,6 +129,14 @@ fun SendScreen(
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
             viewModel.addFiles(uris)
+        }
+    }
+
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.addFolder(uri)
         }
     }
 
@@ -168,10 +179,10 @@ fun SendScreen(
                 },
                 actions = {
                     IconButton(onClick = onNavigateToHistory) {
-                        Icon(Icons.Outlined.History, contentDescription = "History")
+                        Icon(Icons.Outlined.History, contentDescription = stringResource(R.string.nav_history))
                     }
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                        Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.nav_settings))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -212,12 +223,12 @@ fun SendScreen(
         ) {
             Spacer(modifier = Modifier.height(2.dp))
 
-            // Mode Toggle: File / Text
+            // Mode Toggle: Files / Folder / Text
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    onClick = { if (uiState.isTextMode) viewModel.toggleTextMode() },
-                    selected = !uiState.isTextMode,
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                    onClick = { viewModel.setSendMode(SendMode.FILES) },
+                    selected = uiState.sendMode == SendMode.FILES,
                     icon = {
                         Icon(Icons.Rounded.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
@@ -225,9 +236,19 @@ fun SendScreen(
                     Text("Files")
                 }
                 SegmentedButton(
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    onClick = { if (!uiState.isTextMode) viewModel.toggleTextMode() },
-                    selected = uiState.isTextMode,
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                    onClick = { viewModel.setSendMode(SendMode.FOLDER) },
+                    selected = uiState.sendMode == SendMode.FOLDER,
+                    icon = {
+                        Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                ) {
+                    Text("Folder")
+                }
+                SegmentedButton(
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                    onClick = { viewModel.setSendMode(SendMode.TEXT) },
+                    selected = uiState.sendMode == SendMode.TEXT,
                     icon = {
                         Icon(Icons.Outlined.TextFields, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
@@ -238,7 +259,7 @@ fun SendScreen(
 
             // ──── File Selection Card — with animated progress border ────
             AnimatedVisibility(
-                visible = !uiState.isTextMode,
+                visible = uiState.sendMode == SendMode.FILES,
                 enter = fadeIn() + slideInVertically(),
                 exit = fadeOut() + slideOutVertically()
             ) {
@@ -350,9 +371,134 @@ fun SendScreen(
                 }
             }
 
+            // ──── Folder Selection Card ────
+            AnimatedVisibility(
+                visible = uiState.sendMode == SendMode.FOLDER,
+                enter = fadeIn() + slideInVertically(),
+                exit = fadeOut() + slideOutVertically()
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (showFileBorder && uiState.sendMode == SendMode.FOLDER) {
+                                Modifier.progressBorder(
+                                    progress = animatedBorderProgress,
+                                    color = borderColor,
+                                    cornerRadius = 28.dp
+                                )
+                            } else Modifier
+                        ),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    ),
+                    shape = MaterialTheme.shapes.extraLarge
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Folder",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            if (uiState.selectedFolderName != null) {
+                                Text(
+                                    text = "${uiState.selectedFolderFileCount} files • ${formatBytes(uiState.selectedFolderSize)}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilledTonalButton(
+                                onClick = { folderPickerLauncher.launch(null) },
+                                enabled = !isTransferActive,
+                                modifier = Modifier.weight(1f),
+                                shape = MaterialTheme.shapes.large
+                            ) {
+                                Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(if (uiState.selectedFolderName == null) "Pick Folder" else "Change")
+                            }
+                            if (uiState.selectedFolderName != null) {
+                                OutlinedButton(
+                                    onClick = { viewModel.clearFolder() },
+                                    enabled = !isTransferActive,
+                                    modifier = Modifier.weight(1f),
+                                    shape = MaterialTheme.shapes.large
+                                ) {
+                                    Icon(Icons.Rounded.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Clear")
+                                }
+                            }
+                        }
+
+                        if (uiState.selectedFolderName != null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(MaterialTheme.shapes.large)
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.FolderOpen,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = uiState.selectedFolderName ?: "",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "${uiState.selectedFolderFileCount} files, ${formatBytes(uiState.selectedFolderSize)}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = "No folder selected",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
             // ──── Text Input ────
             AnimatedVisibility(
-                visible = uiState.isTextMode,
+                visible = uiState.sendMode == SendMode.TEXT,
                 enter = fadeIn() + slideInVertically(),
                 exit = fadeOut() + slideOutVertically()
             ) {
@@ -404,7 +550,7 @@ fun SendScreen(
                             modifier = Modifier.fillMaxWidth(),
                             shape = MaterialTheme.shapes.large
                         ) {
-                            Text("Dismiss")
+                            Text(stringResource(R.string.action_dismiss))
                         }
                     }
                 }
