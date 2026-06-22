@@ -35,6 +35,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -68,6 +69,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -84,6 +86,8 @@ import com.dking.crocapp.croc.CrocTransferState
 import com.dking.crocapp.ui.components.QrCodeImage
 import com.dking.crocapp.ui.components.formatBytes
 import com.dking.crocapp.ui.receive.ReceivedFile
+import com.dking.crocapp.ui.receive.openReceivedFile
+import com.dking.crocapp.ui.receive.shareReceivedFile
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -119,14 +123,14 @@ fun QuickScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("Quick", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.nav_quick), fontWeight = FontWeight.Bold)
                 },
                 actions = {
                     IconButton(onClick = { showInfoDialog = true }) {
-                        Icon(Icons.Outlined.Info, contentDescription = "Quick help")
+                        Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.quick_info_title))
                     }
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                        Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.nav_settings))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -248,7 +252,7 @@ private fun QuickBrandHeader() {
                 }
             }
             Text(
-                text = "Hold Receive for saved codes",
+                text = stringResource(R.string.quick_ready_subtitle),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -264,14 +268,14 @@ private fun QuickInfoDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "About croc-app",
+                text = stringResource(R.string.quick_info_title),
                 fontWeight = FontWeight.SemiBold
             )
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "croc-app is an Android client for croc. It helps you send and receive files or text with short shared codes.",
+                    text = stringResource(R.string.quick_info_description),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
@@ -313,7 +317,7 @@ private fun QuickInfoDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close")
+                Text(stringResource(R.string.action_close))
             }
         }
     )
@@ -371,7 +375,7 @@ private fun TransferStatusSection(
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.large
         ) {
-            Text(if (isFinished) "Dismiss" else "Cancel")
+            Text(if (isFinished) stringResource(R.string.action_dismiss) else stringResource(R.string.action_cancel))
         }
     }
 }
@@ -741,6 +745,8 @@ private fun QuickTransferProgress(
 
 @Composable
 private fun QuickReceivedFilesCard(receivedFiles: List<ReceivedFile>) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -753,7 +759,7 @@ private fun QuickReceivedFilesCard(receivedFiles: List<ReceivedFile>) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "Received Files",
+                text = stringResource(R.string.quick_received_files),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
@@ -797,10 +803,32 @@ private fun QuickReceivedFilesCard(receivedFiles: List<ReceivedFile>) {
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                    IconButton(
+                        onClick = { openReceivedFile(context, file) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.OpenInNew,
+                            contentDescription = stringResource(R.string.action_open_file),
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(
+                        onClick = { shareReceivedFile(context, file) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Share,
+                            contentDescription = stringResource(R.string.action_share_file),
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
             if (receivedFiles.size > 5) {
-                QuickDetailPill(label = "+${receivedFiles.size - 5} more saved")
+                QuickDetailPill(label = stringResource(R.string.label_more_saved, receivedFiles.size - 5))
             }
         }
     }
@@ -835,7 +863,7 @@ private fun QuickReceivedTextCard(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = "Received Text",
+                        text = stringResource(R.string.quick_received_text),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -861,7 +889,7 @@ private fun QuickReceivedTextCard(
                         ) {
                             Icon(
                                 Icons.Rounded.OpenInNew,
-                                contentDescription = "Open URL",
+                                contentDescription = stringResource(R.string.quick_open_url),
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -872,7 +900,7 @@ private fun QuickReceivedTextCard(
                     ) {
                         Icon(
                             Icons.Rounded.ContentCopy,
-                            contentDescription = "Copy text",
+                            contentDescription = stringResource(R.string.quick_copy_text),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -945,56 +973,61 @@ private fun QuickDetailPill(
     )
 }
 
+@Composable
 private fun quickTransferTitle(state: CrocTransferState, isSending: Boolean): String {
     return when (state) {
-        is CrocTransferState.Preparing -> if (isSending) "Preparing your quick share" else "Getting ready to receive"
-        is CrocTransferState.WaitingForPeer -> if (isSending) "Waiting for your peer" else "Listening for the sender"
-        is CrocTransferState.Transferring -> if (isSending) "Sharing in progress" else "Receiving in progress"
-        is CrocTransferState.Completed -> if (isSending) "Quick share delivered" else "Quick receive complete"
-        is CrocTransferState.Error -> if (isSending) "Quick send hit an issue" else "Quick receive hit an issue"
-        is CrocTransferState.Cancelled -> if (isSending) "Quick send cancelled" else "Quick receive cancelled"
-        else -> "Quick transfer"
+        is CrocTransferState.Preparing -> if (isSending) stringResource(R.string.quick_preparing_send) else stringResource(R.string.quick_preparing_receive)
+        is CrocTransferState.WaitingForPeer -> if (isSending) stringResource(R.string.quick_waiting_send) else stringResource(R.string.quick_waiting_receive)
+        is CrocTransferState.Transferring -> if (isSending) stringResource(R.string.quick_transferring_send) else stringResource(R.string.quick_transferring_receive)
+        is CrocTransferState.Completed -> if (isSending) stringResource(R.string.quick_completed_send) else stringResource(R.string.quick_completed_receive)
+        is CrocTransferState.Error -> if (isSending) stringResource(R.string.quick_error_send) else stringResource(R.string.quick_error_receive)
+        is CrocTransferState.Cancelled -> if (isSending) stringResource(R.string.quick_cancelled_send) else stringResource(R.string.quick_cancelled_receive)
+        else -> stringResource(R.string.quick_transfer)
     }
 }
 
+@Composable
 private fun quickTransferSubtitle(state: CrocTransferState, isSending: Boolean): String {
     return when (state) {
-        is CrocTransferState.Preparing -> "Setting up the encrypted transfer session."
+        is CrocTransferState.Preparing -> stringResource(R.string.quick_sub_preparing)
         is CrocTransferState.WaitingForPeer -> {
-            if (isSending) "Share the QR or code so the receiver can join."
-            else "Using the active code to connect and save directly into Downloads."
+            if (isSending) stringResource(R.string.quick_sub_waiting_send)
+            else stringResource(R.string.quick_sub_waiting_receive)
         }
         is CrocTransferState.Transferring -> {
-            if (isSending) "${state.fileName} is on the wire right now."
-            else "Incoming data is being written and prepared for Downloads."
+            if (isSending) stringResource(R.string.quick_sub_transferring_send, state.fileName)
+            else stringResource(R.string.quick_sub_transferring_receive)
         }
         is CrocTransferState.Completed -> {
             if (isSending) {
-                "${state.fileCount} item${if (state.fileCount == 1) "" else "s"} shared successfully."
+                if (state.fileCount == 1) stringResource(R.string.quick_sub_completed_send_one, state.fileCount)
+                else stringResource(R.string.quick_sub_completed_send_many, state.fileCount)
             } else if (state.receivedText != null) {
-                "The text payload is ready below."
+                stringResource(R.string.quick_sub_completed_receive_text)
             } else {
-                "${state.fileCount} item${if (state.fileCount == 1) "" else "s"} saved for you."
+                if (state.fileCount == 1) stringResource(R.string.quick_sub_completed_receive_one, state.fileCount)
+                else stringResource(R.string.quick_sub_completed_receive_many, state.fileCount)
             }
         }
         is CrocTransferState.Error -> if (isSending) {
-            "The share stopped before completion."
+            stringResource(R.string.quick_sub_error_send)
         } else {
-            "The receive stopped before completion."
+            stringResource(R.string.quick_sub_error_receive)
         }
-        is CrocTransferState.Cancelled -> "Start another transfer whenever you're ready."
+        is CrocTransferState.Cancelled -> stringResource(R.string.quick_sub_cancelled)
         else -> ""
     }
 }
 
+@Composable
 private fun quickProgressLabel(state: CrocTransferState, isSending: Boolean): String {
     return when (state) {
-        is CrocTransferState.Preparing -> "Preparing"
-        is CrocTransferState.WaitingForPeer -> if (isSending) "Waiting for receiver" else "Waiting for sender"
-        is CrocTransferState.Transferring -> if (isSending) "Live transfer" else "Saving to Downloads"
-        is CrocTransferState.Completed -> "Complete"
-        is CrocTransferState.Error -> "Needs attention"
-        is CrocTransferState.Cancelled -> "Stopped"
+        is CrocTransferState.Preparing -> stringResource(R.string.quick_progress_preparing)
+        is CrocTransferState.WaitingForPeer -> if (isSending) stringResource(R.string.quick_progress_waiting_send) else stringResource(R.string.quick_progress_waiting_receive)
+        is CrocTransferState.Transferring -> if (isSending) stringResource(R.string.quick_progress_transferring_send) else stringResource(R.string.quick_progress_transferring_receive)
+        is CrocTransferState.Completed -> stringResource(R.string.quick_progress_complete)
+        is CrocTransferState.Error -> stringResource(R.string.quick_progress_error)
+        is CrocTransferState.Cancelled -> stringResource(R.string.quick_progress_cancelled)
         else -> ""
     }
 }

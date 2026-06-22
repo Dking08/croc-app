@@ -83,8 +83,8 @@ android {
         applicationId = "com.dking.crocapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "4.1.0"
+        versionCode = 8
+        versionName = "5.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -155,6 +155,9 @@ dependencies {
 
     // DataStore Preferences
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // DocumentFile (SAF tree operations)
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
     // CameraX (for QR scanning)
     implementation("androidx.camera:camera-camera2:1.4.1")

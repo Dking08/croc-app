@@ -1,3 +1,241 @@
 <resources>
     <string name="app_name">croc-app</string>
+
+    <!-- ════ Common / General ════ -->
+    <string name="action_cancel">Cancel</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_send">Send</string>
+    <string name="action_receive">Receive</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_save">Save</string>
+    <string name="action_close">Close</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_share">Share</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_reset">Reset</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_back">Back</string>
+    <string name="action_open_file">Open file</string>
+    <string name="action_share_file">Share file</string>
+    <string name="action_scan_qr">Scan QR</string>
+    <string name="action_show_less">Show less</string>
+    <string name="label_default">Default</string>
+    <string name="label_more_files">+%1$d more file</string>
+    <string name="label_more_files_plural">+%1$d more files</string>
+    <string name="label_more_saved">+%1$d more saved</string>
+
+    <!-- ════ Navigation ════ -->
+    <string name="nav_quick">Quick</string>
+    <string name="nav_send">Send</string>
+    <string name="nav_receive">Receive</string>
+    <string name="nav_history">History</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- ════ Quick Screen ════ -->
+    <string name="quick_send_label">Send</string>
+    <string name="quick_receive_label">Receive</string>
+    <string name="quick_transfer">Quick transfer</string>
+    <string name="quick_info_title">About Quick Transfer</string>
+    <string name="quick_info_description">Quick Transfer enables fast, encrypted peer-to-peer file sharing using croc.\n\n• Send instantly sends your clipboard text to anyone with the code.\n• Receive uses a secret code to receive files or text.\n\nAll transfers are end-to-end encrypted. Nothing is stored on any server.</string>
+    <string name="quick_info_got_it">Got it</string>
+    <string name="quick_ready_title">Ready for Quick Transfer</string>
+    <string name="quick_ready_subtitle">Tap Send to share your clipboard, or Receive to get files.</string>
+    <string name="quick_ready_badge_encrypted">Encrypted</string>
+    <string name="quick_ready_badge_p2p">Peer-to-Peer</string>
+    <string name="quick_ready_badge_no_signup">No Signup</string>
+
+    <!-- Quick Transfer Status -->
+    <string name="quick_preparing_send">Preparing your quick share</string>
+    <string name="quick_preparing_receive">Getting ready to receive</string>
+    <string name="quick_waiting_send">Waiting for your peer</string>
+    <string name="quick_waiting_receive">Listening for the sender</string>
+    <string name="quick_transferring_send">Sharing in progress</string>
+    <string name="quick_transferring_receive">Receiving in progress</string>
+    <string name="quick_completed_send">Quick share delivered</string>
+    <string name="quick_completed_receive">Quick receive complete</string>
+    <string name="quick_error_send">Quick send hit an issue</string>
+    <string name="quick_error_receive">Quick receive hit an issue</string>
+    <string name="quick_cancelled_send">Quick send cancelled</string>
+    <string name="quick_cancelled_receive">Quick receive cancelled</string>
+
+    <!-- Quick Transfer Subtitles -->
+    <string name="quick_sub_preparing">Setting up the encrypted transfer session.</string>
+    <string name="quick_sub_waiting_send">Share the QR or code so the receiver can join.</string>
+    <string name="quick_sub_waiting_receive">Using the active code to connect and save directly into Downloads.</string>
+    <string name="quick_sub_transferring_send">%1$s is on the wire right now.</string>
+    <string name="quick_sub_transferring_receive">Incoming data is being written and prepared for Downloads.</string>
+    <string name="quick_sub_completed_send_one">%1$d item shared successfully.</string>
+    <string name="quick_sub_completed_send_many">%1$d items shared successfully.</string>
+    <string name="quick_sub_completed_receive_text">The text payload is ready below.</string>
+    <string name="quick_sub_completed_receive_one">%1$d item saved for you.</string>
+    <string name="quick_sub_completed_receive_many">%1$d items saved for you.</string>
+    <string name="quick_sub_error_send">The share stopped before completion.</string>
+    <string name="quick_sub_error_receive">The receive stopped before completion.</string>
+    <string name="quick_sub_cancelled">Start another transfer whenever you\'re ready.</string>
+
+    <!-- Quick Progress Labels -->
+    <string name="quick_progress_preparing">Preparing</string>
+    <string name="quick_progress_waiting_send">Waiting for receiver</string>
+    <string name="quick_progress_waiting_receive">Waiting for sender</string>
+    <string name="quick_progress_transferring_send">Live transfer</string>
+    <string name="quick_progress_transferring_receive">Saving to Downloads</string>
+    <string name="quick_progress_complete">Complete</string>
+    <string name="quick_progress_error">Needs attention</string>
+    <string name="quick_progress_cancelled">Stopped</string>
+
+    <!-- Quick Received -->
+    <string name="quick_received_files">Received Files</string>
+    <string name="quick_received_text">Received Text</string>
+    <string name="quick_copy_text">Copy text</string>
+    <string name="quick_open_url">Open URL</string>
+
+    <!-- ════ Send Screen ════ -->
+    <string name="send_title">Send</string>
+    <string name="send_mode_files">Files</string>
+    <string name="send_mode_folder">Folder</string>
+    <string name="send_mode_text">Text</string>
+    <string name="send_files_title">Files</string>
+    <string name="send_files_count_size">%1$d • %2$s</string>
+    <string name="send_pick_files">Pick Files</string>
+    <string name="send_add_more">Add More</string>
+    <string name="send_no_files">No files selected</string>
+    <string name="send_folder_title">Folder</string>
+    <string name="send_folder_count_size">%1$d files • %2$s</string>
+    <string name="send_pick_folder">Pick Folder</string>
+    <string name="send_change">Change</string>
+    <string name="send_folder_detail">%1$d files, %2$s</string>
+    <string name="send_no_folder">No folder selected</string>
+    <string name="send_quick_text">Quick Text</string>
+    <string name="send_text_placeholder">Text to send</string>
+    <string name="send_secret_code">Secret Code</string>
+    <string name="send_code_placeholder">Secret code</string>
+    <string name="send_show_code">Show code</string>
+    <string name="send_hide_code">Hide code</string>
+    <string name="send_copy_code">Copy code</string>
+    <string name="send_share_code">Share code</string>
+    <string name="send_regenerate">Regenerate</string>
+    <string name="send_again">Send Again</string>
+    <string name="send_share_code_subject">croc code</string>
+
+    <!-- ════ Receive Screen ════ -->
+    <string name="receive_title">Receive</string>
+    <string name="receive_again">Receive Again</string>
+    <string name="receive_secret_code">Secret Code</string>
+    <string name="receive_code_placeholder">Enter secret code</string>
+    <string name="receive_show_code">Show code</string>
+    <string name="receive_hide_code">Hide code</string>
+    <string name="receive_paste">Paste</string>
+    <string name="receive_received_files">Received Files</string>
+    <string name="receive_file_count">%1$d file</string>
+    <string name="receive_file_count_plural">%1$d files</string>
+    <string name="receive_received_text">Received Text</string>
+    <string name="receive_open_url">Open URL</string>
+    <string name="receive_copy_text">Copy text</string>
+    <string name="receive_open_file">Open</string>
+    <string name="receive_share_file">Share</string>
+    <string name="receive_code_share_subject">croc code</string>
+    <string name="receive_code_share_chooser">Share code</string>
+    <string name="receive_on_code">Receive on Code</string>
+
+    <!-- ════ History Screen ════ -->
+    <string name="history_title">Recents</string>
+    <string name="history_search_placeholder">Search by code or filename</string>
+    <string name="history_clear_search">Clear search</string>
+    <string name="history_empty_title">No transfers yet</string>
+    <string name="history_empty_subtitle">Your transfer history will appear here</string>
+    <string name="history_more_options">More options</string>
+    <string name="history_open_file">Open File</string>
+    <string name="history_use_code">Use Code</string>
+    <string name="history_copy_code">Copy Code</string>
+    <string name="history_favorite">Favorite</string>
+    <string name="history_unfavorite">Unfavorite</string>
+    <string name="history_just_now">Just now</string>
+    <string name="history_minutes_ago">%1$dm ago</string>
+    <string name="history_hours_ago">%1$dh ago</string>
+    <string name="history_days_ago">%1$dd ago</string>
+
+    <!-- ════ Transfer Progress ════ -->
+    <string name="transfer_preparing_upload">Preparing upload…</string>
+    <string name="transfer_preparing_download">Preparing download…</string>
+    <string name="transfer_waiting_peer">Waiting for peer…</string>
+    <string name="transfer_connecting">Connecting to sender…</string>
+    <string name="transfer_share_code_hint">Share the code with the receiver</string>
+    <string name="transfer_verifying_code">Verifying code phrase…</string>
+    <string name="transfer_uploading">Uploading…</string>
+    <string name="transfer_downloading">Downloading…</string>
+    <string name="transfer_upload_complete">Upload Complete!</string>
+    <string name="transfer_download_complete">Download Complete!</string>
+    <string name="transfer_file_count_one">%1$d file — %2$s</string>
+    <string name="transfer_file_count_many">%1$d files — %2$s</string>
+    <string name="transfer_failed">Transfer Failed</string>
+    <string name="transfer_cancelled">Transfer Cancelled</string>
+
+    <!-- ════ Settings Screen ════ -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme_label">Theme</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_amoled_dark">AMOLED Dark</string>
+    <string name="settings_amoled_dark_desc">Use pure black background</string>
+    <string name="settings_dynamic_color">Dynamic Color</string>
+    <string name="settings_dynamic_color_desc">Use Material You wallpaper colors (Android 12+)</string>
+
+    <string name="settings_codes">Codes</string>
+    <string name="settings_default_code">Default Code Phrase</string>
+    <string name="settings_default_code_desc">Pre-fills the code field on Send/Receive</string>
+    <string name="settings_default_code_placeholder">Leave blank for random codes</string>
+    <string name="settings_saved_codes">Saved Code Phrases</string>
+    <string name="settings_no_saved_codes">No saved codes</string>
+    <string name="settings_delete_code">Delete</string>
+    <string name="settings_quick_send_code">Quick Send Code</string>
+    <string name="settings_quick_send_code_desc">Used by Quick tab when sending. Blank = default code.</string>
+    <string name="settings_quick_receive_code">Quick Receive Code</string>
+    <string name="settings_quick_receive_code_desc">Used by Quick tab when receiving. Blank = default code.</string>
+
+    <string name="settings_relay">Relay</string>
+    <string name="settings_relay_address">Relay Address</string>
+    <string name="settings_relay_address_desc">Custom relay server address. Blank = default relay.</string>
+    <string name="settings_relay_address_placeholder">host:port</string>
+    <string name="settings_relay_password">Relay Password</string>
+    <string name="settings_relay_password_desc">Password for the relay (if protected)</string>
+    <string name="settings_relay_password_placeholder">Password</string>
+    <string name="settings_use_internal_dns">Use Internal DNS</string>
+    <string name="settings_use_internal_dns_desc">Bypass system DNS resolver for relay lookup</string>
+
+    <string name="settings_transfer_options">Transfer Options</string>
+    <string name="settings_pake_curve">PAKE Curve</string>
+    <string name="settings_pake_curve_desc">Elliptic curve for key exchange. Blank = default (p256).</string>
+    <string name="settings_pake_curve_placeholder">e.g. siec, p256, p384, p521</string>
+    <string name="settings_force_local">Force LAN Only</string>
+    <string name="settings_force_local_desc">Only transfer over local network</string>
+    <string name="settings_disable_compression">Disable Compression</string>
+    <string name="settings_disable_compression_desc">Turns off zstd compression</string>
+    <string name="settings_upload_throttle">Upload Throttle</string>
+    <string name="settings_upload_throttle_desc">Limit upload speed (e.g. 1M, 500K). Blank = unlimited.</string>
+    <string name="settings_upload_throttle_placeholder">e.g. 1M, 500K</string>
+    <string name="settings_multicast_address">Multicast Address</string>
+    <string name="settings_multicast_address_desc">Custom multicast discovery address</string>
+    <string name="settings_multicast_placeholder">239.255.255.250</string>
+
+    <string name="settings_storage">Storage</string>
+    <string name="settings_receive_location">Receive Location</string>
+    <string name="settings_receive_location_default">Downloads/croc-received (default)</string>
+    <string name="settings_receive_location_custom">Custom folder</string>
+    <string name="settings_choose_folder">Choose Folder</string>
+    <string name="settings_change_folder">Change</string>
+    <string name="settings_reset_folder">Reset</string>
+    <string name="settings_receive_location_desc">Where received files are saved. Default is Downloads/croc-received.</string>
+
+    <string name="settings_about">About</string>
+    <string name="settings_app_version">App Version</string>
+    <string name="settings_croc_version">Croc Version</string>
+    <string name="settings_croc_version_value">v10.4.2</string>
+    <string name="settings_developer">Developer</string>
+    <string name="settings_developer_value">Dking</string>
+
+    <!-- ════ Setup / Binary ════ -->
+    <string name="setup_binary_title">Preparing croc binary…</string>
+    <string name="setup_binary_extracting">Extracting and verifying the transfer engine.</string>
 </resources>
