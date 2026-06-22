@@ -30,6 +30,7 @@ class UserPreferencesRepository(private val context: Context) {
         val AMOLED_DARK = booleanPreferencesKey("amoled_dark")
         val QUICK_SEND_CODE = stringPreferencesKey("quick_send_code")
         val QUICK_RECEIVE_CODE = stringPreferencesKey("quick_receive_code")
+        val RECEIVE_LOCATION_URI = stringPreferencesKey("receive_location_uri")
     }
 
     data class CrocPreferences(
@@ -46,7 +47,8 @@ class UserPreferencesRepository(private val context: Context) {
         val defaultCodePhrase: String = "",
         val savedCodePhrases: List<String> = emptyList(),
         val quickSendCode: String = "",
-        val quickReceiveCode: String = ""
+        val quickReceiveCode: String = "",
+        val receiveLocationUri: String = ""
     ) {
         /** Effective Quick Send code: explicit quick code → defaultCodePhrase → empty */
         val effectiveQuickSendCode: String
@@ -78,7 +80,8 @@ class UserPreferencesRepository(private val context: Context) {
             defaultCodePhrase = normalizeCodePhrase(prefs[DEFAULT_CODE_PHRASE] ?: ""),
             savedCodePhrases = savedCodes,
             quickSendCode = normalizeCodePhrase(prefs[QUICK_SEND_CODE] ?: ""),
-            quickReceiveCode = normalizeCodePhrase(prefs[QUICK_RECEIVE_CODE] ?: "")
+            quickReceiveCode = normalizeCodePhrase(prefs[QUICK_RECEIVE_CODE] ?: ""),
+            receiveLocationUri = prefs[RECEIVE_LOCATION_URI] ?: ""
         )
     }
 
@@ -186,6 +189,20 @@ class UserPreferencesRepository(private val context: Context) {
                 prefs[QUICK_RECEIVE_CODE] = normalized
             }
         }
+    }
+
+    suspend fun updateReceiveLocationUri(value: String) {
+        context.dataStore.edit { prefs ->
+            if (value.isBlank()) {
+                prefs.remove(RECEIVE_LOCATION_URI)
+            } else {
+                prefs[RECEIVE_LOCATION_URI] = value
+            }
+        }
+    }
+
+    suspend fun clearReceiveLocationUri() {
+        context.dataStore.edit { it.remove(RECEIVE_LOCATION_URI) }
     }
 
     private fun normalizeCodePhrase(value: String): String {
