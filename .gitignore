@@ -19,3 +19,4 @@ local.properties
 /third_party/croc-src/build
 /misc-visitors
 *.jks
+*.env

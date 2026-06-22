@@ -71,6 +71,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -79,6 +80,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dking.crocapp.R
 import com.dking.crocapp.croc.CrocTransferState
 import com.dking.crocapp.ui.components.TransferProgressCard
 import com.dking.crocapp.ui.components.formatBytes
@@ -138,10 +140,10 @@ fun ReceiveScreen(
                 },
                 actions = {
                     IconButton(onClick = onNavigateToHistory) {
-                        Icon(Icons.Outlined.History, contentDescription = "History")
+                        Icon(Icons.Outlined.History, contentDescription = stringResource(R.string.nav_history))
                     }
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                        Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.nav_settings))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -229,7 +231,7 @@ fun ReceiveScreen(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !isTransferActive,
                         singleLine = true,
-                        placeholder = { Text("Enter secret code") },
+                        placeholder = { Text(stringResource(R.string.receive_code_placeholder)) },
                         shape = MaterialTheme.shapes.large,
                         visualTransformation = if (hideCodePhrase) PasswordVisualTransformation() else VisualTransformation.None,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None),
@@ -238,14 +240,14 @@ fun ReceiveScreen(
                                 IconButton(onClick = { hideCodePhrase = !hideCodePhrase }) {
                                     Icon(
                                         imageVector = if (hideCodePhrase) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff,
-                                        contentDescription = if (hideCodePhrase) "Show code" else "Hide code"
+                                        contentDescription = if (hideCodePhrase) stringResource(R.string.receive_show_code) else stringResource(R.string.receive_hide_code)
                                     )
                                 }
                                 IconButton(onClick = {
                                     val clip = clipboardManager.getText()?.text ?: ""
                                     viewModel.updateCodePhrase(clip)
                                 }) {
-                                    Icon(Icons.Rounded.ContentPaste, contentDescription = "Paste")
+                                    Icon(Icons.Rounded.ContentPaste, contentDescription = stringResource(R.string.receive_paste))
                                 }
                             }
                         }
@@ -260,7 +262,7 @@ fun ReceiveScreen(
                         AssistChip(
                             onClick = onOpenScanner,
                             enabled = !isTransferActive,
-                            label = { Text("Scan QR") },
+                            label = { Text(stringResource(R.string.action_scan_qr)) },
                             leadingIcon = {
                                 Icon(Icons.Rounded.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
@@ -268,7 +270,7 @@ fun ReceiveScreen(
                         AssistChip(
                             onClick = { viewModel.saveCurrentCode() },
                             enabled = !isTransferActive && uiState.codePhrase.isNotBlank(),
-                            label = { Text("Save") },
+                            label = { Text(stringResource(R.string.action_save)) },
                             leadingIcon = {
                                 Icon(Icons.Rounded.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
@@ -276,7 +278,7 @@ fun ReceiveScreen(
                         AssistChip(
                             onClick = { viewModel.resetTransfer() },
                             enabled = !isTransferActive && (uiState.codePhrase.isNotBlank() || uiState.receivedFiles.isNotEmpty()),
-                            label = { Text("Clear") },
+                            label = { Text(stringResource(R.string.action_clear)) },
                             leadingIcon = {
                                 Icon(Icons.Rounded.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
@@ -338,7 +340,7 @@ fun ReceiveScreen(
                             modifier = Modifier.fillMaxWidth(),
                             shape = MaterialTheme.shapes.large
                         ) {
-                            Text("Dismiss")
+                            Text(stringResource(R.string.action_dismiss))
                         }
                     }
                 }
@@ -363,7 +365,7 @@ fun ReceiveScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Received Files",
+                                text = stringResource(R.string.receive_received_files),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -426,7 +428,7 @@ fun ReceiveScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Received Text",
+                                text = stringResource(R.string.receive_received_text),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -586,7 +588,7 @@ private fun SavedCodeChipWithActions(
             onDismissRequest = { showMenu = false }
         ) {
             androidx.compose.material3.DropdownMenuItem(
-                text = { Text("Receive on Code") },
+                text = { Text(stringResource(R.string.receive_on_code)) },
                 onClick = {
                     showMenu = false
                     onUse()
@@ -596,7 +598,7 @@ private fun SavedCodeChipWithActions(
                 }
             )
             androidx.compose.material3.DropdownMenuItem(
-                text = { Text("Copy") },
+                text = { Text(stringResource(R.string.action_copy)) },
                 onClick = {
                     showMenu = false
                     onCopy()
@@ -606,7 +608,7 @@ private fun SavedCodeChipWithActions(
                 }
             )
             androidx.compose.material3.DropdownMenuItem(
-                text = { Text("Share") },
+                text = { Text(stringResource(R.string.action_share)) },
                 onClick = {
                     showMenu = false
                     onShare()

@@ -238,4 +238,84 @@
     <!-- ════ Setup / Binary ════ -->
     <string name="setup_binary_title">Preparing croc binary…</string>
     <string name="setup_binary_extracting">Extracting and verifying the transfer engine.</string>
+    <string name="setup_installing_title">Installing croc engine</string>
+    <string name="setup_installing_subtitle">Unpacking the transfer engine and preparing secure transfers.</string>
+
+    <!-- ════ Settings - Additional ════ -->
+    <string name="settings_amoled_dark_full_desc">Pure black background for OLED displays</string>
+    <string name="settings_relay_server">Relay Server</string>
+    <string name="settings_relay_address_label">Address</string>
+    <string name="settings_relay_password_label">Password</string>
+    <string name="settings_secret_codes">Secret Codes</string>
+    <string name="settings_default_secret_code">Default Secret Code</string>
+    <string name="settings_code_placeholder">leave blank to randomize</string>
+    <string name="settings_add_saved_code">Add Saved Code</string>
+    <string name="settings_code_example_placeholder">e.g. red-sun-42</string>
+    <string name="settings_show_less">Show less</string>
+    <string name="settings_show_all_codes">Show all %1$d codes</string>
+    <string name="settings_quick_transfer">Quick Transfer</string>
+    <string name="settings_quick_send_code_label">Quick Send Code</string>
+    <string name="settings_quick_receive_code_label">Quick Receive Code</string>
+    <string name="settings_quick_using_default">using default: %1$s</string>
+    <string name="settings_quick_leave_blank">leave blank to use default code</string>
+    <string name="settings_quick_hint">Quick tab uses these codes. Falls back to Default Secret Code if blank.</string>
+    <string name="settings_network">Network</string>
+    <string name="settings_local_only">Local Only</string>
+    <string name="settings_local_only_desc">Only use local network connections</string>
+    <string name="settings_builtin_dns">Built-in DNS</string>
+    <string name="settings_builtin_dns_desc">Use internal DNS resolver</string>
+    <string name="settings_multicast_address_label">Multicast Address</string>
+    <string name="settings_encryption">Encryption</string>
+    <string name="settings_pake_curve_label">PAKE Curve</string>
+    <string name="settings_transfer_options_label">Transfer Options</string>
+    <string name="settings_disable_compression_label">Disable Compression</string>
+    <string name="settings_disable_compression_full_desc">Transfer files without compression</string>
+    <string name="settings_upload_speed_limit">Upload Speed Limit</string>
+    <string name="settings_upload_speed_placeholder">e.g. 500k or 1m</string>
+    <string name="settings_about_label">About</string>
+    <string name="settings_app_version_label">App Version</string>
+    <string name="settings_croc_version_label">croc Version</string>
+    <string name="settings_croc_version_val">v10.4.3</string>
+    <string name="settings_built_with">Built with ❤️ by Dastageer</string>
+    <string name="settings_croc_github">github.com/schollz/croc</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_label">App Language</string>
+    <string name="settings_language_system">System default</string>
+    <string name="settings_language_desc">Change the app display language</string>
+
+    <!-- ════ Send Screen - Additional ════ -->
+    <string name="send_qr_code">QR Code</string>
+    <string name="send_hide_qr">Hide QR</string>
+    <string name="send_share_qr">Share QR</string>
+    <string name="send_use_default_code">Use default code</string>
+    <string name="send_share_code_chooser">Share code</string>
+
+    <!-- ════ Quick Screen - Additional ════ -->
+    <string name="quick_more_items_one">+%1$d more item</string>
+    <string name="quick_more_items_many">+%1$d more items</string>
+    <string name="quick_send_files_label">Send files, text, or receive instantly</string>
+    <string name="quick_hold_receive_hint">Hold Receive for saved codes</string>
+
+    <!-- ════ Receive Screen - Additional ════ -->
+    <string name="receive_start_receive">Start Receive</string>
+    <string name="receive_scan_qr">Scan QR</string>
+
+    <!-- ════ Binary Setup Screen ════ -->
+    <string name="setup_first_run">FIRST-RUN SETUP</string>
+    <string name="setup_retry">Retry setup</string>
+    <string name="setup_error_fallback">We couldn\'t prepare croc right now.</string>
+    <string name="setup_ready">Everything is in place. Transfers can start now.</string>
+    <string name="setup_checking">Checking your device and preparing the transfer engine.</string>
+    <string name="setup_almost_there">Almost there</string>
+    <string name="setup_preparing_transfers">Preparing secure transfers</string>
+    <string name="setup_guide1_eyebrow">HOW CROC WORKS</string>
+    <string name="setup_guide1_title">Simple code, direct transfer, no account mess.</string>
+    <string name="setup_guide1_bullet1">Pick files on one phone and croc generates a short one-time code.</string>
+    <string name="setup_guide1_bullet2">On the other phone, enter the code or scan the QR to join instantly.</string>
+    <string name="setup_guide1_bullet3">The transfer is end-to-end encrypted, so the file stays private in transit.</string>
+    <string name="setup_guide2_eyebrow">GOOD TO KNOW</string>
+    <string name="setup_guide2_title">This setup only needs patience once.</string>
+    <string name="setup_guide2_bullet1">The first run downloads and prepares the croc engine.</string>
+    <string name="setup_guide2_bullet2">Later launches reuse that engine, so send and receive feel immediate.</string>
+    <string name="setup_guide2_bullet3">Keeping the app open on this screen is enough. No extra action needed.</string>
 </resources>

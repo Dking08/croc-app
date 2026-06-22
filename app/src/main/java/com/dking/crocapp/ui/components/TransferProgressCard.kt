@@ -34,6 +34,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.dking.crocapp.R
 import com.dking.crocapp.croc.CrocTransferState
 
 @Composable
@@ -60,7 +62,7 @@ fun TransferProgressCard(
                         icon = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
-                        title = if (isSending) "Preparing upload..." else "Preparing download...",
+                        title = if (isSending) stringResource(R.string.transfer_preparing_upload) else stringResource(R.string.transfer_preparing_download),
                         subtitle = null
                     )
                     LinearProgressIndicator(
@@ -79,8 +81,8 @@ fun TransferProgressCard(
                         icon = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
-                        title = if (isSending) "Waiting for peer..." else "Connecting to sender...",
-                        subtitle = if (isSending) "Share the code with the receiver" else "Verifying code phrase..."
+                        title = if (isSending) stringResource(R.string.transfer_waiting_peer) else stringResource(R.string.transfer_connecting),
+                        subtitle = if (isSending) stringResource(R.string.transfer_share_code_hint) else stringResource(R.string.transfer_verifying_code)
                     )
                     LinearProgressIndicator(
                         modifier = Modifier
@@ -96,7 +98,7 @@ fun TransferProgressCard(
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.large
                     ) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.action_cancel))
                     }
                 }
 
@@ -111,7 +113,7 @@ fun TransferProgressCard(
                         icon = if (isSending) Icons.Rounded.CloudUpload else Icons.Rounded.Download,
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
-                        title = if (isSending) "Uploading..." else "Downloading...",
+                        title = if (isSending) stringResource(R.string.transfer_uploading) else stringResource(R.string.transfer_downloading),
                         subtitle = subtitle
                     )
 
@@ -154,7 +156,7 @@ fun TransferProgressCard(
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.large
                     ) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.action_cancel))
                     }
                 }
 
@@ -170,7 +172,7 @@ fun TransferProgressCard(
                         icon = Icons.Rounded.CheckCircle,
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
-                        title = if (isSending) "Upload Complete!" else "Download Complete!",
+                        title = if (isSending) stringResource(R.string.transfer_upload_complete) else stringResource(R.string.transfer_download_complete),
                         subtitle = subtitle,
                         titleColor = MaterialTheme.colorScheme.primary
                     )
@@ -181,7 +183,7 @@ fun TransferProgressCard(
                         icon = Icons.Rounded.Error,
                         iconTint = MaterialTheme.colorScheme.error,
                         iconBackground = MaterialTheme.colorScheme.errorContainer,
-                        title = "Transfer Failed",
+                        title = stringResource(R.string.transfer_failed),
                         subtitle = state.message,
                         titleColor = MaterialTheme.colorScheme.error
                     )
@@ -192,7 +194,7 @@ fun TransferProgressCard(
                         icon = Icons.Rounded.Cancel,
                         iconTint = MaterialTheme.colorScheme.outline,
                         iconBackground = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        title = "Transfer Cancelled",
+                        title = stringResource(R.string.transfer_cancelled),
                         subtitle = null
                     )
                 }

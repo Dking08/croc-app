@@ -32,6 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dking.crocapp.croc.BinarySetupPhase
 import com.dking.crocapp.croc.BinarySetupState
+import com.dking.crocapp.R
+import androidx.compose.ui.res.stringResource
 import java.util.Locale
 
 @Composable
@@ -82,21 +84,21 @@ fun CrocBinarySetupScreen(
             ) {
                 HeroCard(state = state, onRetry = onRetry)
                 GuideCard(
-                    eyebrow = "HOW CROC WORKS",
-                    title = "Simple code, direct transfer, no account mess.",
+                    eyebrow = stringResource(R.string.setup_guide1_eyebrow),
+                    title = stringResource(R.string.setup_guide1_title),
                     body = listOf(
-                        "Pick files on one phone and croc generates a short one-time code.",
-                        "On the other phone, enter the code or scan the QR to join instantly.",
-                        "The transfer is end-to-end encrypted, so the file stays private in transit."
+                        stringResource(R.string.setup_guide1_bullet1),
+                        stringResource(R.string.setup_guide1_bullet2),
+                        stringResource(R.string.setup_guide1_bullet3)
                     )
                 )
                 GuideCard(
-                    eyebrow = "GOOD TO KNOW",
-                    title = "This setup only needs patience once.",
+                    eyebrow = stringResource(R.string.setup_guide2_eyebrow),
+                    title = stringResource(R.string.setup_guide2_title),
                     body = listOf(
-                        "The first run downloads and prepares the croc engine.",
-                        "Later launches reuse that engine, so send and receive feel immediate.",
-                        "Keeping the app open on this screen is enough. No extra action needed."
+                        stringResource(R.string.setup_guide2_bullet1),
+                        stringResource(R.string.setup_guide2_bullet2),
+                        stringResource(R.string.setup_guide2_bullet3)
                     )
                 )
             }
@@ -149,7 +151,7 @@ private fun HeroCard(
 
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "FIRST-RUN SETUP",
+                        text = stringResource(R.string.setup_first_run),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.ExtraBold
@@ -175,20 +177,20 @@ private fun HeroCard(
 
                 BinarySetupPhase.Error -> {
                     Text(
-                        text = state.errorMessage ?: "We couldn't prepare croc right now.",
+                        text = state.errorMessage ?: stringResource(R.string.setup_error_fallback),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error
                     )
                     if (onRetry != null) {
                         Button(onClick = onRetry) {
-                            Text("Retry setup")
+                            Text(stringResource(R.string.setup_retry))
                         }
                     }
                 }
 
                 BinarySetupPhase.Ready -> {
                     Text(
-                        text = "Everything is in place. Transfers can start now.",
+                        text = stringResource(R.string.setup_ready),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold
@@ -205,7 +207,7 @@ private fun HeroCard(
                             strokeWidth = 2.5.dp
                         )
                         Text(
-                            text = "Checking your device and preparing the transfer engine.",
+                            text = stringResource(R.string.setup_checking),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

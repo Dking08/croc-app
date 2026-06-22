@@ -8,19 +8,61 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
+import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.net.URLConnection
 
 internal object ReceivedFilePublisher {
 
     fun publish(application: Application, outputDir: File): List<ReceivedFile> {
+        return publish(application, outputDir, customTreeUri = null)
+    }
+
+    fun publish(application: Application, outputDir: File, customTreeUri: Uri?): List<ReceivedFile> {
         val files = outputDir.listFiles()?.filter { it.isFile } ?: return emptyList()
         return files.mapNotNull { source ->
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (customTreeUri != null) {
+                publishToSafTree(application, source, customTreeUri)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 publishToMediaStore(application, source)
             } else {
                 publishToPublicDownloads(application, source)
             }
+        }
+    }
+
+    private fun publishToSafTree(application: Application, source: File, treeUri: Uri): ReceivedFile? {
+        val resolver = application.contentResolver
+        val treeDoc = DocumentFile.fromTreeUri(application, treeUri) ?: return null
+
+        // Create croc-received subdirectory inside the user-picked tree
+        val crocDir = treeDoc.findFile("croc-received")
+            ?: treeDoc.createDirectory("croc-received")
+            ?: return null
+
+        // Delete existing file with same name to overwrite
+        crocDir.findFile(source.name)?.delete()
+
+        val mimeType = URLConnection.guessContentTypeFromName(source.name) ?: "application/octet-stream"
+        val destDoc = crocDir.createFile(mimeType, source.name) ?: return null
+
+        return try {
+            resolver.openOutputStream(destDoc.uri)?.use { output ->
+                source.inputStream().use { input -> input.copyTo(output) }
+            } ?: return null
+
+            val displayPath = treeDoc.name?.let { "$it/croc-received/${source.name}" }
+                ?: "croc-received/${source.name}"
+
+            ReceivedFile(
+                name = source.name,
+                savedLocation = displayPath,
+                uri = destDoc.uri,
+                mimeType = mimeType
+            )
+        } catch (_: Exception) {
+            destDoc.delete()
+            null
         }
     }
 
@@ -117,3 +159,4 @@ internal object ReceivedFilePublisher {
         }
     }
 }
+

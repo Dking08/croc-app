@@ -233,7 +233,7 @@ fun SendScreen(
                         Icon(Icons.Rounded.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
                 ) {
-                    Text("Files")
+                    Text(stringResource(R.string.send_mode_files))
                 }
                 SegmentedButton(
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
@@ -243,7 +243,7 @@ fun SendScreen(
                         Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
                 ) {
-                    Text("Folder")
+                    Text(stringResource(R.string.send_mode_folder))
                 }
                 SegmentedButton(
                     shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
@@ -253,7 +253,7 @@ fun SendScreen(
                         Icon(Icons.Outlined.TextFields, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
                 ) {
-                    Text("Text")
+                    Text(stringResource(R.string.send_mode_text))
                 }
             }
 
@@ -290,7 +290,7 @@ fun SendScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Files",
+                                text = stringResource(R.string.send_files_title),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -315,7 +315,7 @@ fun SendScreen(
                             ) {
                                 Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(if (uiState.selectedFiles.isEmpty()) "Pick Files" else "Add More")
+                                Text(if (uiState.selectedFiles.isEmpty()) stringResource(R.string.send_pick_files) else stringResource(R.string.send_add_more))
                             }
                             if (uiState.selectedFiles.isNotEmpty()) {
                                 OutlinedButton(
@@ -326,7 +326,7 @@ fun SendScreen(
                                 ) {
                                     Icon(Icons.Rounded.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Clear")
+                                    Text(stringResource(R.string.action_clear))
                                 }
                             }
                         }
@@ -361,7 +361,7 @@ fun SendScreen(
                             }
                         } else {
                             Text(
-                                text = "No files selected",
+                                text = stringResource(R.string.send_no_files),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(vertical = 4.dp)
@@ -440,7 +440,7 @@ fun SendScreen(
                                 ) {
                                     Icon(Icons.Rounded.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Clear")
+                                    Text(stringResource(R.string.action_clear))
                                 }
                             }
                         }
@@ -486,7 +486,7 @@ fun SendScreen(
                             }
                         } else {
                             Text(
-                                text = "No folder selected",
+                                text = stringResource(R.string.send_no_folder),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(vertical = 4.dp)
@@ -514,14 +514,14 @@ fun SendScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = "Quick Text",
+                            text = stringResource(R.string.send_quick_text),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
                         OutlinedTextField(
                             value = uiState.textToSend,
                             onValueChange = { viewModel.updateTextToSend(it) },
-                            placeholder = { Text("Text to send") },
+                            placeholder = { Text(stringResource(R.string.send_text_placeholder)) },
                             modifier = Modifier.fillMaxWidth(),
                             minLines = 4,
                             maxLines = 6,
@@ -574,13 +574,13 @@ fun SendScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Secret Code",
+                            text = stringResource(R.string.send_secret_code),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
                         if (uiState.defaultCodePhrase.isNotBlank() && uiState.defaultCodePhrase == uiState.codePhrase) {
                             Text(
-                                text = "Default",
+                                text = stringResource(R.string.label_default),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -592,7 +592,7 @@ fun SendScreen(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !isTransferActive,
                         singleLine = true,
-                        placeholder = { Text("Secret code") },
+                        placeholder = { Text(stringResource(R.string.send_code_placeholder)) },
                         shape = MaterialTheme.shapes.large,
                         visualTransformation = if (hideCodePhrase) PasswordVisualTransformation() else VisualTransformation.None,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None),
@@ -601,13 +601,13 @@ fun SendScreen(
                                 IconButton(onClick = { hideCodePhrase = !hideCodePhrase }) {
                                     Icon(
                                         imageVector = if (hideCodePhrase) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff,
-                                        contentDescription = if (hideCodePhrase) "Show code" else "Hide code"
+                                        contentDescription = if (hideCodePhrase) stringResource(R.string.send_show_code) else stringResource(R.string.send_hide_code)
                                     )
                                 }
                                 IconButton(onClick = {
                                     clipboardManager.setText(AnnotatedString(uiState.codePhrase))
                                 }) {
-                                    Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy code")
+                                    Icon(Icons.Rounded.ContentCopy, contentDescription = stringResource(R.string.send_copy_code))
                                 }
                             }
                         }
@@ -621,7 +621,7 @@ fun SendScreen(
                         AssistChip(
                             onClick = { viewModel.regenerateCode() },
                             enabled = !isTransferActive,
-                            label = { Text("Regenerate") },
+                            label = { Text(stringResource(R.string.send_regenerate)) },
                             leadingIcon = {
                                 Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
@@ -629,7 +629,7 @@ fun SendScreen(
                         AssistChip(
                             onClick = { viewModel.saveCurrentCode() },
                             enabled = !isTransferActive && uiState.codePhrase.isNotBlank(),
-                            label = { Text("Save") },
+                            label = { Text(stringResource(R.string.action_save)) },
                             leadingIcon = {
                                 Icon(Icons.Rounded.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
@@ -638,16 +638,16 @@ fun SendScreen(
                             AssistChip(
                                 onClick = { viewModel.useCodePhrase(uiState.defaultCodePhrase) },
                                 enabled = !isTransferActive,
-                                label = { Text("Reset") },
+                                label = { Text(stringResource(R.string.action_reset)) },
                                 leadingIcon = {
-                                    Icon(Icons.Rounded.Home, contentDescription = "Use default code", modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Rounded.Home, contentDescription = stringResource(R.string.send_use_default_code), modifier = Modifier.size(18.dp))
                                 }
                             )
                         }
                         AssistChip(
                             onClick = { showQrCode = !showQrCode },
                             enabled = uiState.codePhrase.isNotBlank(),
-                            label = { Text(if (showQrCode) "Hide QR" else "QR Code") },
+                            label = { Text(if (showQrCode) stringResource(R.string.send_hide_qr) else stringResource(R.string.send_qr_code)) },
                             leadingIcon = {
                                 Icon(Icons.Rounded.QrCode2, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
@@ -660,7 +660,7 @@ fun SendScreen(
                                 )
                             },
                             enabled = uiState.codePhrase.isNotBlank(),
-                            label = { Text("Share QR") },
+                            label = { Text(stringResource(R.string.send_share_qr)) },
                             leadingIcon = {
                                 Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
@@ -852,7 +852,7 @@ private fun SavedCodeChipWithActions(
             onDismissRequest = { showMenu = false }
         ) {
             androidx.compose.material3.DropdownMenuItem(
-                text = { Text("Use Code") },
+                text = { Text(stringResource(R.string.history_use_code)) },
                 onClick = {
                     showMenu = false
                     onUse()
@@ -862,7 +862,7 @@ private fun SavedCodeChipWithActions(
                 }
             )
             androidx.compose.material3.DropdownMenuItem(
-                text = { Text("Copy") },
+                text = { Text(stringResource(R.string.action_copy)) },
                 onClick = {
                     showMenu = false
                     onCopy()
@@ -872,7 +872,7 @@ private fun SavedCodeChipWithActions(
                 }
             )
             androidx.compose.material3.DropdownMenuItem(
-                text = { Text("Share") },
+                text = { Text(stringResource(R.string.action_share)) },
                 onClick = {
                     showMenu = false
                     onShare()
@@ -882,7 +882,7 @@ private fun SavedCodeChipWithActions(
                 }
             )
             androidx.compose.material3.DropdownMenuItem(
-                text = { Text("Share QR") },
+                text = { Text(stringResource(R.string.send_share_qr)) },
                 onClick = {
                     showMenu = false
                     onShareQr()

@@ -1,5 +1,9 @@
 package com.dking.crocapp.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +26,7 @@ import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.CompareArrows
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Save
@@ -58,7 +63,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -88,13 +95,13 @@ fun SettingsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Settings",
+                        stringResource(R.string.settings_title),
                         fontWeight = FontWeight.Bold
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -146,7 +153,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
                         Text(
-                            text = "croc-app",
+                            text = stringResource(R.string.app_name),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -160,9 +167,9 @@ fun SettingsScreen(
             }
 
             // Appearance
-            SettingsSection(icon = Icons.Rounded.Palette, title = "Appearance") {
+            SettingsSection(icon = Icons.Rounded.Palette, title = stringResource(R.string.settings_appearance)) {
                 DropdownSetting(
-                    label = "Theme",
+                    label = stringResource(R.string.settings_theme_label),
                     value = prefs.themeMode,
                     options = listOf("system", "light", "dark"),
                     onValueChange = { viewModel.updateThemeMode(it) }
@@ -173,17 +180,86 @@ fun SettingsScreen(
                 )
                 SwitchSetting(
                     icon = Icons.Rounded.Palette,
-                    label = "AMOLED Dark",
-                    description = "Pure black background for OLED displays",
+                    label = stringResource(R.string.settings_amoled_dark),
+                    description = stringResource(R.string.settings_amoled_dark_full_desc),
                     checked = prefs.amoledDark,
                     onCheckedChange = { viewModel.updateAmoledDark(it) }
                 )
             }
 
+            // Language — reads supported locales from locale_config.xml
+            run {
+                val context = LocalContext.current
+                // Parse locale_config.xml to get only OUR app's supported locales
+                val availableLocales = remember {
+                    try {
+                        val parser = context.resources.getXml(R.xml.locale_config)
+                        val locales = mutableListOf<String>()
+                        var eventType = parser.eventType
+                        while (eventType != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                            if (eventType == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "locale") {
+                                parser.getAttributeValue("http://schemas.android.com/apk/res/android", "name")
+                                    ?.let { locales.add(it) }
+                            }
+                            eventType = parser.next()
+                        }
+                        parser.close()
+                        locales.sorted()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
+
+                // Only show the picker if there are 2+ languages
+                if (availableLocales.size > 1) {
+                    val currentLocale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales()
+                    val currentCode = if (currentLocale.isEmpty) "system"
+                    else currentLocale.get(0)?.language ?: "system"
+
+                    val systemDefaultLabel = stringResource(R.string.settings_language_system)
+                    val displayNames = remember(availableLocales, systemDefaultLabel) {
+                        val map = mutableMapOf("system" to systemDefaultLabel)
+                        availableLocales.forEach { code ->
+                            val locale = java.util.Locale(code)
+                            val name = locale.getDisplayLanguage(locale)
+                                .replaceFirstChar { it.uppercase() }
+                            map[code] = "$name ($code)"
+                        }
+                        map
+                    }
+
+                    SettingsSection(icon = Icons.Rounded.Cloud, title = stringResource(R.string.settings_language)) {
+                        DropdownSetting(
+                            label = stringResource(R.string.settings_language_label),
+                            value = currentCode,
+                            options = listOf("system") + availableLocales,
+                            displayTransform = { displayNames[it] ?: it },
+                            onValueChange = { code ->
+                                if (code == "system") {
+                                    androidx.appcompat.app.AppCompatDelegate.setApplicationLocales(
+                                        androidx.core.os.LocaleListCompat.getEmptyLocaleList()
+                                    )
+                                } else {
+                                    androidx.appcompat.app.AppCompatDelegate.setApplicationLocales(
+                                        androidx.core.os.LocaleListCompat.forLanguageTags(code)
+                                    )
+                                }
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.settings_language_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             // Relay Settings
-            SettingsSection(icon = Icons.Rounded.Cloud, title = "Relay Server") {
+            SettingsSection(icon = Icons.Rounded.Cloud, title = stringResource(R.string.settings_relay_server)) {
                 TextFieldSetting(
-                    label = "Address",
+                    label = stringResource(R.string.settings_relay_address_label),
                     value = prefs.relayAddress,
                     onValueChange = { viewModel.updateRelayAddress(it) },
                     placeholder = "croc.schollz.com:9009"
@@ -193,7 +269,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                 )
                 PasswordTextFieldSetting(
-                    label = "Password",
+                    label = stringResource(R.string.settings_relay_password_label),
                     value = prefs.relayPassword,
                     onValueChange = { viewModel.updateRelayPassword(it) },
                     placeholder = "pass123",
@@ -203,12 +279,12 @@ fun SettingsScreen(
             }
 
             // Secret Codes
-            SettingsSection(icon = Icons.Rounded.Security, title = "Secret Codes") {
+            SettingsSection(icon = Icons.Rounded.Security, title = stringResource(R.string.settings_secret_codes)) {
                 PasswordTextFieldSetting(
-                    label = "Default Secret Code",
+                    label = stringResource(R.string.settings_default_secret_code),
                     value = prefs.defaultCodePhrase,
                     onValueChange = { viewModel.updateDefaultCodePhrase(it) },
-                    placeholder = "leave blank to randomize",
+                    placeholder = stringResource(R.string.settings_code_placeholder),
                     visible = defaultCodeVisible,
                     onToggleVisibility = { defaultCodeVisible = !defaultCodeVisible }
                 )
@@ -224,10 +300,10 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = savedCodeDraft,
                         onValueChange = { savedCodeDraft = it },
-                        label = { Text("Add Saved Code") },
+                        label = { Text(stringResource(R.string.settings_add_saved_code)) },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
-                        placeholder = { Text("e.g. red-sun-42") },
+                        placeholder = { Text(stringResource(R.string.settings_code_example_placeholder)) },
                         shape = MaterialTheme.shapes.large
                     )
                     FilledTonalButton(
@@ -264,8 +340,8 @@ fun SettingsScreen(
                             shape = MaterialTheme.shapes.large
                         ) {
                             Text(
-                                if (showAllCodes) "Show less"
-                                else "Show all ${prefs.savedCodePhrases.size} codes"
+                                if (showAllCodes) stringResource(R.string.settings_show_less)
+                                else stringResource(R.string.settings_show_all_codes, prefs.savedCodePhrases.size)
                             )
                         }
                     }
@@ -273,41 +349,41 @@ fun SettingsScreen(
             }
 
             // Quick Transfer
-            SettingsSection(icon = Icons.Rounded.Speed, title = "Quick Transfer") {
+            SettingsSection(icon = Icons.Rounded.Speed, title = stringResource(R.string.settings_quick_transfer)) {
                 TextFieldSetting(
-                    label = "Quick Send Code",
+                    label = stringResource(R.string.settings_quick_send_code_label),
                     value = prefs.quickSendCode,
                     onValueChange = { viewModel.updateQuickSendCode(it) },
                     placeholder = if (prefs.defaultCodePhrase.isNotBlank())
-                        "using default: ${prefs.defaultCodePhrase}"
-                    else "leave blank to use default code"
+                        stringResource(R.string.settings_quick_using_default, prefs.defaultCodePhrase)
+                    else stringResource(R.string.settings_quick_leave_blank)
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 4.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                 )
                 TextFieldSetting(
-                    label = "Quick Receive Code",
+                    label = stringResource(R.string.settings_quick_receive_code_label),
                     value = prefs.quickReceiveCode,
                     onValueChange = { viewModel.updateQuickReceiveCode(it) },
                     placeholder = if (prefs.defaultCodePhrase.isNotBlank())
-                        "using default: ${prefs.defaultCodePhrase}"
-                    else "leave blank to use default code"
+                        stringResource(R.string.settings_quick_using_default, prefs.defaultCodePhrase)
+                    else stringResource(R.string.settings_quick_leave_blank)
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Quick tab uses these codes. Falls back to Default Secret Code if blank.",
+                    text = stringResource(R.string.settings_quick_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             // Network
-            SettingsSection(icon = Icons.Rounded.Wifi, title = "Network") {
+            SettingsSection(icon = Icons.Rounded.Wifi, title = stringResource(R.string.settings_network)) {
                 SwitchSetting(
                     icon = Icons.Rounded.Wifi,
-                    label = "Local Only",
-                    description = "Only use local network connections",
+                    label = stringResource(R.string.settings_local_only),
+                    description = stringResource(R.string.settings_local_only_desc),
                     checked = prefs.forceLocal,
                     onCheckedChange = { viewModel.updateForceLocal(it) }
                 )
@@ -317,8 +393,8 @@ fun SettingsScreen(
                 )
                 SwitchSetting(
                     icon = Icons.Rounded.Cloud,
-                    label = "Built-in DNS",
-                    description = "Use internal DNS resolver",
+                    label = stringResource(R.string.settings_builtin_dns),
+                    description = stringResource(R.string.settings_builtin_dns_desc),
                     checked = prefs.useInternalDns,
                     onCheckedChange = { viewModel.updateUseInternalDns(it) }
                 )
@@ -327,7 +403,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                 )
                 TextFieldSetting(
-                    label = "Multicast Address",
+                    label = stringResource(R.string.settings_multicast_address_label),
                     value = prefs.multicastAddress,
                     onValueChange = { viewModel.updateMulticastAddress(it) },
                     placeholder = "239.255.255.250"
@@ -335,9 +411,9 @@ fun SettingsScreen(
             }
 
             // Encryption
-            SettingsSection(icon = Icons.Rounded.Security, title = "Encryption") {
+            SettingsSection(icon = Icons.Rounded.Security, title = stringResource(R.string.settings_encryption)) {
                 DropdownSetting(
-                    label = "PAKE Curve",
+                    label = stringResource(R.string.settings_pake_curve_label),
                     value = prefs.pakeCurve,
                     options = listOf("p256", "p384", "p521", "siec", "ed25519"),
                     onValueChange = { viewModel.updatePakeCurve(it) }
@@ -345,11 +421,11 @@ fun SettingsScreen(
             }
 
             // Transfer
-            SettingsSection(icon = Icons.Rounded.Speed, title = "Transfer Options") {
+            SettingsSection(icon = Icons.Rounded.Speed, title = stringResource(R.string.settings_transfer_options_label)) {
                 SwitchSetting(
                     icon = Icons.Rounded.Speed,
-                    label = "Disable Compression",
-                    description = "Transfer files without compression",
+                    label = stringResource(R.string.settings_disable_compression_label),
+                    description = stringResource(R.string.settings_disable_compression_full_desc),
                     checked = prefs.disableCompression,
                     onCheckedChange = { viewModel.updateDisableCompression(it) }
                 )
@@ -358,33 +434,107 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                 )
                 TextFieldSetting(
-                    label = "Upload Speed Limit",
+                    label = stringResource(R.string.settings_upload_speed_limit),
                     value = prefs.uploadThrottle,
                     onValueChange = { viewModel.updateUploadThrottle(it) },
-                    placeholder = "e.g. 500k or 1m"
+                    placeholder = stringResource(R.string.settings_upload_speed_placeholder)
+                )
+            }
+
+            // Storage / Receive Location
+            val context = LocalContext.current
+            val receiveLocationPicker = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.OpenDocumentTree()
+            ) { uri: Uri? ->
+                if (uri != null) {
+                    // Persist read/write access across reboots
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                    viewModel.updateReceiveLocation(uri.toString())
+                }
+            }
+
+            SettingsSection(icon = Icons.Rounded.FolderOpen, title = stringResource(R.string.settings_storage)) {
+                val currentUri = prefs.receiveLocationUri
+                val customFolderLabel = stringResource(R.string.settings_receive_location_custom)
+                val defaultLabel = stringResource(R.string.settings_receive_location_default)
+                val displayPath = if (currentUri.isNotBlank()) {
+                    try {
+                        val uri = Uri.parse(currentUri)
+                        uri.lastPathSegment?.replace(":", "/") ?: customFolderLabel
+                    } catch (_: Exception) {
+                        customFolderLabel
+                    }
+                } else {
+                    defaultLabel
+                }
+
+                Text(
+                    text = stringResource(R.string.settings_receive_location),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = displayPath,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = { receiveLocationPicker.launch(null) },
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.large
+                    ) {
+                        Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (currentUri.isBlank()) stringResource(R.string.settings_choose_folder) else stringResource(R.string.settings_change_folder))
+                    }
+                    if (currentUri.isNotBlank()) {
+                        FilledTonalButton(
+                            onClick = { viewModel.clearReceiveLocation() },
+                            modifier = Modifier.weight(1f),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(R.string.settings_reset_folder))
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.settings_receive_location_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             // About
-            SettingsSection(icon = Icons.Rounded.Info, title = "About") {
-                InfoRow(label = "App Version", value = BuildConfig.VERSION_NAME)
+            SettingsSection(icon = Icons.Rounded.Info, title = stringResource(R.string.settings_about_label)) {
+                InfoRow(label = stringResource(R.string.settings_app_version_label), value = BuildConfig.VERSION_NAME)
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 2.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                 )
-                InfoRow(label = "croc Version", value = "v10.4.3")
+                InfoRow(label = stringResource(R.string.settings_croc_version_label), value = stringResource(R.string.settings_croc_version_val))
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 2.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Built with ❤️ by Dastageer",
+                    text = stringResource(R.string.settings_built_with),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "github.com/schollz/croc",
+                    text = stringResource(R.string.settings_croc_github),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Medium
@@ -618,7 +768,8 @@ private fun DropdownSetting(
     label: String,
     value: String,
     options: List<String>,
-    onValueChange: (String) -> Unit
+    onValueChange: (String) -> Unit,
+    displayTransform: (String) -> String = { it }
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -630,7 +781,7 @@ private fun DropdownSetting(
             .padding(vertical = 2.dp)
     ) {
         OutlinedTextField(
-            value = value,
+            value = displayTransform(value),
             onValueChange = {},
             readOnly = true,
             label = { Text(label) },
@@ -646,7 +797,7 @@ private fun DropdownSetting(
         ) {
             options.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option) },
+                    text = { Text(displayTransform(option)) },
                     onClick = {
                         onValueChange(option)
                         expanded = false

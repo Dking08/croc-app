@@ -59,8 +59,10 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dking.crocapp.R
 import com.dking.crocapp.data.db.TransferHistory
 import com.dking.crocapp.data.db.TransferType
 import com.dking.crocapp.ui.components.EmptyState
@@ -92,7 +94,7 @@ fun HistoryScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -112,14 +114,14 @@ fun HistoryScreen(
                 value = uiState.searchQuery,
                 onValueChange = { viewModel.setSearchQuery(it) },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Search by code or filename") },
+                placeholder = { Text(stringResource(R.string.history_search_placeholder)) },
                 leadingIcon = {
                     Icon(Icons.Rounded.Search, contentDescription = null)
                 },
                 trailingIcon = if (uiState.searchQuery.isNotBlank()) {
                     {
                         IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Clear search")
+                            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.history_clear_search))
                         }
                     }
                 } else null,
@@ -170,8 +172,8 @@ fun HistoryScreen(
             if (uiState.transfers.isEmpty()) {
                 EmptyState(
                     icon = Icons.Rounded.History,
-                    title = "No transfers yet",
-                    subtitle = "Your transfer history will appear here"
+                    title = stringResource(R.string.history_empty_title),
+                    subtitle = stringResource(R.string.history_empty_subtitle)
                 )
             } else {
                 LazyColumn(
@@ -327,7 +329,7 @@ private fun CompactHistoryCard(
                 ) {
                     Icon(
                         Icons.Rounded.MoreVert,
-                        contentDescription = "More options",
+                        contentDescription = stringResource(R.string.history_more_options),
                         modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -337,7 +339,7 @@ private fun CompactHistoryCard(
                     onDismissRequest = { showMenu = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text(if (canOpenTransfer) "Open File" else "Use Code") },
+                        text = { Text(if (canOpenTransfer) stringResource(R.string.history_open_file) else stringResource(R.string.history_use_code)) },
                         onClick = {
                             showMenu = false
                             if (!canOpenTransfer || !onOpenTransfer()) {
@@ -353,7 +355,7 @@ private fun CompactHistoryCard(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Copy Code") },
+                        text = { Text(stringResource(R.string.history_copy_code)) },
                         onClick = {
                             showMenu = false
                             onCopyCode()
@@ -363,7 +365,7 @@ private fun CompactHistoryCard(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(if (transfer.isFavorite) "Unfavorite" else "Favorite") },
+                        text = { Text(if (transfer.isFavorite) stringResource(R.string.history_unfavorite) else stringResource(R.string.history_favorite)) },
                         onClick = {
                             showMenu = false
                             onToggleFavorite()
@@ -377,7 +379,7 @@ private fun CompactHistoryCard(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Delete") },
+                        text = { Text(stringResource(R.string.action_delete)) },
                         onClick = {
                             showMenu = false
                             onDelete()

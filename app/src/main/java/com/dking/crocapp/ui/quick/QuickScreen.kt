@@ -239,13 +239,13 @@ private fun QuickBrandHeader() {
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = "croc-app",
+                        text = stringResource(R.string.app_name),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Send files, text, or receive instantly",
+                        text = stringResource(R.string.quick_send_files_label),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -676,7 +676,7 @@ private fun QuickManifestList(
         }
 
         if (items.size > 4) {
-            QuickDetailPill(label = "+${items.size - 4} more item${if (items.size - 4 == 1) "" else "s"}")
+            QuickDetailPill(label = if (items.size - 4 == 1) stringResource(R.string.quick_more_items_one, items.size - 4) else stringResource(R.string.quick_more_items_many, items.size - 4))
         }
     }
 }
@@ -1090,7 +1090,7 @@ private fun QuickActionButtons(
         // Slot 0: Send (left main)
         QuickCircleButton(
             icon = Icons.Rounded.Upload,
-            label = "Send",
+            label = stringResource(R.string.quick_send_label),
             size = mainSize,
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1104,7 +1104,7 @@ private fun QuickActionButtons(
         Box {
             QuickCircleButtonWithLongPress(
                 icon = Icons.Rounded.Download,
-                label = "Receive",
+                label = stringResource(R.string.quick_receive_label),
                 size = mainSize,
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                 contentColor = MaterialTheme.colorScheme.onTertiaryContainer,

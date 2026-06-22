@@ -16,6 +16,7 @@ import com.dking.crocapp.data.preferences.UserPreferencesRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
@@ -53,7 +54,9 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 if (state is CrocTransferState.Completed) {
                     // Scan the output directory for actual files, since parser
                     // fileNames may be truncated (e.g. "4200-funn...")
-                    val receivedFiles = publishReceivedFiles()
+                    val prefs = prefsRepo.preferencesFlow.first()
+                    val customUri = prefs.receiveLocationUri.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+                    val receivedFiles = publishReceivedFiles(customUri)
                     _uiState.update { it.copy(receivedFiles = receivedFiles) }
                     // Use actual file names for history, not truncated parser names
                     val actualNames = receivedFiles.map { it.name }
@@ -179,9 +182,9 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
      * We don't rely on [fileNames] from the parser because croc truncates
      * long names in its progress output (e.g. "4200-funn...").
      */
-    private fun publishReceivedFiles(): List<ReceivedFile> {
+    private fun publishReceivedFiles(customTreeUri: Uri? = null): List<ReceivedFile> {
         val outputDir = currentOutputDir ?: return emptyList()
-        return ReceivedFilePublisher.publish(getApplication(), outputDir)
+        return ReceivedFilePublisher.publish(getApplication(), outputDir, customTreeUri)
     }
 
     private fun normalizeCodePhrase(code: String): String {

@@ -1,0 +1,321 @@
+<resources>
+    <string name="app_name">croc-app</string>
+
+    <!-- ════ Common / General ════ -->
+    <string name="action_cancel">रद्द करें</string>
+    <string name="action_dismiss">हटाएं</string>
+    <string name="action_send">भेजें</string>
+    <string name="action_receive">प्राप्त करें</string>
+    <string name="action_clear">साफ़ करें</string>
+    <string name="action_save">सहेजें</string>
+    <string name="action_close">बंद करें</string>
+    <string name="action_copy">कॉपी करें</string>
+    <string name="action_share">शेयर करें</string>
+    <string name="action_retry">पुनः प्रयास करें</string>
+    <string name="action_reset">रीसेट करें</string>
+    <string name="action_delete">हटाएं</string>
+    <string name="action_back">वापस</string>
+    <string name="action_open_file">फ़ाइल खोलें</string>
+    <string name="action_share_file">फ़ाइल शेयर करें</string>
+    <string name="action_scan_qr">QR स्कैन करें</string>
+    <string name="action_show_less">कम दिखाएं</string>
+    <string name="label_default">डिफ़ॉल्ट</string>
+    <string name="label_more_files">+%1$d और फ़ाइल</string>
+    <string name="label_more_files_plural">+%1$d और फ़ाइलें</string>
+    <string name="label_more_saved">+%1$d और सहेजी गई</string>
+
+    <!-- ════ Navigation ════ -->
+    <string name="nav_quick">त्वरित</string>
+    <string name="nav_send">भेजें</string>
+    <string name="nav_receive">प्राप्त करें</string>
+    <string name="nav_history">इतिहास</string>
+    <string name="nav_settings">सेटिंग्स</string>
+
+    <!-- ════ Quick Screen ════ -->
+    <string name="quick_send_label">भेजें</string>
+    <string name="quick_receive_label">प्राप्त करें</string>
+    <string name="quick_transfer">त्वरित ट्रांसफ़र</string>
+    <string name="quick_info_title">त्वरित ट्रांसफ़र के बारे में</string>
+    <string name="quick_info_description">त्वरित ट्रांसफ़र croc के ज़रिए तेज़, एन्क्रिप्टेड P2P फ़ाइल शेयरिंग देता है।\n\n• भेजें — क्लिपबोर्ड का टेक्स्ट कोड वाले किसी भी व्यक्ति को तुरंत भेजता है।\n• प्राप्त करें — फ़ाइलें या टेक्स्ट पाने के लिए सीक्रेट कोड इस्तेमाल करें।\n\nसभी ट्रांसफ़र end-to-end एन्क्रिप्टेड हैं। कुछ भी किसी सर्वर पर स्टोर नहीं होता।</string>
+    <string name="quick_info_got_it">समझ गया</string>
+    <string name="quick_ready_title">त्वरित ट्रांसफ़र के लिए तैयार</string>
+    <string name="quick_ready_subtitle">क्लिपबोर्ड शेयर करने के लिए भेजें दबाएं, या फ़ाइलें पाने के लिए प्राप्त करें।</string>
+    <string name="quick_ready_badge_encrypted">एन्क्रिप्टेड</string>
+    <string name="quick_ready_badge_p2p">Peer-to-Peer</string>
+    <string name="quick_ready_badge_no_signup">बिना साइनअप</string>
+
+    <!-- Quick Transfer Status -->
+    <string name="quick_preparing_send">त्वरित शेयर तैयार हो रहा है</string>
+    <string name="quick_preparing_receive">प्राप्त करने के लिए तैयार हो रहा है</string>
+    <string name="quick_waiting_send">दूसरे डिवाइस का इंतज़ार है</string>
+    <string name="quick_waiting_receive">भेजने वाले का इंतज़ार है</string>
+    <string name="quick_transferring_send">शेयरिंग जारी है</string>
+    <string name="quick_transferring_receive">प्राप्त हो रहा है</string>
+    <string name="quick_completed_send">त्वरित शेयर पहुंच गया</string>
+    <string name="quick_completed_receive">त्वरित प्राप्ति पूर्ण</string>
+    <string name="quick_error_send">त्वरित भेजने में समस्या आई</string>
+    <string name="quick_error_receive">त्वरित प्राप्ति में समस्या आई</string>
+    <string name="quick_cancelled_send">त्वरित भेजना रद्द हुआ</string>
+    <string name="quick_cancelled_receive">त्वरित प्राप्ति रद्द हुई</string>
+
+    <!-- Quick Transfer Subtitles -->
+    <string name="quick_sub_preparing">एन्क्रिप्टेड ट्रांसफ़र सेशन सेट अप हो रहा है।</string>
+    <string name="quick_sub_waiting_send">रिसीवर को जोड़ने के लिए QR या कोड शेयर करें।</string>
+    <string name="quick_sub_waiting_receive">सक्रिय कोड से कनेक्ट करके सीधे Downloads में सहेज रहा है।</string>
+    <string name="quick_sub_transferring_send">%1$s अभी भेजा जा रहा है।</string>
+    <string name="quick_sub_transferring_receive">आने वाला डेटा Downloads के लिए लिखा और तैयार हो रहा है।</string>
+    <string name="quick_sub_completed_send_one">%1$d आइटम सफलतापूर्वक शेयर हुआ।</string>
+    <string name="quick_sub_completed_send_many">%1$d आइटम सफलतापूर्वक शेयर हुए।</string>
+    <string name="quick_sub_completed_receive_text">टेक्स्ट नीचे तैयार है।</string>
+    <string name="quick_sub_completed_receive_one">%1$d आइटम आपके लिए सहेजा गया।</string>
+    <string name="quick_sub_completed_receive_many">%1$d आइटम आपके लिए सहेजे गए।</string>
+    <string name="quick_sub_error_send">शेयर पूरा होने से पहले रुक गया।</string>
+    <string name="quick_sub_error_receive">प्राप्ति पूरी होने से पहले रुक गई।</string>
+    <string name="quick_sub_cancelled">जब चाहें नया ट्रांसफ़र शुरू करें।</string>
+
+    <!-- Quick Progress Labels -->
+    <string name="quick_progress_preparing">तैयारी हो रही है</string>
+    <string name="quick_progress_waiting_send">रिसीवर का इंतज़ार</string>
+    <string name="quick_progress_waiting_receive">भेजने वाले का इंतज़ार</string>
+    <string name="quick_progress_transferring_send">ट्रांसफ़र जारी</string>
+    <string name="quick_progress_transferring_receive">Downloads में सहेजा जा रहा है</string>
+    <string name="quick_progress_complete">पूर्ण</string>
+    <string name="quick_progress_error">ध्यान चाहिए</string>
+    <string name="quick_progress_cancelled">रोका गया</string>
+
+    <!-- Quick Received -->
+    <string name="quick_received_files">प्राप्त फ़ाइलें</string>
+    <string name="quick_received_text">प्राप्त टेक्स्ट</string>
+    <string name="quick_copy_text">टेक्स्ट कॉपी करें</string>
+    <string name="quick_open_url">URL खोलें</string>
+
+    <!-- ════ Send Screen ════ -->
+    <string name="send_title">भेजें</string>
+    <string name="send_mode_files">फ़ाइलें</string>
+    <string name="send_mode_folder">फ़ोल्डर</string>
+    <string name="send_mode_text">टेक्स्ट</string>
+    <string name="send_files_title">फ़ाइलें</string>
+    <string name="send_files_count_size">%1$d • %2$s</string>
+    <string name="send_pick_files">फ़ाइलें चुनें</string>
+    <string name="send_add_more">और जोड़ें</string>
+    <string name="send_no_files">कोई फ़ाइल नहीं चुनी</string>
+    <string name="send_folder_title">फ़ोल्डर</string>
+    <string name="send_folder_count_size">%1$d फ़ाइलें • %2$s</string>
+    <string name="send_pick_folder">फ़ोल्डर चुनें</string>
+    <string name="send_change">बदलें</string>
+    <string name="send_folder_detail">%1$d फ़ाइलें, %2$s</string>
+    <string name="send_no_folder">कोई फ़ोल्डर नहीं चुना</string>
+    <string name="send_quick_text">त्वरित टेक्स्ट</string>
+    <string name="send_text_placeholder">भेजने के लिए टेक्स्ट</string>
+    <string name="send_secret_code">सीक्रेट कोड</string>
+    <string name="send_code_placeholder">सीक्रेट कोड</string>
+    <string name="send_show_code">कोड दिखाएं</string>
+    <string name="send_hide_code">कोड छुपाएं</string>
+    <string name="send_copy_code">कोड कॉपी करें</string>
+    <string name="send_share_code">कोड शेयर करें</string>
+    <string name="send_regenerate">नया बनाएं</string>
+    <string name="send_again">फिर भेजें</string>
+    <string name="send_share_code_subject">croc कोड</string>
+
+    <!-- ════ Receive Screen ════ -->
+    <string name="receive_title">प्राप्त करें</string>
+    <string name="receive_again">फिर प्राप्त करें</string>
+    <string name="receive_secret_code">सीक्रेट कोड</string>
+    <string name="receive_code_placeholder">सीक्रेट कोड दर्ज करें</string>
+    <string name="receive_show_code">कोड दिखाएं</string>
+    <string name="receive_hide_code">कोड छुपाएं</string>
+    <string name="receive_paste">पेस्ट करें</string>
+    <string name="receive_received_files">प्राप्त फ़ाइलें</string>
+    <string name="receive_file_count">%1$d फ़ाइल</string>
+    <string name="receive_file_count_plural">%1$d फ़ाइलें</string>
+    <string name="receive_received_text">प्राप्त टेक्स्ट</string>
+    <string name="receive_open_url">URL खोलें</string>
+    <string name="receive_copy_text">टेक्स्ट कॉपी करें</string>
+    <string name="receive_open_file">खोलें</string>
+    <string name="receive_share_file">शेयर करें</string>
+    <string name="receive_code_share_subject">croc कोड</string>
+    <string name="receive_code_share_chooser">कोड शेयर करें</string>
+    <string name="receive_on_code">कोड से प्राप्त करें</string>
+
+    <!-- ════ History Screen ════ -->
+    <string name="history_title">हाल के ट्रांसफ़र</string>
+    <string name="history_search_placeholder">कोड या फ़ाइलनाम से खोजें</string>
+    <string name="history_clear_search">खोज साफ़ करें</string>
+    <string name="history_empty_title">अभी तक कोई ट्रांसफ़र नहीं</string>
+    <string name="history_empty_subtitle">आपका ट्रांसफ़र इतिहास यहाँ दिखेगा</string>
+    <string name="history_more_options">और विकल्प</string>
+    <string name="history_open_file">फ़ाइल खोलें</string>
+    <string name="history_use_code">कोड इस्तेमाल करें</string>
+    <string name="history_copy_code">कोड कॉपी करें</string>
+    <string name="history_favorite">पसंदीदा</string>
+    <string name="history_unfavorite">पसंदीदा हटाएं</string>
+    <string name="history_just_now">अभी-अभी</string>
+    <string name="history_minutes_ago">%1$d मिनट पहले</string>
+    <string name="history_hours_ago">%1$d घंटे पहले</string>
+    <string name="history_days_ago">%1$d दिन पहले</string>
+
+    <!-- ════ Transfer Progress ════ -->
+    <string name="transfer_preparing_upload">अपलोड तैयार हो रहा है…</string>
+    <string name="transfer_preparing_download">डाउनलोड तैयार हो रहा है…</string>
+    <string name="transfer_waiting_peer">दूसरे डिवाइस का इंतज़ार…</string>
+    <string name="transfer_connecting">भेजने वाले से कनेक्ट हो रहा है…</string>
+    <string name="transfer_share_code_hint">रिसीवर के साथ कोड शेयर करें</string>
+    <string name="transfer_verifying_code">कोड वेरीफाई हो रहा है…</string>
+    <string name="transfer_uploading">अपलोड हो रहा है…</string>
+    <string name="transfer_downloading">डाउनलोड हो रहा है…</string>
+    <string name="transfer_upload_complete">अपलोड पूर्ण!</string>
+    <string name="transfer_download_complete">डाउनलोड पूर्ण!</string>
+    <string name="transfer_file_count_one">%1$d फ़ाइल — %2$s</string>
+    <string name="transfer_file_count_many">%1$d फ़ाइलें — %2$s</string>
+    <string name="transfer_failed">ट्रांसफ़र विफल</string>
+    <string name="transfer_cancelled">ट्रांसफ़र रद्द हुआ</string>
+
+    <!-- ════ Settings Screen ════ -->
+    <string name="settings_title">सेटिंग्स</string>
+    <string name="settings_appearance">दिखावट</string>
+    <string name="settings_theme_label">थीम</string>
+    <string name="settings_theme_system">सिस्टम</string>
+    <string name="settings_theme_light">लाइट</string>
+    <string name="settings_theme_dark">डार्क</string>
+    <string name="settings_amoled_dark">AMOLED डार्क</string>
+    <string name="settings_amoled_dark_desc">पूरी तरह काली पृष्ठभूमि इस्तेमाल करें</string>
+    <string name="settings_dynamic_color">डायनामिक कलर</string>
+    <string name="settings_dynamic_color_desc">Material You वॉलपेपर रंग इस्तेमाल करें (Android 12+)</string>
+
+    <string name="settings_codes">कोड</string>
+    <string name="settings_default_code">डिफ़ॉल्ट कोड फ्रेज़</string>
+    <string name="settings_default_code_desc">भेजें/प्राप्त करें में कोड फ़ील्ड पहले से भरता है</string>
+    <string name="settings_default_code_placeholder">रैंडम कोड के लिए खाली छोड़ें</string>
+    <string name="settings_saved_codes">सहेजे गए कोड फ्रेज़</string>
+    <string name="settings_no_saved_codes">कोई सहेजा गया कोड नहीं</string>
+    <string name="settings_delete_code">हटाएं</string>
+    <string name="settings_quick_send_code">त्वरित भेजें कोड</string>
+    <string name="settings_quick_send_code_desc">त्वरित टैब भेजते समय इस्तेमाल करता है। खाली = डिफ़ॉल्ट कोड।</string>
+    <string name="settings_quick_receive_code">त्वरित प्राप्त कोड</string>
+    <string name="settings_quick_receive_code_desc">त्वरित टैब प्राप्त करते समय इस्तेमाल करता है। खाली = डिफ़ॉल्ट कोड।</string>
+
+    <string name="settings_relay">रिले</string>
+    <string name="settings_relay_address">रिले पता</string>
+    <string name="settings_relay_address_desc">कस्टम रिले सर्वर पता। खाली = डिफ़ॉल्ट रिले।</string>
+    <string name="settings_relay_address_placeholder">host:port</string>
+    <string name="settings_relay_password">रिले पासवर्ड</string>
+    <string name="settings_relay_password_desc">रिले का पासवर्ड (अगर सुरक्षित हो)</string>
+    <string name="settings_relay_password_placeholder">पासवर्ड</string>
+    <string name="settings_use_internal_dns">इंटर्नल DNS इस्तेमाल करें</string>
+    <string name="settings_use_internal_dns_desc">रिले लुकअप के लिए सिस्टम DNS बायपास करें</string>
+
+    <string name="settings_transfer_options">ट्रांसफ़र विकल्प</string>
+    <string name="settings_pake_curve">PAKE कर्व</string>
+    <string name="settings_pake_curve_desc">की एक्सचेंज के लिए एलिप्टिक कर्व। खाली = डिफ़ॉल्ट (p256)।</string>
+    <string name="settings_pake_curve_placeholder">जैसे siec, p256, p384, p521</string>
+    <string name="settings_force_local">सिर्फ LAN</string>
+    <string name="settings_force_local_desc">केवल लोकल नेटवर्क पर ट्रांसफ़र करें</string>
+    <string name="settings_disable_compression">कम्प्रेशन बंद करें</string>
+    <string name="settings_disable_compression_desc">zstd कम्प्रेशन बंद करता है</string>
+    <string name="settings_upload_throttle">अपलोड थ्रॉटल</string>
+    <string name="settings_upload_throttle_desc">अपलोड स्पीड सीमित करें (जैसे 1M, 500K)। खाली = असीमित।</string>
+    <string name="settings_upload_throttle_placeholder">जैसे 1M, 500K</string>
+    <string name="settings_multicast_address">मल्टीकास्ट पता</string>
+    <string name="settings_multicast_address_desc">कस्टम मल्टीकास्ट डिस्कवरी पता</string>
+    <string name="settings_multicast_placeholder">239.255.255.250</string>
+
+    <string name="settings_storage">स्टोरेज</string>
+    <string name="settings_receive_location">सेव लोकेशन</string>
+    <string name="settings_receive_location_default">Downloads/croc-received (डिफ़ॉल्ट)</string>
+    <string name="settings_receive_location_custom">कस्टम फ़ोल्डर</string>
+    <string name="settings_choose_folder">फ़ोल्डर चुनें</string>
+    <string name="settings_change_folder">बदलें</string>
+    <string name="settings_reset_folder">रीसेट करें</string>
+    <string name="settings_receive_location_desc">प्राप्त फ़ाइलें कहाँ सहेजें। डिफ़ॉल्ट है Downloads/croc-received।</string>
+
+    <string name="settings_about">के बारे में</string>
+    <string name="settings_app_version">ऐप वर्शन</string>
+    <string name="settings_croc_version">Croc वर्शन</string>
+    <string name="settings_croc_version_value">v10.4.2</string>
+    <string name="settings_developer">डेवलपर</string>
+    <string name="settings_developer_value">Dking</string>
+
+    <!-- ════ Setup / Binary ════ -->
+    <string name="setup_binary_title">croc बाइनरी तैयार हो रहा है…</string>
+    <string name="setup_binary_extracting">ट्रांसफ़र इंजन निकाला और वेरीफाई किया जा रहा है।</string>
+    <string name="setup_installing_title">croc इंजन इंस्टॉल हो रहा है</string>
+    <string name="setup_installing_subtitle">ट्रांसफ़र इंजन अनपैक हो रहा है और सुरक्षित ट्रांसफ़र तैयार हो रहे हैं।</string>
+
+    <!-- ════ Settings - Additional ════ -->
+    <string name="settings_amoled_dark_full_desc">OLED डिस्प्ले के लिए शुद्ध काली पृष्ठभूमि</string>
+    <string name="settings_relay_server">रिले सर्वर</string>
+    <string name="settings_relay_address_label">पता</string>
+    <string name="settings_relay_password_label">पासवर्ड</string>
+    <string name="settings_secret_codes">सीक्रेट कोड</string>
+    <string name="settings_default_secret_code">डिफ़ॉल्ट सीक्रेट कोड</string>
+    <string name="settings_code_placeholder">रैंडम के लिए खाली छोड़ें</string>
+    <string name="settings_add_saved_code">सहेजा हुआ कोड जोड़ें</string>
+    <string name="settings_code_example_placeholder">जैसे red-sun-42</string>
+    <string name="settings_show_less">कम दिखाएं</string>
+    <string name="settings_show_all_codes">सभी %1$d कोड दिखाएं</string>
+    <string name="settings_quick_transfer">त्वरित ट्रांसफ़र</string>
+    <string name="settings_quick_send_code_label">त्वरित भेजें कोड</string>
+    <string name="settings_quick_receive_code_label">त्वरित प्राप्त कोड</string>
+    <string name="settings_quick_using_default">डिफ़ॉल्ट इस्तेमाल: %1$s</string>
+    <string name="settings_quick_leave_blank">डिफ़ॉल्ट कोड के लिए खाली छोड़ें</string>
+    <string name="settings_quick_hint">त्वरित टैब इन कोड का उपयोग करता है। खाली होने पर डिफ़ॉल्ट सीक्रेट कोड पर वापस आता है।</string>
+    <string name="settings_network">नेटवर्क</string>
+    <string name="settings_local_only">सिर्फ लोकल</string>
+    <string name="settings_local_only_desc">केवल लोकल नेटवर्क कनेक्शन इस्तेमाल करें</string>
+    <string name="settings_builtin_dns">बिल्ट-इन DNS</string>
+    <string name="settings_builtin_dns_desc">इंटर्नल DNS रिज़ॉल्वर इस्तेमाल करें</string>
+    <string name="settings_multicast_address_label">मल्टीकास्ट पता</string>
+    <string name="settings_encryption">एन्क्रिप्शन</string>
+    <string name="settings_pake_curve_label">PAKE कर्व</string>
+    <string name="settings_transfer_options_label">ट्रांसफ़र विकल्प</string>
+    <string name="settings_disable_compression_label">कम्प्रेशन बंद करें</string>
+    <string name="settings_disable_compression_full_desc">बिना कम्प्रेशन के फ़ाइलें ट्रांसफ़र करें</string>
+    <string name="settings_upload_speed_limit">अपलोड स्पीड सीमा</string>
+    <string name="settings_upload_speed_placeholder">जैसे 500k या 1m</string>
+    <string name="settings_about_label">के बारे में</string>
+    <string name="settings_app_version_label">ऐप वर्शन</string>
+    <string name="settings_croc_version_label">croc वर्शन</string>
+    <string name="settings_croc_version_val">v10.4.3</string>
+    <string name="settings_built_with">❤️ के साथ Dastageer द्वारा बनाया गया</string>
+    <string name="settings_croc_github">github.com/schollz/croc</string>
+    <string name="settings_language">भाषा</string>
+    <string name="settings_language_label">ऐप भाषा</string>
+    <string name="settings_language_system">सिस्टम डिफ़ॉल्ट</string>
+    <string name="settings_language_desc">ऐप की प्रदर्शन भाषा बदलें</string>
+
+    <!-- ════ Send Screen - Additional ════ -->
+    <string name="send_qr_code">QR कोड</string>
+    <string name="send_hide_qr">QR छुपाएं</string>
+    <string name="send_share_qr">QR शेयर करें</string>
+    <string name="send_use_default_code">डिफ़ॉल्ट कोड इस्तेमाल करें</string>
+    <string name="send_share_code_chooser">कोड शेयर करें</string>
+
+    <!-- ════ Quick Screen - Additional ════ -->
+    <string name="quick_more_items_one">+%1$d और आइटम</string>
+    <string name="quick_more_items_many">+%1$d और आइटम</string>
+    <string name="quick_send_files_label">फ़ाइलें, टेक्स्ट भेजें या तुरंत प्राप्त करें</string>
+    <string name="quick_hold_receive_hint">सहेजे गए कोड के लिए प्राप्त करें दबाए रखें</string>
+
+    <!-- ════ Receive Screen - Additional ════ -->
+    <string name="receive_start_receive">प्राप्त करना शुरू करें</string>
+    <string name="receive_scan_qr">QR स्कैन करें</string>
+
+    <!-- ════ Binary Setup Screen ════ -->
+    <string name="setup_first_run">पहली बार सेटअप</string>
+    <string name="setup_retry">सेटअप पुनः प्रयास करें</string>
+    <string name="setup_error_fallback">अभी croc तैयार नहीं हो सका।</string>
+    <string name="setup_ready">सब कुछ तैयार है। ट्रांसफ़र अब शुरू हो सकते हैं।</string>
+    <string name="setup_checking">आपका डिवाइस जाँचा जा रहा है और ट्रांसफ़र इंजन तैयार हो रहा है।</string>
+    <string name="setup_almost_there">बस थोड़ा और</string>
+    <string name="setup_preparing_transfers">सुरक्षित ट्रांसफ़र तैयार हो रहे हैं</string>
+    <string name="setup_guide1_eyebrow">CROC कैसे काम करता है</string>
+    <string name="setup_guide1_title">सीधा कोड, सीधा ट्रांसफ़र, कोई अकाउंट झंझट नहीं।</string>
+    <string name="setup_guide1_bullet1">एक फ़ोन पर फ़ाइलें चुनें और croc एक छोटा वन-टाइम कोड बनाता है।</string>
+    <string name="setup_guide1_bullet2">दूसरे फ़ोन पर कोड डालें या QR स्कैन करें और तुरंत जुड़ें।</string>
+    <string name="setup_guide1_bullet3">ट्रांसफ़र end-to-end एन्क्रिप्टेड है, इसलिए फ़ाइल पूरी तरह निजी रहती है।</string>
+    <string name="setup_guide2_eyebrow">ज़रूरी जानकारी</string>
+    <string name="setup_guide2_title">यह सेटअप सिर्फ एक बार थोड़ा इंतज़ार माँगता है।</string>
+    <string name="setup_guide2_bullet1">पहली बार croc इंजन डाउनलोड और तैयार होता है।</string>
+    <string name="setup_guide2_bullet2">बाद की बार वही इंजन काम आता है, इसलिए भेजना-पाना तुरंत होता है।</string>
+    <string name="setup_guide2_bullet3">इस स्क्रीन पर ऐप खुला रखना काफ़ी है। कोई अतिरिक्त काम नहीं।</string>
+</resources>

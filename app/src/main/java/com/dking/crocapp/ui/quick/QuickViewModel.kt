@@ -87,10 +87,12 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     is CrocTransferState.Completed -> {
                         val receivedText = state.receivedText
+                        val prefs = prefsRepo.preferencesFlow.first()
+                        val customUri = prefs.receiveLocationUri.takeIf { it.isNotBlank() }?.let { android.net.Uri.parse(it) }
                         val receivedFiles = if (state.isTextTransfer) {
                             emptyList()
                         } else {
-                            publishReceivedFiles()
+                            publishReceivedFiles(customUri)
                         }
                         val actualNames = if (receivedFiles.isNotEmpty()) {
                             receivedFiles.map { it.name }
@@ -349,9 +351,9 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun publishReceivedFiles(): List<ReceivedFile> {
+    private fun publishReceivedFiles(customTreeUri: android.net.Uri? = null): List<ReceivedFile> {
         val outputDir = currentOutputDir ?: return emptyList()
-        return ReceivedFilePublisher.publish(getApplication(), outputDir)
+        return ReceivedFilePublisher.publish(getApplication(), outputDir, customTreeUri)
     }
 
     private suspend fun saveToHistory(
