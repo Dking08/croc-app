@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">croc-app</string>
     <!-- ════ Common / General ════ -->
     <string name="action_cancel">रद्द करें</string>
     <string name="action_dismiss">हटाएं</string>
@@ -39,7 +38,6 @@
     <string name="quick_ready_title">त्वरित ट्रांसफ़र के लिए तैयार</string>
     <string name="quick_ready_subtitle">क्लिपबोर्ड शेयर करने के लिए भेजें दबाएं, या फ़ाइलें पाने के लिए प्राप्त करें।</string>
     <string name="quick_ready_badge_encrypted">एन्क्रिप्टेड</string>
-    <string name="quick_ready_badge_p2p">Peer-to-Peer</string>
     <string name="quick_ready_badge_no_signup">बिना साइनअप</string>
     <!-- Quick Transfer Status -->
     <string name="quick_preparing_send">त्वरित शेयर तैयार हो रहा है</string>
@@ -183,7 +181,6 @@
     <string name="settings_relay">रिले</string>
     <string name="settings_relay_address">रिले पता</string>
     <string name="settings_relay_address_desc">कस्टम रिले सर्वर पता। खाली = डिफ़ॉल्ट रिले।</string>
-    <string name="settings_relay_address_placeholder">host:port</string>
     <string name="settings_relay_password">रिले पासवर्ड</string>
     <string name="settings_relay_password_desc">रिले का पासवर्ड (अगर सुरक्षित हो)</string>
     <string name="settings_relay_password_placeholder">पासवर्ड</string>
@@ -202,7 +199,6 @@
     <string name="settings_upload_throttle_placeholder">जैसे 1M, 500K</string>
     <string name="settings_multicast_address">मल्टीकास्ट पता</string>
     <string name="settings_multicast_address_desc">कस्टम मल्टीकास्ट डिस्कवरी पता</string>
-    <string name="settings_multicast_placeholder">239.255.255.250</string>
     <string name="settings_storage">स्टोरेज</string>
     <string name="settings_receive_location">सेव लोकेशन</string>
     <string name="settings_receive_location_default">Downloads/croc-received (डिफ़ॉल्ट)</string>
@@ -214,9 +210,7 @@
     <string name="settings_about">के बारे में</string>
     <string name="settings_app_version">ऐप वर्शन</string>
     <string name="settings_croc_version">Croc वर्शन</string>
-    <string name="settings_croc_version_value">v10.4.4</string>
     <string name="settings_developer">डेवलपर</string>
-    <string name="settings_developer_value">Dking</string>
     <!-- ════ Setup / Binary ════ -->
     <string name="setup_binary_title">croc बाइनरी तैयार हो रहा है…</string>
     <string name="setup_binary_extracting">ट्रांसफ़र इंजन निकाला और वेरीफाई किया जा रहा है।</string>
@@ -256,9 +250,7 @@
     <string name="settings_about_label">के बारे में</string>
     <string name="settings_app_version_label">ऐप वर्शन</string>
     <string name="settings_croc_version_label">croc वर्शन</string>
-    <string name="settings_croc_version_val">v10.4.4</string>
     <string name="settings_built_with">❤️ के साथ Dastageer द्वारा बनाया गया</string>
-    <string name="settings_croc_github">github.com/schollz/croc</string>
     <string name="settings_language">भाषा</string>
     <string name="settings_language_label">ऐप भाषा</string>
     <string name="settings_language_system">सिस्टम डिफ़ॉल्ट</string>
