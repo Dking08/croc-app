@@ -158,7 +158,7 @@ fun SettingsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "v${BuildConfig.VERSION_NAME} • croc v10.4.3",
+                            text = "v${BuildConfig.VERSION_NAME} • croc " + stringResource(R.string.settings_croc_version_value),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

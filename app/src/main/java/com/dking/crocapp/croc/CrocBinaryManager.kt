@@ -47,9 +47,9 @@ class CrocBinaryManager(private val context: Context) {
         private const val TAG = "CrocBinaryManager"
         private const val BINARY_NAME = "croc"
         private const val NATIVE_BINARY_NAME = "libcroc.so"
-        private const val BINARY_VERSION = "10.4.2"
+        private const val BINARY_VERSION = "10.4.4"
         private const val DOWNLOAD_URL =
-            "https://github.com/schollz/croc/releases/download/v10.4.2/croc_v10.4.2_Linux-ARM64.tar.gz"
+        "https://github.com/schollz/croc/releases/download/v10.4.4/croc_v10.4.4_Linux-ARM64.tar.gz"
         private const val EXEC_MODE = 493 // 0755
         private const val MFD_EXEC = 0x0010
         private const val TAR_BLOCK_SIZE = 512

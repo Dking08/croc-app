@@ -231,7 +231,7 @@
     <string name="settings_about">About</string>
     <string name="settings_app_version">App Version</string>
     <string name="settings_croc_version">Croc Version</string>
-    <string name="settings_croc_version_value">v10.4.2</string>
+    <string name="settings_croc_version_value">v10.4.4</string>
     <string name="settings_developer">Developer</string>
     <string name="settings_developer_value">Dking</string>
 
@@ -275,7 +275,7 @@
     <string name="settings_about_label">About</string>
     <string name="settings_app_version_label">App Version</string>
     <string name="settings_croc_version_label">croc Version</string>
-    <string name="settings_croc_version_val">v10.4.3</string>
+    <string name="settings_croc_version_val">v10.4.4</string>
     <string name="settings_built_with">Built with ❤️ by Dastageer</string>
     <string name="settings_croc_github">github.com/schollz/croc</string>
     <string name="settings_language">Language</string>
