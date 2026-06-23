@@ -1,0 +1,9 @@
+Changes Made:
+
+1. Translation support using Crowdin - https://crowdin.com/project/croc-app
+    1.1 Hindi Language Support
+2. croc version bump to v10.4.4
+3. option to change default receive location
+4. folder send support in Send
+5. temporary session receive location picker in Receive
+6. Open/Share buttons on Quick Screen received files
