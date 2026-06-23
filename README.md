@@ -75,7 +75,7 @@ But `croc-gui` is older, written in Go, and lacks a number of features and UX im
 
 ## Current version
 
-- Version name: `4.1.0`
+- Version name: `5.0.0`
 
 ## Project status
 
