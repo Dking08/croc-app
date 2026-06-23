@@ -1,5 +1,7 @@
 package com.dking.crocapp.ui.receive
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -101,6 +103,19 @@ fun ReceiveScreen(
     val clipboardManager = LocalClipboardManager.current
     var hideCodePhrase by remember { mutableStateOf(true) }
     var showAllFiles by remember { mutableStateOf(false) }
+
+    // SAF folder picker for session-level location override
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            // Take persistent read/write permission
+            val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(uri, flags)
+            viewModel.setSessionOverrideLocation(uri)
+        }
+    }
 
     val isTransferActive = uiState.transferState is CrocTransferState.Preparing ||
             uiState.transferState is CrocTransferState.WaitingForPeer ||
@@ -283,6 +298,63 @@ fun ReceiveScreen(
                                 Icon(Icons.Rounded.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
                         )
+                    }
+
+                    // ── Save location row ──
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.large)
+                            .background(MaterialTheme.colorScheme.surface)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.FolderOpen,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (uiState.sessionOverrideUri != null) stringResource(R.string.receive_save_to_session)
+                                       else stringResource(R.string.receive_save_to),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = uiState.receiveLocationLabel,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (uiState.sessionOverrideUri != null) {
+                            IconButton(
+                                onClick = { viewModel.clearSessionOverrideLocation() },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.RestartAlt,
+                                    contentDescription = stringResource(R.string.receive_reset_location),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = { folderPickerLauncher.launch(null) },
+                            enabled = !isTransferActive,
+                            shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier.height(32.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.receive_change_location),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
                     }
 
                     // Saved codes — scrollable 2-row horizontal grid

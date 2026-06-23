@@ -277,6 +277,11 @@
     <!-- ════ Receive Screen - Additional ════ -->
     <string name="receive_start_receive">प्राप्त करना शुरू करें</string>
     <string name="receive_scan_qr">QR स्कैन करें</string>
+    <!-- ════ Receive Screen - Location Picker ════ -->
+    <string name="receive_save_to">यहाँ सहेजें</string>
+    <string name="receive_save_to_session">यहाँ सहेजें (सिर्फ इस बार)</string>
+    <string name="receive_change_location">बदलें</string>
+    <string name="receive_reset_location">डिफ़ॉल्ट पर वापस जाएं</string>
     <!-- ════ Binary Setup Screen ════ -->
     <string name="setup_first_run">पहली बार सेटअप</string>
     <string name="setup_retry">सेटअप पुनः प्रयास करें</string>

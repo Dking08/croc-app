@@ -33,7 +33,9 @@ data class ReceiveUiState(
     val transferState: CrocTransferState = CrocTransferState.Idle,
     val defaultCodePhrase: String = "",
     val savedCodePhrases: List<String> = emptyList(),
-    val receivedFiles: List<ReceivedFile> = emptyList()
+    val receivedFiles: List<ReceivedFile> = emptyList(),
+    val sessionOverrideUri: Uri? = null,
+    val receiveLocationLabel: String = "Downloads/croc-received"
 )
 
 class ReceiveViewModel(application: Application) : AndroidViewModel(application) {
@@ -52,10 +54,10 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             crocProcess.state.collect { state ->
                 _uiState.update { it.copy(transferState = state) }
                 if (state is CrocTransferState.Completed) {
-                    // Scan the output directory for actual files, since parser
-                    // fileNames may be truncated (e.g. "4200-funn...")
                     val prefs = prefsRepo.preferencesFlow.first()
-                    val customUri = prefs.receiveLocationUri.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+                    // Session override takes priority, then settings, then default
+                    val customUri = _uiState.value.sessionOverrideUri
+                        ?: prefs.receiveLocationUri.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
                     val receivedFiles = publishReceivedFiles(customUri)
                     _uiState.update { it.copy(receivedFiles = receivedFiles) }
                     // Use actual file names for history, not truncated parser names
@@ -73,11 +75,16 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             prefsRepo.preferencesFlow.collect { prefs ->
+                val label = resolveLocationLabel(
+                    _uiState.value.sessionOverrideUri,
+                    prefs.receiveLocationUri
+                )
                 _uiState.update { state ->
                     state.copy(
                         codePhrase = if (state.codePhrase.isBlank()) prefs.defaultCodePhrase else state.codePhrase,
                         defaultCodePhrase = prefs.defaultCodePhrase,
-                        savedCodePhrases = prefs.savedCodePhrases
+                        savedCodePhrases = prefs.savedCodePhrases,
+                        receiveLocationLabel = label
                     )
                 }
             }
@@ -138,8 +145,47 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update {
             it.copy(
                 codePhrase = it.defaultCodePhrase,
-                receivedFiles = emptyList()
+                receivedFiles = emptyList(),
+                sessionOverrideUri = null
             )
+        }
+        // Recalculate label since override was cleared
+        viewModelScope.launch {
+            val prefs = prefsRepo.preferencesFlow.first()
+            val label = resolveLocationLabel(null, prefs.receiveLocationUri)
+            _uiState.update { it.copy(receiveLocationLabel = label) }
+        }
+    }
+
+    fun setSessionOverrideLocation(uri: Uri) {
+        val label = try {
+            uri.lastPathSegment?.replace(":", "/") ?: "Custom folder"
+        } catch (_: Exception) { "Custom folder" }
+        _uiState.update {
+            it.copy(
+                sessionOverrideUri = uri,
+                receiveLocationLabel = label
+            )
+        }
+    }
+
+    fun clearSessionOverrideLocation() {
+        _uiState.update { it.copy(sessionOverrideUri = null) }
+        viewModelScope.launch {
+            val prefs = prefsRepo.preferencesFlow.first()
+            val label = resolveLocationLabel(null, prefs.receiveLocationUri)
+            _uiState.update { it.copy(receiveLocationLabel = label) }
+        }
+    }
+
+    private fun resolveLocationLabel(overrideUri: Uri?, settingsUri: String): String {
+        val uri = overrideUri ?: settingsUri.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+        return if (uri != null) {
+            try {
+                uri.lastPathSegment?.replace(":", "/") ?: "Custom folder"
+            } catch (_: Exception) { "Custom folder" }
+        } else {
+            "Downloads/croc-received"
         }
     }
 

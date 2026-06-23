@@ -300,6 +300,12 @@
     <string name="receive_start_receive">Start Receive</string>
     <string name="receive_scan_qr">Scan QR</string>
 
+    <!-- ════ Receive Screen - Location Picker ════ -->
+    <string name="receive_save_to">Save to</string>
+    <string name="receive_save_to_session">Save to (this session only)</string>
+    <string name="receive_change_location">Change</string>
+    <string name="receive_reset_location">Reset to default</string>
+
     <!-- ════ Binary Setup Screen ════ -->
     <string name="setup_first_run">FIRST-RUN SETUP</string>
     <string name="setup_retry">Retry setup</string>
@@ -318,4 +324,5 @@
     <string name="setup_guide2_bullet1">The first run downloads and prepares the croc engine.</string>
     <string name="setup_guide2_bullet2">Later launches reuse that engine, so send and receive feel immediate.</string>
     <string name="setup_guide2_bullet3">Keeping the app open on this screen is enough. No extra action needed.</string>
+
 </resources>
