@@ -140,7 +140,10 @@ fun QuickScreen(
         }
     ) { paddingValues ->
         if (showInfoDialog) {
-            QuickInfoDialog(onDismiss = { showInfoDialog = false })
+            QuickInfoDialog(
+                receiveLocationLabel = uiState.receiveLocationLabel,
+                onDismiss = { showInfoDialog = false }
+            )
         }
 
         Box(
@@ -166,6 +169,7 @@ fun QuickScreen(
                         sharePreview = uiState.sharePreview,
                         receivedText = uiState.receivedText,
                         receivedFiles = uiState.receivedFiles,
+                        receiveLocationLabel = uiState.receiveLocationLabel,
                         onCancel = { viewModel.cancelTransfer() },
                         onDismiss = { viewModel.dismissResult() },
                         onCopyText = { text ->
@@ -262,6 +266,7 @@ private fun QuickBrandHeader() {
 
 @Composable
 private fun QuickInfoDialog(
+    receiveLocationLabel: String,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -308,7 +313,7 @@ private fun QuickInfoDialog(
                 Text(
                     text = buildAnnotatedString {
                         append("Share the code or QR only with the person you want to connect with. Received files are saved to ")
-                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Downloads/croc-received") }
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(receiveLocationLabel) }
                         append(".")
                     },
                     style = MaterialTheme.typography.bodyMedium
@@ -331,6 +336,7 @@ private fun TransferStatusSection(
     sharePreview: List<QuickSharePreview>,
     receivedText: String?,
     receivedFiles: List<ReceivedFile>,
+    receiveLocationLabel: String = "Downloads/croc-received",
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
     onCopyText: (String) -> Unit
@@ -354,7 +360,8 @@ private fun TransferStatusSection(
             QuickReceiveTransferCard(
                 state = state,
                 code = activeCode,
-                receivedFiles = receivedFiles
+                receivedFiles = receivedFiles,
+                receiveLocationLabel = receiveLocationLabel
             )
         }
 
@@ -470,7 +477,8 @@ private fun QuickSendTransferCard(
 private fun QuickReceiveTransferCard(
     state: CrocTransferState,
     code: String,
-    receivedFiles: List<ReceivedFile>
+    receivedFiles: List<ReceivedFile>,
+    receiveLocationLabel: String = "Downloads/croc-received"
 ) {
     val hasSideTile = state !is CrocTransferState.Error
 
@@ -519,7 +527,8 @@ private fun QuickReceiveTransferCard(
                     QuickReceiveStatusTile(
                         state = state,
                         code = code,
-                        receivedFiles = receivedFiles
+                        receivedFiles = receivedFiles,
+                        receiveLocationLabel = receiveLocationLabel
                     )
                 }
             }
@@ -527,9 +536,9 @@ private fun QuickReceiveTransferCard(
             if (state !is CrocTransferState.Error) {
                 QuickDetailPill(
                     label = if (state is CrocTransferState.Completed && receivedFiles.isNotEmpty()) {
-                        "Saved to Downloads/croc-received"
+                        "Saved to ${receiveLocationLabel}"
                     } else {
-                        "Incoming files will land in Downloads/croc-received"
+                        "Incoming files will land in ${receiveLocationLabel}"
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -556,7 +565,8 @@ private fun QuickReceiveTransferCard(
 private fun QuickReceiveStatusTile(
     state: CrocTransferState,
     code: String,
-    receivedFiles: List<ReceivedFile>
+    receivedFiles: List<ReceivedFile>,
+    receiveLocationLabel: String = "Downloads/croc-received"
 ) {
     Column(
         modifier = Modifier
@@ -606,7 +616,7 @@ private fun QuickReceiveStatusTile(
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = when (state) {
-                is CrocTransferState.Completed -> "Downloads"
+                is CrocTransferState.Completed -> receiveLocationLabel.substringAfterLast("/")
                 is CrocTransferState.Transferring -> "Saving"
                 is CrocTransferState.Error -> "Retry"
                 is CrocTransferState.Cancelled -> "Idle"

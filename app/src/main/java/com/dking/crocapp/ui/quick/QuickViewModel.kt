@@ -41,7 +41,8 @@ data class QuickUiState(
     val statusMessage: String = "Ready",
     val statusDetail: String = "Tap Send or Receive to start",
     val receivedText: String? = null,
-    val receivedFiles: List<ReceivedFile> = emptyList()
+    val receivedFiles: List<ReceivedFile> = emptyList(),
+    val receiveLocationLabel: String = "Downloads/croc-received"
 )
 
 class QuickViewModel(application: Application) : AndroidViewModel(application) {
@@ -56,6 +57,22 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<QuickUiState> = _uiState.asStateFlow()
 
     init {
+        // Load receive location label from preferences
+        viewModelScope.launch {
+            prefsRepo.preferencesFlow.collect { prefs ->
+                val label = if (prefs.receiveLocationUri.isNotBlank()) {
+                    try {
+                        val uri = android.net.Uri.parse(prefs.receiveLocationUri)
+                        uri.lastPathSegment?.replace(":", "/") ?: "Custom folder"
+                    } catch (_: Exception) {
+                        "Custom folder"
+                    }
+                } else {
+                    "Downloads/croc-received"
+                }
+                _uiState.update { it.copy(receiveLocationLabel = label) }
+            }
+        }
         viewModelScope.launch {
             crocProcess.state.collect { state ->
                 _uiState.update { it.copy(transferState = state) }
