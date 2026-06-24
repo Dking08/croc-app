@@ -256,7 +256,7 @@ private fun QuickBrandHeader() {
                 }
             }
             Text(
-                text = stringResource(R.string.quick_ready_subtitle),
+                text = stringResource(R.string.quick_hold_receive_hint),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
