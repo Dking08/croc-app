@@ -88,6 +88,7 @@
     <string name="send_mode_folder">फ़ोल्डर</string>
     <string name="send_mode_text">टेक्स्ट</string>
     <string name="send_files_title">फ़ाइलें</string>
+    <string name="send_files_count_size">%1$d • %2$s</string>
     <string name="send_pick_files">फ़ाइलें चुनें</string>
     <string name="send_add_more">और जोड़ें</string>
     <string name="send_no_files">कोई फ़ाइल नहीं चुनी</string>
