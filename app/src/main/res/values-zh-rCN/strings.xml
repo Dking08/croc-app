@@ -1,14 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">croc-app</string>
     <!-- ════ Common / General ════ -->
+    <string name="action_cancel">取消</string>
+    <string name="action_dismiss">关闭</string>
+    <string name="action_send">发送</string>
+    <string name="action_receive">接收</string>
+    <string name="action_clear">清除</string>
+    <string name="action_save">保存</string>
+    <string name="action_close">关闭</string>
+    <string name="action_copy">复制</string>
+    <string name="action_share">分享</string>
     <!-- ════ Navigation ════ -->
+    <string name="nav_send">发送</string>
+    <string name="nav_settings">设置</string>
     <!-- ════ Quick Screen ════ -->
+    <string name="quick_send_label">发送</string>
     <!-- Quick Transfer Status -->
     <!-- Quick Transfer Subtitles -->
     <!-- Quick Progress Labels -->
+    <string name="quick_progress_preparing">准备中</string>
     <!-- Quick Received -->
+    <string name="quick_copy_text">复制文本</string>
+    <string name="quick_open_url">打开链接</string>
     <!-- ════ Send Screen ════ -->
+    <string name="send_title">发送</string>
+    <string name="send_mode_files">文件</string>
+    <string name="send_mode_text">文本</string>
+    <string name="send_files_title">文件</string>
+    <string name="send_text_placeholder">要发送的文本</string>
     <!-- ════ Receive Screen ════ -->
+    <string name="receive_title">接收</string>
+    <string name="receive_file_count">%1$d 个文件</string>
+    <string name="receive_file_count_plural">%1$d 个文件</string>
+    <string name="receive_open_url">打开链接</string>
+    <string name="receive_copy_text">复制文本</string>
+    <string name="receive_open_file">打开</string>
+    <string name="receive_share_file">分享</string>
     <!-- ════ History Screen ════ -->
     <!-- ════ Transfer Progress ════ -->
     <!-- ════ Settings Screen ════ -->
