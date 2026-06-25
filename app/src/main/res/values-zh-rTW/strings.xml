@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">croc-app</string>
     <!-- ════ Common / General ════ -->
+    <string name="action_cancel">取消</string>
+    <string name="action_dismiss">關閉</string>
+    <string name="action_send">傳送</string>
+    <string name="action_receive">接收</string>
+    <string name="action_clear">清除</string>
+    <string name="action_save">儲存</string>
     <!-- ════ Navigation ════ -->
     <!-- ════ Quick Screen ════ -->
     <!-- Quick Transfer Status -->
