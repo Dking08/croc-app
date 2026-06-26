@@ -11,18 +11,35 @@
     <string name="action_close">關閉</string>
     <string name="action_copy">複製</string>
     <string name="action_share">分享</string>
+    <string name="action_retry">重試</string>
+    <string name="action_reset">重置</string>
+    <string name="action_delete">刪除</string>
+    <string name="action_back">返回</string>
     <string name="action_open_file">開啟檔案</string>
     <string name="action_share_file">分享檔案</string>
+    <string name="action_scan_qr">掃描 QR 碼</string>
+    <string name="action_show_less">收起</string>
     <string name="label_default">預設</string>
     <!-- ════ Navigation ════ -->
     <string name="nav_quick">快速</string>
     <string name="nav_send">傳送</string>
+    <string name="nav_receive">接收</string>
+    <string name="nav_history">歷史</string>
     <string name="nav_settings">設定</string>
     <!-- ════ Quick Screen ════ -->
     <string name="quick_send_label">傳送</string>
+    <string name="quick_receive_label">接收</string>
+    <string name="quick_transfer">快速傳輸</string>
+    <string name="quick_info_title">關於快速傳輸</string>
+    <string name="quick_info_got_it">知道了</string>
+    <string name="quick_ready_title">準備好快速傳輸</string>
+    <string name="quick_ready_badge_encrypted">已加密</string>
+    <string name="quick_ready_badge_p2p">點對點</string>
+    <string name="quick_ready_badge_no_signup">無需註冊</string>
     <!-- Quick Transfer Status -->
     <!-- Quick Transfer Subtitles -->
     <!-- Quick Progress Labels -->
+    <string name="quick_progress_preparing">準備中</string>
     <string name="quick_progress_transferring_receive">儲存至下載</string>
     <!-- Quick Received -->
     <string name="quick_copy_text">複製文字</string>
