@@ -20,6 +20,9 @@
     <string name="action_scan_qr">扫描二维码</string>
     <string name="action_show_less">收起</string>
     <string name="label_default">默认</string>
+    <string name="label_more_files">+%1$d 个文件</string>
+    <string name="label_more_files_plural">+%1$d 个文件</string>
+    <string name="label_more_saved">+%1$d 个已保存</string>
     <!-- ════ Navigation ════ -->
     <string name="nav_quick">快速</string>
     <string name="nav_send">发送</string>
@@ -31,17 +34,40 @@
     <string name="quick_receive_label">接收</string>
     <string name="quick_transfer">快速传输</string>
     <string name="quick_info_title">关于快速传输</string>
+    <string name="quick_info_description">快速传输通过 croc 实现快速、加密的点对点文件共享。\n\n• 发送 — 将剪贴板中的文本即时发送给持有密码的任何人。\n• 接收 — 使用密码接收文件或文本。\n\n所有传输均为端对端加密，任何内容都不会存储在服务器上。</string>
     <string name="quick_info_got_it">知道了</string>
     <string name="quick_ready_title">准备好快速传输</string>
+    <string name="quick_ready_subtitle">点击发送以分享剪贴板，或点击接收以获取文件。</string>
     <string name="quick_ready_badge_encrypted">已加密</string>
     <string name="quick_ready_badge_p2p">点对点</string>
     <string name="quick_ready_badge_no_signup">无需注册</string>
     <!-- Quick Transfer Status -->
+    <string name="quick_preparing_send">正在准备快速共享</string>
+    <string name="quick_preparing_receive">正在准备接收</string>
+    <string name="quick_waiting_send">等待对方连接</string>
+    <string name="quick_waiting_receive">等待发送方</string>
+    <string name="quick_transferring_send">正在共享</string>
+    <string name="quick_transferring_receive">正在接收</string>
+    <string name="quick_completed_send">快速共享已送达</string>
+    <string name="quick_completed_receive">快速接收完成</string>
+    <string name="quick_error_send">快速发送遇到问题</string>
+    <string name="quick_error_receive">快速接收遇到问题</string>
+    <string name="quick_cancelled_send">快速发送已取消</string>
+    <string name="quick_cancelled_receive">快速接收已取消</string>
     <!-- Quick Transfer Subtitles -->
+    <string name="quick_sub_preparing">正在建立加密传输会话。</string>
+    <string name="quick_sub_waiting_send">分享二维码或代码，让接收方加入。</string>
+    <string name="quick_sub_transferring_send">%1$s 正在传输中。</string>
+    <string name="quick_sub_completed_send_one">已成功共享 %1$d 个项目。</string>
+    <string name="quick_sub_completed_send_many">已成功共享 %1$d 个项目。</string>
     <!-- Quick Progress Labels -->
     <string name="quick_progress_preparing">准备中</string>
     <string name="quick_progress_waiting_send">等待接收方</string>
+    <string name="quick_progress_waiting_receive">等待发送方</string>
+    <string name="quick_progress_transferring_send">传输中</string>
+    <string name="quick_progress_transferring_receive">保存到下载</string>
     <string name="quick_progress_complete">已完成</string>
+    <string name="quick_progress_error">需要处理</string>
     <string name="quick_progress_cancelled">已停止</string>
     <!-- Quick Received -->
     <string name="quick_received_files">已接收文件</string>
@@ -55,11 +81,15 @@
     <string name="send_mode_text">文本</string>
     <string name="send_files_title">文件</string>
     <string name="send_files_count_size">%1$d · %2$s</string>
+    <string name="send_pick_files">选择文件</string>
     <string name="send_add_more">添加更多</string>
+    <string name="send_no_files">未选择文件</string>
     <string name="send_folder_title">文件夹</string>
     <string name="send_folder_count_size">%1$d 个文件 · %2$s</string>
+    <string name="send_pick_folder">选择文件夹</string>
     <string name="send_change">更改</string>
     <string name="send_folder_detail">%1$d 个文件，%2$s</string>
+    <string name="send_no_folder">未选择文件夹</string>
     <string name="send_quick_text">快速文本</string>
     <string name="send_text_placeholder">要发送的文本</string>
     <string name="send_secret_code">密码</string>
@@ -93,6 +123,7 @@
     <!-- ════ History Screen ════ -->
     <string name="history_title">最近记录</string>
     <string name="history_clear_search">清除搜索</string>
+    <string name="history_empty_title">暂无传输记录</string>
     <string name="history_more_options">更多选项</string>
     <string name="history_open_file">打开文件</string>
     <string name="history_use_code">使用密码</string>
@@ -104,6 +135,11 @@
     <string name="history_hours_ago">%1$d 小时前</string>
     <string name="history_days_ago">%1$d 天前</string>
     <!-- ════ Transfer Progress ════ -->
+    <string name="transfer_preparing_upload">正在准备上传…</string>
+    <string name="transfer_preparing_download">正在准备下载…</string>
+    <string name="transfer_waiting_peer">等待对方连接…</string>
+    <string name="transfer_connecting">正在连接发送方…</string>
+    <string name="transfer_verifying_code">正在验证密码…</string>
     <string name="transfer_uploading">上传中…</string>
     <string name="transfer_downloading">下载中…</string>
     <string name="transfer_upload_complete">上传完成！</string>
@@ -111,6 +147,7 @@
     <string name="transfer_file_count_one">%1$d 个文件 — %2$s</string>
     <string name="transfer_file_count_many">%1$d 个文件 — %2$s</string>
     <string name="transfer_failed">传输失败</string>
+    <string name="transfer_cancelled">传输已取消</string>
     <!-- ════ Settings Screen ════ -->
     <string name="settings_title">设置</string>
     <string name="settings_appearance">外观</string>
@@ -118,25 +155,83 @@
     <string name="settings_theme_system">跟随系统</string>
     <string name="settings_theme_light">浅色</string>
     <string name="settings_theme_dark">深色</string>
+    <string name="settings_amoled_dark">AMOLED 深色</string>
+    <string name="settings_amoled_dark_desc">使用纯黑背景</string>
     <string name="settings_dynamic_color">动态颜色</string>
+    <string name="settings_dynamic_color_desc">使用 Material You 壁纸颜色（Android 12+）</string>
     <string name="settings_codes">密码</string>
+    <string name="settings_default_code">默认密码短语</string>
     <string name="settings_default_code_desc">预填充发送/接收中的密码栏</string>
+    <string name="settings_saved_codes">已保存的密码短语</string>
+    <string name="settings_no_saved_codes">暂无已保存密码</string>
+    <string name="settings_delete_code">删除</string>
+    <string name="settings_quick_send_code">快速发送密码</string>
+    <string name="settings_quick_receive_code">快速接收密码</string>
+    <string name="settings_relay">中继</string>
+    <string name="settings_relay_address">中继地址</string>
     <string name="settings_relay_address_placeholder">host:port</string>
+    <string name="settings_relay_password">中继密码</string>
     <string name="settings_relay_password_placeholder">密码</string>
+    <string name="settings_use_internal_dns">使用内部 DNS</string>
+    <string name="settings_transfer_options">传输选项</string>
+    <string name="settings_pake_curve_placeholder">如 siec、p256、p384、p521</string>
+    <string name="settings_force_local">仅限局域网</string>
+    <string name="settings_disable_compression">禁用压缩</string>
+    <string name="settings_disable_compression_desc">关闭 zstd 压缩</string>
+    <string name="settings_upload_throttle">上传限速</string>
+    <string name="settings_upload_throttle_desc">限制上传速度（如 1M、500K）。留空 = 不限速。</string>
+    <string name="settings_upload_throttle_placeholder">如 1M、500K</string>
+    <string name="settings_multicast_address">组播地址</string>
+    <string name="settings_multicast_placeholder">239.255.255.250</string>
+    <string name="settings_storage">存储</string>
+    <string name="settings_receive_location">接收位置</string>
+    <string name="settings_receive_location_default">Downloads/croc-received（默认）</string>
+    <string name="settings_receive_location_custom">自定义文件夹</string>
+    <string name="settings_choose_folder">选择文件夹</string>
+    <string name="settings_change_folder">更改</string>
+    <string name="settings_reset_folder">重置</string>
     <string name="settings_about">关于</string>
     <string name="settings_app_version">应用版本</string>
     <string name="settings_croc_version">Croc 版本</string>
     <string name="settings_croc_version_value">v10.4.4</string>
+    <string name="settings_developer">开发者</string>
+    <string name="settings_developer_value">Dking</string>
     <!-- ════ Setup / Binary ════ -->
+    <string name="setup_binary_title">正在准备 croc 二进制文件…</string>
+    <string name="setup_installing_title">正在安装 croc 引擎</string>
     <!-- ════ Settings - Additional ════ -->
+    <string name="settings_relay_server">中继服务器</string>
+    <string name="settings_relay_address_label">地址</string>
     <string name="settings_relay_password_label">密码</string>
+    <string name="settings_secret_codes">密码短语</string>
+    <string name="settings_default_secret_code">默认密码短语</string>
+    <string name="settings_add_saved_code">添加已保存密码</string>
+    <string name="settings_code_example_placeholder">如 red-sun-42</string>
+    <string name="settings_show_less">收起</string>
+    <string name="settings_show_all_codes">显示全部 %1$d 个密码</string>
+    <string name="settings_quick_transfer">快速传输</string>
+    <string name="settings_quick_send_code_label">快速发送密码</string>
+    <string name="settings_quick_receive_code_label">快速接收密码</string>
+    <string name="settings_quick_using_default">使用默认：%1$s</string>
+    <string name="settings_network">网络</string>
+    <string name="settings_local_only">仅本地</string>
+    <string name="settings_builtin_dns">内置 DNS</string>
+    <string name="settings_multicast_address_label">组播地址</string>
+    <string name="settings_encryption">加密</string>
+    <string name="settings_transfer_options_label">传输选项</string>
+    <string name="settings_disable_compression_label">禁用压缩</string>
+    <string name="settings_upload_speed_limit">上传速度限制</string>
+    <string name="settings_upload_speed_placeholder">如 500k 或 1m</string>
     <string name="settings_about_label">关于</string>
     <string name="settings_app_version_label">应用版本</string>
     <string name="settings_croc_version_label">croc 版本</string>
     <string name="settings_croc_version_val">v10.4.4</string>
+    <string name="settings_built_with">由 Dastageer 用 ❤️ 构建</string>
+    <string name="settings_croc_github">github.com/schollz/croc</string>
     <string name="settings_language">语言</string>
     <string name="settings_language_label">应用语言</string>
     <string name="settings_language_system">系统默认</string>
+    <string name="settings_language_desc">更改应用显示语言</string>
     <!-- ════ Send Screen - Additional ════ -->
     <string name="send_qr_code">二维码</string>
     <string name="send_hide_qr">隐藏二维码</string>
@@ -144,7 +239,21 @@
     <string name="send_use_default_code">使用默认密码</string>
     <string name="send_share_code_chooser">分享密码</string>
     <!-- ════ Quick Screen - Additional ════ -->
+    <string name="quick_send_files_label">发送文件、文本，或立即接收</string>
+    <string name="quick_hold_receive_hint">长按接收以使用已保存密码</string>
     <!-- ════ Receive Screen - Additional ════ -->
+    <string name="receive_start_receive">开始接收</string>
+    <string name="receive_scan_qr">扫描二维码</string>
     <!-- ════ Receive Screen - Location Picker ════ -->
+    <string name="receive_save_to">保存到</string>
+    <string name="receive_save_to_session">保存到（仅限本次）</string>
+    <string name="receive_change_location">更改</string>
+    <string name="receive_reset_location">恢复默认</string>
     <!-- ════ Binary Setup Screen ════ -->
+    <string name="setup_first_run">首次运行设置</string>
+    <string name="setup_retry">重试设置</string>
+    <string name="setup_error_fallback">当前无法准备 croc。</string>
+    <string name="setup_almost_there">即将完成</string>
+    <string name="setup_guide1_eyebrow">CROC 的工作原理</string>
+    <string name="setup_guide2_eyebrow">须知</string>
 </resources>
