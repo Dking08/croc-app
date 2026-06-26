@@ -20,6 +20,9 @@
     <string name="action_scan_qr">掃描 QR 碼</string>
     <string name="action_show_less">收起</string>
     <string name="label_default">預設</string>
+    <string name="label_more_files">+%1$d 個檔案</string>
+    <string name="label_more_files_plural">+%1$d 個檔案</string>
+    <string name="label_more_saved">+%1$d 個已儲存</string>
     <!-- ════ Navigation ════ -->
     <string name="nav_quick">快速</string>
     <string name="nav_send">傳送</string>
@@ -31,17 +34,44 @@
     <string name="quick_receive_label">接收</string>
     <string name="quick_transfer">快速傳輸</string>
     <string name="quick_info_title">關於快速傳輸</string>
+    <string name="quick_info_description">快速傳輸透過 croc 實現快速、加密的點對點檔案分享。\n\n• 傳送 — 將剪貼簿中的文字即時傳送給持有密碼的任何人。\n• 接收 — 使用密碼接收檔案或文字。\n\n所有傳輸均為端對端加密，任何內容都不會儲存在伺服器上。</string>
     <string name="quick_info_got_it">知道了</string>
     <string name="quick_ready_title">準備好快速傳輸</string>
+    <string name="quick_ready_subtitle">點選傳送以分享剪貼簿，或點選接收以取得檔案。</string>
     <string name="quick_ready_badge_encrypted">已加密</string>
     <string name="quick_ready_badge_p2p">點對點</string>
     <string name="quick_ready_badge_no_signup">無需註冊</string>
     <!-- Quick Transfer Status -->
+    <string name="quick_waiting_send">等待對方連線</string>
+    <string name="quick_waiting_receive">等待傳送方</string>
+    <string name="quick_transferring_send">分享進行中</string>
+    <string name="quick_transferring_receive">接收進行中</string>
+    <string name="quick_completed_send">快速分享已送達</string>
+    <string name="quick_completed_receive">快速接收完成</string>
+    <string name="quick_error_send">快速傳送遇到問題</string>
+    <string name="quick_error_receive">快速接收遇到問題</string>
+    <string name="quick_cancelled_send">快速傳送已取消</string>
+    <string name="quick_cancelled_receive">快速接收已取消</string>
     <!-- Quick Transfer Subtitles -->
+    <string name="quick_sub_waiting_send">分享 QR 碼或密碼，讓接收方加入。</string>
+    <string name="quick_sub_waiting_receive">使用目前密碼連線並直接儲存至下載目錄。</string>
+    <string name="quick_sub_transferring_send">%1$s 正在傳輸中。</string>
+    <string name="quick_sub_completed_send_one">已成功分享 %1$d 個項目。</string>
+    <string name="quick_sub_completed_send_many">已成功分享 %1$d 個項目。</string>
+    <string name="quick_sub_completed_receive_text">文字內容已就緒，見下方。</string>
+    <string name="quick_sub_completed_receive_one">已為您儲存 %1$d 個項目。</string>
+    <string name="quick_sub_completed_receive_many">已為您儲存 %1$d 個項目。</string>
+    <string name="quick_sub_error_send">分享在完成前中斷了。</string>
+    <string name="quick_sub_error_receive">接收在完成前中斷了。</string>
+    <string name="quick_sub_cancelled">隨時可以開始新的傳輸。</string>
     <!-- Quick Progress Labels -->
     <string name="quick_progress_preparing">準備中</string>
+    <string name="quick_progress_waiting_send">等待接收方</string>
+    <string name="quick_progress_waiting_receive">等待傳送方</string>
+    <string name="quick_progress_transferring_send">傳輸中</string>
     <string name="quick_progress_transferring_receive">儲存至下載</string>
     <string name="quick_progress_complete">已完成</string>
+    <string name="quick_progress_error">需要處理</string>
     <string name="quick_progress_cancelled">已停止</string>
     <!-- Quick Received -->
     <string name="quick_received_files">已接收檔案</string>
@@ -55,11 +85,15 @@
     <string name="send_mode_text">文字</string>
     <string name="send_files_title">檔案</string>
     <string name="send_files_count_size">%1$d · %2$s</string>
+    <string name="send_pick_files">選擇檔案</string>
     <string name="send_add_more">新增更多</string>
+    <string name="send_no_files">未選擇檔案</string>
     <string name="send_folder_title">資料夾</string>
     <string name="send_folder_count_size">%1$d 個檔案 · %2$s</string>
+    <string name="send_pick_folder">選擇資料夾</string>
     <string name="send_change">變更</string>
     <string name="send_folder_detail">%1$d 個檔案，%2$s</string>
+    <string name="send_no_folder">未選擇資料夾</string>
     <string name="send_quick_text">快速文字</string>
     <string name="send_text_placeholder">要傳送的文字</string>
     <string name="send_secret_code">密碼</string>
@@ -92,7 +126,10 @@
     <string name="receive_on_code">憑密碼接收</string>
     <!-- ════ History Screen ════ -->
     <string name="history_title">最近記錄</string>
+    <string name="history_search_placeholder">以密碼或檔案名稱搜尋</string>
     <string name="history_clear_search">清除搜尋</string>
+    <string name="history_empty_title">尚無傳輸記錄</string>
+    <string name="history_empty_subtitle">您的傳輸歷史將顯示於此</string>
     <string name="history_more_options">更多選項</string>
     <string name="history_open_file">開啟檔案</string>
     <string name="history_use_code">使用密碼</string>
@@ -104,6 +141,12 @@
     <string name="history_hours_ago">%1$d 小時前</string>
     <string name="history_days_ago">%1$d 天前</string>
     <!-- ════ Transfer Progress ════ -->
+    <string name="transfer_preparing_upload">正在準備上傳…</string>
+    <string name="transfer_preparing_download">正在準備下載…</string>
+    <string name="transfer_waiting_peer">等待對方連線…</string>
+    <string name="transfer_connecting">正在連線至傳送方…</string>
+    <string name="transfer_share_code_hint">將密碼分享給接收方</string>
+    <string name="transfer_verifying_code">正在驗證密碼…</string>
     <string name="transfer_uploading">上傳中…</string>
     <string name="transfer_downloading">下載中…</string>
     <string name="transfer_upload_complete">上傳完成！</string>
@@ -111,6 +154,7 @@
     <string name="transfer_file_count_one">%1$d 個檔案 — %2$s</string>
     <string name="transfer_file_count_many">%1$d 個檔案 — %2$s</string>
     <string name="transfer_failed">傳輸失敗</string>
+    <string name="transfer_cancelled">傳輸已取消</string>
     <!-- ════ Settings Screen ════ -->
     <string name="settings_title">設定</string>
     <string name="settings_appearance">外觀</string>
@@ -118,12 +162,34 @@
     <string name="settings_theme_system">跟隨系統</string>
     <string name="settings_theme_light">淺色</string>
     <string name="settings_theme_dark">深色</string>
+    <string name="settings_amoled_dark">AMOLED 深色</string>
+    <string name="settings_amoled_dark_desc">使用純黑背景</string>
     <string name="settings_dynamic_color">動態色彩</string>
+    <string name="settings_dynamic_color_desc">使用 Material You 桌布色彩（Android 12+）</string>
     <string name="settings_codes">密碼</string>
+    <string name="settings_default_code">預設密碼短語</string>
+    <string name="settings_default_code_desc">預先填入傳送／接收的密碼欄位</string>
     <string name="settings_default_code_placeholder">留空則隨機產生</string>
     <string name="settings_saved_codes">已儲存的密碼短語</string>
+    <string name="settings_no_saved_codes">尚無已儲存密碼</string>
+    <string name="settings_delete_code">刪除</string>
+    <string name="settings_quick_send_code">快速傳送密碼</string>
+    <string name="settings_quick_send_code_desc">傳送時由快速分頁使用。留空 = 預設密碼。</string>
+    <string name="settings_quick_receive_code">快速接收密碼</string>
+    <string name="settings_quick_receive_code_desc">接收時由快速分頁使用。留空 = 預設密碼。</string>
+    <string name="settings_relay">中繼</string>
+    <string name="settings_relay_address">中繼位址</string>
+    <string name="settings_relay_address_desc">自訂中繼伺服器位址。留空 = 預設中繼。</string>
     <string name="settings_relay_address_placeholder">host:port</string>
+    <string name="settings_relay_password">中繼密碼</string>
+    <string name="settings_relay_password_desc">中繼伺服器的密碼（如有保護）</string>
     <string name="settings_relay_password_placeholder">密碼</string>
+    <string name="settings_use_internal_dns">使用內部 DNS</string>
+    <string name="settings_use_internal_dns_desc">略過系統 DNS 解析器進行中繼查詢</string>
+    <string name="settings_transfer_options">傳輸選項</string>
+    <string name="settings_pake_curve">PAKE 曲線</string>
+    <string name="settings_pake_curve_placeholder">如 siec、p256、p384、p521</string>
+    <string name="settings_force_local">僅限區域網路</string>
     <string name="settings_about">關於</string>
     <string name="settings_app_version">應用程式版本</string>
     <string name="settings_croc_version">Croc 版本</string>
