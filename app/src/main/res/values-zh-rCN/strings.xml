@@ -11,11 +11,31 @@
     <string name="action_close">关闭</string>
     <string name="action_copy">复制</string>
     <string name="action_share">分享</string>
+    <string name="action_retry">重试</string>
+    <string name="action_reset">重置</string>
+    <string name="action_delete">删除</string>
+    <string name="action_back">返回</string>
+    <string name="action_open_file">打开文件</string>
+    <string name="action_share_file">分享文件</string>
+    <string name="action_scan_qr">扫描二维码</string>
+    <string name="action_show_less">收起</string>
+    <string name="label_default">默认</string>
     <!-- ════ Navigation ════ -->
+    <string name="nav_quick">快速</string>
     <string name="nav_send">发送</string>
+    <string name="nav_receive">接收</string>
+    <string name="nav_history">历史</string>
     <string name="nav_settings">设置</string>
     <!-- ════ Quick Screen ════ -->
     <string name="quick_send_label">发送</string>
+    <string name="quick_receive_label">接收</string>
+    <string name="quick_transfer">快速传输</string>
+    <string name="quick_info_title">关于快速传输</string>
+    <string name="quick_info_got_it">知道了</string>
+    <string name="quick_ready_title">准备好快速传输</string>
+    <string name="quick_ready_badge_encrypted">已加密</string>
+    <string name="quick_ready_badge_p2p">点对点</string>
+    <string name="quick_ready_badge_no_signup">无需注册</string>
     <!-- Quick Transfer Status -->
     <!-- Quick Transfer Subtitles -->
     <!-- Quick Progress Labels -->
