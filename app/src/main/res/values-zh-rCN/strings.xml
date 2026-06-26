@@ -41,14 +41,25 @@
     <!-- Quick Progress Labels -->
     <string name="quick_progress_preparing">准备中</string>
     <string name="quick_progress_waiting_send">等待接收方</string>
+    <string name="quick_progress_complete">已完成</string>
+    <string name="quick_progress_cancelled">已停止</string>
     <!-- Quick Received -->
+    <string name="quick_received_files">已接收文件</string>
+    <string name="quick_received_text">已接收文本</string>
     <string name="quick_copy_text">复制文本</string>
     <string name="quick_open_url">打开链接</string>
     <!-- ════ Send Screen ════ -->
     <string name="send_title">发送</string>
     <string name="send_mode_files">文件</string>
+    <string name="send_mode_folder">文件夹</string>
     <string name="send_mode_text">文本</string>
     <string name="send_files_title">文件</string>
+    <string name="send_files_count_size">%1$d · %2$s</string>
+    <string name="send_add_more">添加更多</string>
+    <string name="send_folder_title">文件夹</string>
+    <string name="send_folder_count_size">%1$d 个文件 · %2$s</string>
+    <string name="send_change">更改</string>
+    <string name="send_folder_detail">%1$d 个文件，%2$s</string>
     <string name="send_quick_text">快速文本</string>
     <string name="send_text_placeholder">要发送的文本</string>
     <string name="send_secret_code">密码</string>
@@ -57,32 +68,49 @@
     <string name="send_hide_code">隐藏密码</string>
     <string name="send_copy_code">复制密码</string>
     <string name="send_share_code">分享密码</string>
+    <string name="send_regenerate">重新生成</string>
+    <string name="send_again">再次发送</string>
     <string name="send_share_code_subject">croc 密码</string>
     <!-- ════ Receive Screen ════ -->
     <string name="receive_title">接收</string>
+    <string name="receive_again">再次接收</string>
     <string name="receive_secret_code">密码</string>
     <string name="receive_code_placeholder">输入密码</string>
     <string name="receive_show_code">显示密码</string>
     <string name="receive_hide_code">隐藏密码</string>
     <string name="receive_paste">粘贴</string>
+    <string name="receive_received_files">已接收文件</string>
     <string name="receive_file_count">%1$d 个文件</string>
     <string name="receive_file_count_plural">%1$d 个文件</string>
+    <string name="receive_received_text">已接收文本</string>
     <string name="receive_open_url">打开链接</string>
     <string name="receive_copy_text">复制文本</string>
     <string name="receive_open_file">打开</string>
     <string name="receive_share_file">分享</string>
     <string name="receive_code_share_subject">croc 密码</string>
     <string name="receive_code_share_chooser">分享密码</string>
+    <string name="receive_on_code">凭密码接收</string>
     <!-- ════ History Screen ════ -->
+    <string name="history_title">最近记录</string>
     <string name="history_clear_search">清除搜索</string>
+    <string name="history_more_options">更多选项</string>
     <string name="history_open_file">打开文件</string>
     <string name="history_use_code">使用密码</string>
     <string name="history_copy_code">复制密码</string>
+    <string name="history_favorite">收藏</string>
+    <string name="history_unfavorite">取消收藏</string>
+    <string name="history_just_now">刚刚</string>
+    <string name="history_minutes_ago">%1$d 分钟前</string>
+    <string name="history_hours_ago">%1$d 小时前</string>
+    <string name="history_days_ago">%1$d 天前</string>
     <!-- ════ Transfer Progress ════ -->
     <string name="transfer_uploading">上传中…</string>
     <string name="transfer_downloading">下载中…</string>
+    <string name="transfer_upload_complete">上传完成！</string>
+    <string name="transfer_download_complete">下载完成！</string>
     <string name="transfer_file_count_one">%1$d 个文件 — %2$s</string>
     <string name="transfer_file_count_many">%1$d 个文件 — %2$s</string>
+    <string name="transfer_failed">传输失败</string>
     <!-- ════ Settings Screen ════ -->
     <string name="settings_title">设置</string>
     <string name="settings_appearance">外观</string>
