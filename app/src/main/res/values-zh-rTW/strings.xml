@@ -42,6 +42,8 @@
     <string name="quick_ready_badge_p2p">點對點</string>
     <string name="quick_ready_badge_no_signup">無需註冊</string>
     <!-- Quick Transfer Status -->
+    <string name="quick_preparing_send">正在準備快速分享</string>
+    <string name="quick_preparing_receive">正在準備接收</string>
     <string name="quick_waiting_send">等待對方連線</string>
     <string name="quick_waiting_receive">等待傳送方</string>
     <string name="quick_transferring_send">分享進行中</string>
@@ -53,9 +55,11 @@
     <string name="quick_cancelled_send">快速傳送已取消</string>
     <string name="quick_cancelled_receive">快速接收已取消</string>
     <!-- Quick Transfer Subtitles -->
+    <string name="quick_sub_preparing">正在建立加密傳輸工作階段。</string>
     <string name="quick_sub_waiting_send">分享 QR 碼或密碼，讓接收方加入。</string>
     <string name="quick_sub_waiting_receive">使用目前密碼連線並直接儲存至下載目錄。</string>
     <string name="quick_sub_transferring_send">%1$s 正在傳輸中。</string>
+    <string name="quick_sub_transferring_receive">正在寫入資料並準備儲存至下載目錄。</string>
     <string name="quick_sub_completed_send_one">已成功分享 %1$d 個項目。</string>
     <string name="quick_sub_completed_send_many">已成功分享 %1$d 個項目。</string>
     <string name="quick_sub_completed_receive_text">文字內容已就緒，見下方。</string>
@@ -188,26 +192,78 @@
     <string name="settings_use_internal_dns_desc">略過系統 DNS 解析器進行中繼查詢</string>
     <string name="settings_transfer_options">傳輸選項</string>
     <string name="settings_pake_curve">PAKE 曲線</string>
+    <string name="settings_pake_curve_desc">金鑰交換用的橢圓曲線。留空 = 預設（p256）。</string>
     <string name="settings_pake_curve_placeholder">如 siec、p256、p384、p521</string>
     <string name="settings_force_local">僅限區域網路</string>
+    <string name="settings_force_local_desc">僅透過區域網路傳輸</string>
+    <string name="settings_disable_compression">停用壓縮</string>
+    <string name="settings_disable_compression_desc">關閉 zstd 壓縮</string>
+    <string name="settings_upload_throttle">上傳限速</string>
+    <string name="settings_upload_throttle_desc">限制上傳速度（如 1M、500K）。留空 = 不限速。</string>
+    <string name="settings_upload_throttle_placeholder">如 1M、500K</string>
+    <string name="settings_multicast_address">群播位址</string>
+    <string name="settings_multicast_address_desc">自訂群播探索位址</string>
+    <string name="settings_multicast_placeholder">239.255.255.250</string>
+    <string name="settings_storage">儲存空間</string>
+    <string name="settings_receive_location">接收位置</string>
+    <string name="settings_receive_location_default">Downloads/croc-received（預設）</string>
+    <string name="settings_receive_location_custom">自訂資料夾</string>
+    <string name="settings_choose_folder">選擇資料夾</string>
+    <string name="settings_change_folder">變更</string>
+    <string name="settings_reset_folder">重置</string>
+    <string name="settings_receive_location_desc">接收檔案的儲存位置。預設為 Downloads/croc-received。</string>
     <string name="settings_about">關於</string>
     <string name="settings_app_version">應用程式版本</string>
     <string name="settings_croc_version">Croc 版本</string>
     <string name="settings_croc_version_value">v10.4.4</string>
+    <string name="settings_developer">開發者</string>
+    <string name="settings_developer_value">Dking</string>
     <!-- ════ Setup / Binary ════ -->
+    <string name="setup_binary_title">正在準備 croc 執行檔…</string>
+    <string name="setup_binary_extracting">正在解壓縮並驗證傳輸引擎。</string>
+    <string name="setup_installing_title">正在安裝 croc 引擎</string>
+    <string name="setup_installing_subtitle">正在解包傳輸引擎並準備安全傳輸。</string>
     <!-- ════ Settings - Additional ════ -->
+    <string name="settings_amoled_dark_full_desc">為 OLED 螢幕使用純黑背景</string>
+    <string name="settings_relay_server">中繼伺服器</string>
+    <string name="settings_relay_address_label">位址</string>
     <string name="settings_relay_password_label">密碼</string>
+    <string name="settings_secret_codes">密碼短語</string>
+    <string name="settings_default_secret_code">預設密碼短語</string>
+    <string name="settings_code_placeholder">留空則隨機</string>
+    <string name="settings_add_saved_code">新增已儲存密碼</string>
+    <string name="settings_code_example_placeholder">如 red-sun-42</string>
+    <string name="settings_show_less">收起</string>
     <string name="settings_show_all_codes">顯示全部 %1$d 個密碼</string>
+    <string name="settings_quick_transfer">快速傳輸</string>
+    <string name="settings_quick_send_code_label">快速傳送密碼</string>
+    <string name="settings_quick_receive_code_label">快速接收密碼</string>
     <string name="settings_quick_using_default">使用預設：%1$s</string>
+    <string name="settings_quick_leave_blank">留空以使用預設密碼</string>
+    <string name="settings_quick_hint">快速分頁使用這些密碼。留空時回退至預設密碼短語。</string>
     <string name="settings_network">網路</string>
+    <string name="settings_local_only">僅本機</string>
+    <string name="settings_local_only_desc">僅使用區域網路連線</string>
+    <string name="settings_builtin_dns">內建 DNS</string>
+    <string name="settings_builtin_dns_desc">使用內部 DNS 解析器</string>
+    <string name="settings_multicast_address_label">群播位址</string>
+    <string name="settings_encryption">加密</string>
+    <string name="settings_pake_curve_label">PAKE 曲線</string>
+    <string name="settings_transfer_options_label">傳輸選項</string>
+    <string name="settings_disable_compression_label">停用壓縮</string>
+    <string name="settings_disable_compression_full_desc">不壓縮直接傳輸檔案</string>
+    <string name="settings_upload_speed_limit">上傳速度限制</string>
+    <string name="settings_upload_speed_placeholder">如 500k 或 1m</string>
     <string name="settings_about_label">關於</string>
     <string name="settings_app_version_label">應用程式版本</string>
     <string name="settings_croc_version_label">croc 版本</string>
     <string name="settings_croc_version_val">v10.4.4</string>
+    <string name="settings_built_with">由 Dastageer 用 ❤️ 打造</string>
     <string name="settings_croc_github">github.com/schollz/croc</string>
     <string name="settings_language">語言</string>
     <string name="settings_language_label">應用程式語言</string>
     <string name="settings_language_system">系統預設</string>
+    <string name="settings_language_desc">變更應用程式顯示語言</string>
     <!-- ════ Send Screen - Additional ════ -->
     <string name="send_qr_code">QR 碼</string>
     <string name="send_hide_qr">隱藏 QR 碼</string>
@@ -215,7 +271,34 @@
     <string name="send_use_default_code">使用預設密碼</string>
     <string name="send_share_code_chooser">分享密碼</string>
     <!-- ════ Quick Screen - Additional ════ -->
+    <string name="quick_more_items_one">+%1$d 個項目</string>
+    <string name="quick_more_items_many">+%1$d 個項目</string>
+    <string name="quick_send_files_label">傳送檔案、文字，或立即接收</string>
+    <string name="quick_hold_receive_hint">長按接收以使用已儲存密碼</string>
     <!-- ════ Receive Screen - Additional ════ -->
+    <string name="receive_start_receive">開始接收</string>
+    <string name="receive_scan_qr">掃描 QR 碼</string>
     <!-- ════ Receive Screen - Location Picker ════ -->
+    <string name="receive_save_to">儲存至</string>
+    <string name="receive_save_to_session">儲存至（僅限本次）</string>
+    <string name="receive_change_location">變更</string>
+    <string name="receive_reset_location">恢復預設</string>
     <!-- ════ Binary Setup Screen ════ -->
+    <string name="setup_first_run">首次執行設定</string>
+    <string name="setup_retry">重試設定</string>
+    <string name="setup_error_fallback">目前無法準備 croc。</string>
+    <string name="setup_ready">一切就緒，可以開始傳輸了。</string>
+    <string name="setup_checking">正在檢測您的裝置並準備傳輸引擎。</string>
+    <string name="setup_almost_there">即將完成</string>
+    <string name="setup_preparing_transfers">正在準備安全傳輸</string>
+    <string name="setup_guide1_eyebrow">CROC 的運作原理</string>
+    <string name="setup_guide1_title">簡單密碼，直接傳輸，無需帳號。</string>
+    <string name="setup_guide1_bullet1">在一台手機上選擇檔案，croc 會產生一組短暫的一次性密碼。</string>
+    <string name="setup_guide1_bullet2">在另一台手機上輸入密碼或掃描 QR 碼，即可立即連線。</string>
+    <string name="setup_guide1_bullet3">傳輸全程端對端加密，檔案在傳輸途中完全私密。</string>
+    <string name="setup_guide2_eyebrow">注意事項</string>
+    <string name="setup_guide2_title">這個只需要設定一次。</string>
+    <string name="setup_guide2_bullet1">首次執行時會下載並準備 croc 引擎。</string>
+    <string name="setup_guide2_bullet2">之後啟動會重複使用同一引擎，傳送和接收幾乎即時完成。</string>
+    <string name="setup_guide2_bullet3">保持應用程式在此頁面開啟即可，無需其他操作。</string>
 </resources>
