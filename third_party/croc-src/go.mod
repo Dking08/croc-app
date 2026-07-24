@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/chzyer/readline v1.5.1
+	github.com/coder/websocket v1.8.15
 	github.com/denisbrodbeck/machineid v1.0.1
 	github.com/kalafut/imohash v1.1.1
 	github.com/magisterquis/connectproxy v0.0.0-20200725203833-3582e84f0c9b
@@ -14,13 +14,13 @@ require (
 	github.com/schollz/logger v1.2.0
 	github.com/schollz/pake/v3 v3.1.1
 	github.com/schollz/peerdiscovery v1.7.6
-	github.com/schollz/progressbar/v3 v3.19.0
+	github.com/schollz/progressbar/v3 v3.19.1
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/crypto v0.51.0
-	golang.org/x/net v0.54.0
-	golang.org/x/sys v0.44.0
-	golang.org/x/term v0.43.0
+	golang.org/x/crypto v0.54.0
+	golang.org/x/net v0.57.0
+	golang.org/x/sys v0.47.0
+	golang.org/x/term v0.45.0
 	golang.org/x/time v0.15.0
 )
 

@@ -27,3 +27,5 @@ go.work.sum
 # Croc builds
 /croc
 croc_v*
+bin/
+src/croc/test-*

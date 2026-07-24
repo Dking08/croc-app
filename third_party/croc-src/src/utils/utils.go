@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -32,6 +33,16 @@ import (
 
 const NbPinNumbers = 4
 const NbBytesWords = 4
+
+const maxProgressFilenameRunes = 20
+
+func shortenProgressFilename(fname string) string {
+	fnameRunes := []rune(path.Base(fname))
+	if len(fnameRunes) > maxProgressFilenameRunes {
+		return string(fnameRunes[:maxProgressFilenameRunes]) + "..."
+	}
+	return string(fnameRunes)
+}
 
 // Get or create home directory
 func GetConfigDir(requireValidPath bool) (homedir string, err error) {
@@ -69,12 +80,40 @@ func Exists(name string) bool {
 	return true
 }
 
-// GetInput returns the input with a given prompt
-func GetInput(prompt string) string {
-	reader := bufio.NewReader(os.Stdin)
+// UnusedFilename returns a filename in folder that does not exist yet,
+// appending " (1)", " (2)", etc. before the extension of name until an
+// unused one is found.
+func UnusedFilename(folder, name string) string {
+	if !Exists(path.Join(folder, name)) {
+		return name
+	}
+	ext := path.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+	for i := 1; ; i++ {
+		candidate := fmt.Sprintf("%s (%d)%s", base, i, ext)
+		if !Exists(path.Join(folder, candidate)) {
+			return candidate
+		}
+	}
+}
+
+// stdinReader is shared by all prompts so that piped or typed-ahead
+// answers buffered past one line survive to the next prompt.
+var stdinReader = bufio.NewReader(os.Stdin)
+
+// GetInput returns one line of input from stdin with a given prompt,
+// with surrounding whitespace trimmed. On read error (e.g. closed or
+// exhausted stdin) the returned string is empty, so callers that treat
+// an empty answer as consent must check the error.
+func GetInput(prompt string) (string, error) {
 	fmt.Fprintf(os.Stderr, "%s", prompt)
-	text, _ := reader.ReadString('\n')
-	return strings.TrimSpace(text)
+	text, err := stdinReader.ReadString('\n')
+	text = strings.TrimSpace(text)
+	if errors.Is(err, io.EOF) && text != "" {
+		// a final line without a trailing newline is still a valid answer
+		err = nil
+	}
+	return text, err
 }
 
 // HashFile returns the hash of a file or, in case of a symlink, the
@@ -129,10 +168,7 @@ func HighwayHashFile(fname string, doShowProgress bool) (hashHighway []byte, err
 	}
 	if doShowProgress {
 		stat, _ := f.Stat()
-		fnameShort := path.Base(fname)
-		if len(fnameShort) > 20 {
-			fnameShort = fnameShort[:20] + "..."
-		}
+		fnameShort := shortenProgressFilename(fname)
 		bar := progressbar.NewOptions64(stat.Size(),
 			progressbar.OptionSetWriter(os.Stderr),
 			progressbar.OptionShowBytes(true),
@@ -164,10 +200,7 @@ func MD5HashFile(fname string, doShowProgress bool) (hash256 []byte, err error) 
 	h := md5.New()
 	if doShowProgress {
 		stat, _ := f.Stat()
-		fnameShort := path.Base(fname)
-		if len(fnameShort) > 20 {
-			fnameShort = fnameShort[:20] + "..."
-		}
+		fnameShort := shortenProgressFilename(fname)
 		bar := progressbar.NewOptions64(stat.Size(),
 			progressbar.OptionSetWriter(os.Stderr),
 			progressbar.OptionShowBytes(true),
@@ -216,10 +249,7 @@ func XXHashFile(fname string, doShowProgress bool) (hash256 []byte, err error) {
 	h := xxhash.New()
 	if doShowProgress {
 		stat, _ := f.Stat()
-		fnameShort := path.Base(fname)
-		if len(fnameShort) > 20 {
-			fnameShort = fnameShort[:20] + "..."
-		}
+		fnameShort := shortenProgressFilename(fname)
 		bar := progressbar.NewOptions64(stat.Size(),
 			progressbar.OptionSetWriter(os.Stderr),
 			progressbar.OptionShowBytes(true),
@@ -338,10 +368,7 @@ func MissingChunks(fname string, fsize int64, chunkSize int) (chunkRanges []int6
 	var bar *progressbar.ProgressBar
 	showProgress := fsize > 10*1024*1024
 	if showProgress {
-		fnameShort := path.Base(fname)
-		if len(fnameShort) > 20 {
-			fnameShort = fnameShort[:20] + "..."
-		}
+		fnameShort := shortenProgressFilename(fname)
 		bar = progressbar.NewOptions64(fsize,
 			progressbar.OptionSetWriter(os.Stderr),
 			progressbar.OptionShowBytes(true),
@@ -420,11 +447,16 @@ func GetLocalIPs() (ips []string, err error) {
 		}
 		return
 	}
-	ips = []string{}
+	return localIPsFromAddrs(addrs), nil
+}
+
+func localIPsFromAddrs(addrs []net.Addr) (ips []string) {
 	for _, address := range addrs {
-		// check the address type and if it is not a loopback the display it
+		// Return every routable interface address. IPv6 link-local addresses are
+		// discovered through multicast instead because dialing them also requires
+		// the receiver's local interface zone.
 		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
+			if ipnet.IP.To4() != nil || (ipnet.IP.To16() != nil && !ipnet.IP.IsLinkLocalUnicast()) {
 				ips = append(ips, ipnet.IP.String())
 			}
 		}
@@ -505,6 +537,13 @@ func IsLocalIP(ipaddress string) bool {
 // any string in exclusions (case-insensitive) are also skipped, mirroring
 // the post-walk filter in cli.go for non-zip transfers.
 func ZipDirectory(destination string, source string, ignoredPaths map[string]bool, exclusions []string) (err error) {
+	return ZipDirectoryWithExactExclusions(destination, source, ignoredPaths, exclusions, nil)
+}
+
+// ZipDirectoryWithExactExclusions is ZipDirectory with support for exact
+// paths relative to source. Legacy exclusions remain case-insensitive
+// substring matches.
+func ZipDirectoryWithExactExclusions(destination string, source string, ignoredPaths map[string]bool, exclusions, exactExclusions []string) (err error) {
 	if _, err = os.Stat(destination); err == nil {
 		log.Errorf("%s file already exists!\n", destination)
 		return fmt.Errorf("file already exists: %s", destination)
@@ -516,6 +555,18 @@ func ZipDirectory(destination string, source string, ignoredPaths map[string]boo
 		return fmt.Errorf("source directory does not exist: %s", source)
 	}
 
+	sourceAbs, err := filepath.Abs(source)
+	if err != nil {
+		return fmt.Errorf("failed to resolve source path: %w", err)
+	}
+	if resolvedSourceAbs, resolveErr := filepath.EvalSymlinks(sourceAbs); resolveErr == nil {
+		sourceAbs = resolvedSourceAbs
+	}
+	destinationAbs, err := filepath.Abs(destination)
+	if err != nil {
+		return fmt.Errorf("failed to resolve zip destination path: %w", err)
+	}
+
 	fmt.Fprintf(os.Stderr, "Zipping %s to %s\n", source, destination)
 	file, err := os.Create(destination)
 	if err != nil {
@@ -523,6 +574,10 @@ func ZipDirectory(destination string, source string, ignoredPaths map[string]boo
 		return fmt.Errorf("failed to create zip file: %w", err)
 	}
 	defer file.Close()
+	if resolvedDestinationAbs, resolveErr := filepath.EvalSymlinks(destinationAbs); resolveErr == nil {
+		destinationAbs = resolvedDestinationAbs
+	}
+	skipDestination := pathWithin(sourceAbs, destinationAbs)
 	writer := zip.NewWriter(file)
 	// no compression because croc does its compression on the fly
 	writer.RegisterCompressor(zip.Deflate, func(out io.Writer) (io.WriteCloser, error) {
@@ -566,6 +621,18 @@ func ZipDirectory(destination string, source string, ignoredPaths map[string]boo
 			return nil
 		}
 
+		if skipDestination {
+			absPath, absErr := filepath.Abs(path)
+			if absErr == nil {
+				if resolvedAbsPath, resolveErr := filepath.EvalSymlinks(absPath); resolveErr == nil {
+					absPath = resolvedAbsPath
+				}
+				if filepath.Clean(absPath) == filepath.Clean(destinationAbs) {
+					return nil
+				}
+			}
+		}
+
 		// Honour --git: skip paths flagged by .gitignore matching upstream.
 		if len(ignoredPaths) > 0 {
 			absPath, absErr := filepath.Abs(path)
@@ -587,6 +654,7 @@ func ZipDirectory(destination string, source string, ignoredPaths map[string]boo
 		// Create zip path with base name structure
 		zipPath := filepath.Join(baseName, relPath)
 		zipPath = filepath.ToSlash(zipPath)
+		relPath = NormalizeRelativePath(relPath)
 
 		// Honour --exclude: case-insensitive substring match against the zip
 		// path, mirroring the post-walk filter in cli.go.
@@ -594,6 +662,16 @@ func ZipDirectory(destination string, source string, ignoredPaths map[string]boo
 			zipPathLower := strings.ToLower(zipPath)
 			for _, exclusion := range exclusions {
 				if strings.Contains(zipPathLower, exclusion) {
+					if info.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+			}
+		}
+		if len(exactExclusions) > 0 {
+			for _, exclusion := range exactExclusions {
+				if relPath == NormalizeRelativePath(exclusion) {
 					if info.IsDir() {
 						return filepath.SkipDir
 					}
@@ -667,6 +745,22 @@ func ZipDirectory(destination string, source string, ignoredPaths map[string]boo
 	return nil
 }
 
+// NormalizeRelativePath converts a path to a portable, clean relative-path
+// representation suitable for exact comparisons.
+func NormalizeRelativePath(p string) string {
+	p = filepath.ToSlash(filepath.Clean(p))
+	p = strings.TrimPrefix(p, "./")
+	return p
+}
+
+func pathWithin(parent string, child string) bool {
+	rel, err := filepath.Rel(filepath.Clean(parent), filepath.Clean(child))
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+
 func UnzipDirectory(destination string, source string) error {
 	archive, err := zip.OpenReader(source)
 	if err != nil {
@@ -719,7 +813,8 @@ func UnzipDirectory(destination string, source string) error {
 		// check if file exists
 		if _, err := os.Stat(filePath); err == nil {
 			prompt := fmt.Sprintf("\nOverwrite '%s'? (y/N) ", filePath)
-			choice := strings.ToLower(GetInput(prompt))
+			choice, _ := GetInput(prompt)
+			choice = strings.ToLower(choice)
 			if choice != "y" && choice != "yes" {
 				fmt.Fprintf(os.Stderr, "Skipping '%s'\n", filePath)
 				continue
@@ -766,7 +861,7 @@ func UnzipDirectory(destination string, source string) error {
 }
 
 func resolveUnzipPath(destination string, entryName string) (string, error) {
-	if filepath.IsAbs(entryName) || filepath.VolumeName(entryName) != "" {
+	if !filepath.IsLocal(entryName) {
 		return "", fmt.Errorf("path escapes destination")
 	}
 

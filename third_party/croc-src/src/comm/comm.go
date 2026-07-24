@@ -3,6 +3,7 @@ package comm
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -22,6 +23,11 @@ var HttpProxy = ""
 var MAGIC_BYTES = []byte("croc")
 
 const maxReadMessageSize = 64 * 1024 * 1024
+
+// Large resume requests can contain hundreds of thousands of missing chunk
+// ranges. Keep the guard against malformed streams, but give legitimate large
+// control messages enough time to arrive through a relay.
+const messageBodyReadTimeout = 10 * time.Minute
 
 // Comm is some basic TCP communication
 type Comm struct {
@@ -114,6 +120,9 @@ func (c *Comm) Connection() net.Conn {
 // Close closes the connection
 func (c *Comm) Close() {
 	if err := c.connection.Close(); err != nil {
+		if errors.Is(err, net.ErrClosed) {
+			return
+		}
 		log.Warnf("error closing connection: %v", err)
 	}
 }
@@ -183,8 +192,9 @@ func (c *Comm) Read() (buf []byte, numBytes int, bs []byte, err error) {
 	}
 	numBytes = int(numBytesUint32)
 
-	// shorten the reading deadline in case getting weird data
-	if err = c.connection.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	// Shorten the reading deadline in case getting weird data, while still
+	// allowing large resume-control messages to cross slower relays.
+	if err = c.connection.SetReadDeadline(time.Now().Add(messageBodyReadTimeout)); err != nil {
 		log.Warnf("error setting read deadline: %v", err)
 	}
 	buf = make([]byte, numBytes)

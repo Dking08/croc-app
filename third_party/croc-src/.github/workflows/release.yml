@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: '^1.24.0'
 
@@ -46,11 +46,6 @@ jobs:
           - goos: windows
             goarch: "386"
             name: Windows-32bit
-            ext: .exe
-            archive: zip
-          - goos: windows
-            goarch: arm
-            name: Windows-ARM
             ext: .exe
             archive: zip
           - goos: windows
@@ -151,7 +146,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: '^1.24.0'
 

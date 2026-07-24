@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/6550035/46709024-9b23ad00-cbf6-11e8-9fb2-ca8b20b7dbec.jpg" width="408px" border="0" alt="croc">
+  <a href="https://getcroc.com"><img src="web/public/croc.jpg" width="408px" border="0" alt="croc"></a>
   <br>
   <a href="https://github.com/schollz/croc/releases/latest"><img src="https://img.shields.io/github/v/release/schollz/croc" alt="Version"></a>
   <a href="https://github.com/schollz/croc/actions/workflows/ci.yml"><img src="https://github.com/schollz/croc/actions/workflows/ci.yml/badge.svg" alt="Build Status"></a>
@@ -11,11 +11,11 @@
 
 ## About
 
-`croc` is a tool that allows any two computers to simply and securely transfer files and folders. AFAIK, *croc* is the only CLI file-transfer tool that does **all** of the following:
+`croc` is a tool that allows any two computers to simply and securely transfer files and folders. AFAIK, _croc_ is the only CLI file-transfer tool that does **all** of the following:
 
 - Allows **any two computers** to transfer data (using a relay)
 - Provides **end-to-end encryption** (using PAKE)
-- Enables easy **cross-platform** transfers (Windows, Linux, Mac)
+- Enables easy **cross-platform** transfers (Windows, Linux, Mac, [Browser](https://getcroc.com))
 - Allows **multiple file** transfers
 - Allows **resuming transfers** that are interrupted
 - No need for local server or port-forwarding
@@ -26,12 +26,18 @@ For more information about `croc`, see [my blog post](https://schollz.com/tinker
 
 ![Example](src/install/customization.gif)
 
+## No-install
+
+You can use croc without installing anything at [getcroc.com](https://getcroc.com).
+
+The browser version is fully compatible with the CLI, so you can send and receive files between them.
+
 ## Install
 
 You can download [the latest release for your system](https://github.com/schollz/croc/releases/latest), or install a release from the command-line:
 
 ```bash
-curl https://getcroc.schollz.com | bash
+curl https://getcroc.com | bash
 ```
 
 ### On macOS
@@ -89,7 +95,7 @@ First, install dependencies:
 
 ```bash
 apk add bash coreutils
-wget -qO- https://getcroc.schollz.com | bash
+wget -qO- https://getcroc.com | bash
 ```
 
 ### On Arch Linux
@@ -146,7 +152,7 @@ Or install into a particular environment with [`conda`](https://docs.conda.io/pr
 conda install --channel conda-forge croc
 ```
 
-### On Linux, macOS via Docker 
+### On Linux, macOS via Docker
 
 Add the following one-liner function to your ~/.profile (works with any POSIX-compliant shell):
 
@@ -166,7 +172,10 @@ go install github.com/schollz/croc/v10@latest
 
 ### On Android
 
-There is a 3rd-party F-Droid app [available to download](https://f-droid.org/packages/com.github.howeyc.crocgui/).
+There are two F-Droid apps available:
+
+- [crocgui](https://f-droid.org/packages/com.github.howeyc.crocgui/) — original port (Go, basic UI)
+- [croc-app](https://f-droid.org/en/packages/com.dking.crocapp/) — native Kotlin/Jetpack Compose client with a modern, mobile-first interface
 
 ## Usage
 
@@ -218,6 +227,14 @@ To automatically overwrite files without prompting, use the `--overwrite` flag:
 croc --yes --overwrite <code>
 ```
 
+#### Keep Both Files Without Prompt
+
+To keep an existing file and receive the incoming one under a new name (e.g. `video (1).mkv`), use the `--rename` flag:
+
+```bash
+croc --yes --rename <code>
+```
+
 #### Excluding Folders
 
 To exclude folders from being sent, use the `--exclude` flag with comma-delimited exclusions:
@@ -263,6 +280,9 @@ To show QR code (for mobile devices), use:
 ```bash
 croc send --qr [file(s)-or-folder]
 ```
+
+The QR code opens `https://getcroc.com/?code=...`, where the web client
+automatically connects in receive-only mode.
 
 #### Use a Proxy
 
@@ -347,6 +367,26 @@ To use custom ports, set `CROC_PORTS` (comma-separated) or `CROC_PORT` (base por
 ```bash
 docker run -d -p 9010-9011:9010-9011 -e CROC_PORTS='9010,9011' -e CROC_PASS='YOURPASSWORD' docker.io/schollz/croc
 ```
+
+#### Web client
+
+The React/Vite client in [`web/`](web/) can send and receive multiple files
+with normal croc CLI peers. The production client and its WebAssembly protocol
+runtime are embedded in every `croc` binary. One command serves both the site
+and its same-origin WebSocket relay:
+
+```bash
+croc serve getcroc.com
+```
+
+This binds to `127.0.0.1:9014` by default for an HTTPS reverse proxy. `/`
+serves the website and `/ws` bridges to `croc.schollz.com`. For a directly
+accessible local development server, `croc serve localhost:5173` binds and
+serves on `localhost:5173`. Use `--bind`, `--relay`, and `--ports` before the
+website address to customize the local listener or upstream croc relay.
+
+See [`web/README.md`](web/README.md) for frontend development, embedded asset
+generation, custom relay, and reverse-proxy instructions.
 
 ## Acknowledgements
 

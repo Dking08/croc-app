@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -23,6 +25,53 @@ var bigFileSize = 75000000
 
 func bigFile() {
 	os.WriteFile("bigfile.test", bytes.Repeat([]byte("z"), bigFileSize), 0o666)
+}
+
+func TestShortenProgressFilename(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "short basename",
+			input: path.Join("folder", "short.txt"),
+			want:  "short.txt",
+		},
+		{
+			name:  "exactly twenty Unicode characters",
+			input: strings.Repeat("a", 19) + "ä",
+			want:  strings.Repeat("a", 19) + "ä",
+		},
+		{
+			name:  "long ASCII basename",
+			input: strings.Repeat("a", 21),
+			want:  strings.Repeat("a", 20) + "...",
+		},
+		{
+			name:  "umlaut at former byte boundary",
+			input: strings.Repeat("1", 19) + "ä.txt",
+			want:  strings.Repeat("1", 19) + "ä...",
+		},
+		{
+			name:  "multibyte basename from path",
+			input: path.Join("folder", strings.Repeat("界", 21)+".txt"),
+			want:  strings.Repeat("界", 20) + "...",
+		},
+		{
+			name:  "invalid input bytes",
+			input: strings.Repeat("a", 19) + string([]byte{0xc3}) + ".txt",
+			want:  strings.Repeat("a", 19) + "�...",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shortenProgressFilename(tt.input)
+			assert.Equal(t, tt.want, got)
+			assert.True(t, utf8.ValidString(got))
+		})
+	}
 }
 
 func BenchmarkMD5(b *testing.B) {
@@ -86,6 +135,17 @@ func TestExists(t *testing.T) {
 	fmt.Println(GetLocalIPs())
 	assert.True(t, Exists("bigfile.test"))
 	assert.False(t, Exists("doesnotexist"))
+}
+
+func TestUnusedFilename(t *testing.T) {
+	folder := t.TempDir()
+	assert.Equal(t, "video.mkv", UnusedFilename(folder, "video.mkv"))
+	os.WriteFile(filepath.Join(folder, "video.mkv"), []byte("a"), 0o644)
+	assert.Equal(t, "video (1).mkv", UnusedFilename(folder, "video.mkv"))
+	os.WriteFile(filepath.Join(folder, "video (1).mkv"), []byte("b"), 0o644)
+	assert.Equal(t, "video (2).mkv", UnusedFilename(folder, "video.mkv"))
+	os.WriteFile(filepath.Join(folder, "noext"), []byte("c"), 0o644)
+	assert.Equal(t, "noext (1)", UnusedFilename(folder, "noext"))
 }
 
 func TestMD5HashFile(t *testing.T) {
@@ -223,6 +283,19 @@ func TestLocalIP(t *testing.T) {
 	ip := LocalIP()
 	fmt.Println(ip)
 	assert.True(t, strings.Contains(ip, ".") || strings.Contains(ip, ":"))
+}
+
+func TestLocalIPsFromAddrsIncludesRoutableIPv4AndIPv6(t *testing.T) {
+	addrs := []net.Addr{
+		&net.IPNet{IP: net.ParseIP("127.0.0.1"), Mask: net.CIDRMask(8, 32)},
+		&net.IPNet{IP: net.ParseIP("192.168.1.20"), Mask: net.CIDRMask(24, 32)},
+		&net.IPNet{IP: net.ParseIP("::1"), Mask: net.CIDRMask(128, 128)},
+		&net.IPNet{IP: net.ParseIP("fe80::20"), Mask: net.CIDRMask(64, 128)},
+		&net.IPNet{IP: net.ParseIP("fd00::20"), Mask: net.CIDRMask(64, 128)},
+		&net.IPNet{IP: net.ParseIP("2001:db8::20"), Mask: net.CIDRMask(64, 128)},
+	}
+
+	assert.Equal(t, []string{"192.168.1.20", "fd00::20", "2001:db8::20"}, localIPsFromAddrs(addrs))
 }
 
 func TestGetRandomName(t *testing.T) {
@@ -442,14 +515,55 @@ func TestUnzipDirectoryRejectsPathTraversal(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "pre-validation should prevent partial extraction")
 }
 
-func TestResolveUnzipPathRejectsAbsolutePathEntry(t *testing.T) {
+func TestResolveUnzipPathRejectsNonLocalEntries(t *testing.T) {
 	destination := t.TempDir()
-	absoluteEntry := filepath.Join(string(os.PathSeparator), "tmp", "croc-absolute-escape.txt")
+	tests := []struct {
+		name  string
+		entry string
+	}{
+		{
+			name:  "absolute path",
+			entry: filepath.Join(string(os.PathSeparator), "tmp", "croc-absolute-escape.txt"),
+		},
+		{
+			name:  "parent directory",
+			entry: "..",
+		},
+		{
+			name:  "parent traversal",
+			entry: filepath.Join("..", "croc-relative-escape.txt"),
+		},
+		{
+			name:  "nested parent traversal",
+			entry: filepath.Join("safe", "..", "..", "croc-relative-escape.txt"),
+		},
+		{
+			name:  "empty path",
+			entry: "",
+		},
+	}
 
-	_, err := resolveUnzipPath(destination, absoluteEntry)
-	assert.NotNil(t, err)
-	if err != nil {
-		assert.Contains(t, err.Error(), "path escapes destination")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := resolveUnzipPath(destination, tt.entry)
+			assert.ErrorContains(t, err, "path escapes destination")
+		})
+	}
+}
+
+func TestResolveUnzipPathAllowsLocalEntries(t *testing.T) {
+	destination := t.TempDir()
+
+	for _, entry := range []string{
+		"file.txt",
+		filepath.Join("directory", "file.txt"),
+		"directory..name",
+	} {
+		t.Run(entry, func(t *testing.T) {
+			resolved, err := resolveUnzipPath(destination, entry)
+			assert.NoError(t, err)
+			assert.Equal(t, filepath.Join(destination, entry), resolved)
+		})
 	}
 }
 

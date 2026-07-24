@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -13,14 +15,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chzyer/readline"
 	"github.com/schollz/cli/v2"
 	"github.com/schollz/croc/v10/src/comm"
 	"github.com/schollz/croc/v10/src/croc"
-	"github.com/schollz/croc/v10/src/mnemonicode"
 	"github.com/schollz/croc/v10/src/models"
 	"github.com/schollz/croc/v10/src/tcp"
 	"github.com/schollz/croc/v10/src/utils"
+	"github.com/schollz/croc/v10/src/webrelay"
 	log "github.com/schollz/logger"
 	"github.com/schollz/pake/v3"
 )
@@ -36,7 +37,7 @@ func Run() (err error) {
 	app := cli.NewApp()
 	app.Name = "croc"
 	if Version == "" {
-		Version = "v10.4.4"
+		Version = "10.6.0"
 	}
 	app.Version = Version
 	app.Compiled = time.Now()
@@ -70,15 +71,16 @@ func Run() (err error) {
 			Flags: []cli.Flag{
 				&cli.BoolFlag{Name: "zip", Usage: "zip folder before sending"},
 				&cli.StringFlag{Name: "code", Aliases: []string{"c"}, Usage: "codephrase used to connect to relay (at least 6 characters)"},
-				&cli.StringFlag{Name: "hash", Value: "xxhash", Usage: "hash algorithm (xxhash, imohash, md5)"},
+				&cli.StringFlag{Name: "hash", Value: "xxhash", Usage: "hash algorithm (xxhash, imohash, md5, highway)"},
 				&cli.StringFlag{Name: "text", Aliases: []string{"t"}, Usage: "send some text"},
 				&cli.BoolFlag{Name: "no-local", Usage: "disable local relay when sending"},
 				&cli.BoolFlag{Name: "no-multi", Usage: "disable multiplexing"},
 				&cli.BoolFlag{Name: "git", Usage: "enable .gitignore respect / don't send ignored files"},
 				&cli.IntFlag{Name: "port", Value: 9009, Usage: "base port for the relay"},
 				&cli.IntFlag{Name: "transfers", Value: 4, Usage: "number of ports to use for transfers"},
-				&cli.BoolFlag{Name: "qrcode", Aliases: []string{"qr"}, Usage: "show receive code as a qrcode"},
+				&cli.BoolFlag{Name: "qrcode", Aliases: []string{"qr"}, Usage: "show the web receive URL as a qrcode"},
 				&cli.StringFlag{Name: "exclude", Value: "", Usage: "exclude files if they contain any of the comma separated strings"},
+				&cli.StringFlag{Name: "exclude-file", Value: "", Usage: "exclude files matching any of the comma separated relative paths exactly"},
 				&cli.StringFlag{Name: "socks5", Value: "", Usage: "add a socks5 proxy", EnvVars: []string{"SOCKS5_PROXY"}},
 				&cli.StringFlag{Name: "connect", Value: "", Usage: "add a http proxy", EnvVars: []string{"HTTP_PROXY"}},
 			},
@@ -96,6 +98,19 @@ func Run() (err error) {
 				&cli.StringFlag{Name: "ports", Value: "9009,9010,9011,9012,9013", Usage: "ports of the relay", EnvVars: []string{"CROC_PORTS"}},
 				&cli.IntFlag{Name: "port", Value: 9009, Usage: "base port for the relay", EnvVars: []string{"CROC_PORT"}},
 				&cli.IntFlag{Name: "transfers", Value: 5, Usage: "number of ports to use for relay"},
+			},
+		},
+		{
+			Name:        "serve",
+			Usage:       "serve the embedded web client and browser relay",
+			Description: "serve the croc website and its fixed-upstream WebSocket relay from one HTTP server",
+			HelpName:    "croc serve",
+			ArgsUsage:   "[public-host[:port]]",
+			Action:      runServe,
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "bind", Value: "127.0.0.1:9014", Usage: "local HTTP bind address"},
+				&cli.StringFlag{Name: "relay", Value: "croc.schollz.com", Usage: "fixed upstream croc relay host"},
+				&cli.StringFlag{Name: "ports", Value: "9009,9010,9011,9012,9013,9014,9015,9016,9017", Usage: "allowed upstream relay ports"},
 			},
 		},
 		{
@@ -124,6 +139,7 @@ func Run() (err error) {
 		&cli.BoolFlag{Name: "local", Usage: "force to use only local connections"},
 		&cli.BoolFlag{Name: "ignore-stdin", Usage: "ignore piped stdin"},
 		&cli.BoolFlag{Name: "overwrite", Usage: "do not prompt to overwrite or resume"},
+		&cli.BoolFlag{Name: "rename", Usage: "receive files that already exist under a new name instead of prompting"},
 		&cli.BoolFlag{Name: "testing", Usage: "flag for testing purposes"},
 		&cli.BoolFlag{Name: "quiet", Usage: "disable all output"},
 		&cli.BoolFlag{Name: "disable-clipboard", Usage: "disable copy to clipboard"},
@@ -167,7 +183,8 @@ access the shared secret and receive the files instead of the intended
 recipient.
 
 Do you wish to continue to DISABLE the classic mode? (y/N) `)
-				choice := strings.ToLower(utils.GetInput(""))
+				choice, _ := utils.GetInput("")
+				choice = strings.ToLower(choice)
 				if choice == "y" || choice == "yes" {
 					os.Remove(classicFile)
 					fmt.Print("\nClassic mode DISABLED.\n\n")
@@ -191,7 +208,8 @@ multi-user system, this could allow other local users to access the
 shared secret and receive the files instead of the intended recipient.
 
 Do you wish to continue to enable the classic mode? (y/N) `)
-				choice := strings.ToLower(utils.GetInput(""))
+				choice, _ := utils.GetInput("")
+				choice = strings.ToLower(choice)
 				if choice == "y" || choice == "yes" {
 					fmt.Print("\nClassic mode ENABLED.\n\n")
 					os.WriteFile(classicFile, []byte("enabled"), 0o644)
@@ -215,7 +233,11 @@ Do you wish to continue to enable the classic mode? (y/N) `)
 				fnames = append(fnames, "'"+basename+"'")
 			}
 			promptMessage := fmt.Sprintf("Did you mean to send %s? (Y/n) ", strings.Join(fnames, ", "))
-			choice := strings.ToLower(utils.GetInput(promptMessage))
+			choice, errInput := utils.GetInput(promptMessage)
+			if errInput != nil {
+				return fmt.Errorf("could not read confirmation (use 'croc send' to send without one): %w", errInput)
+			}
+			choice = strings.ToLower(choice)
 			if choice == "" || choice == "y" || choice == "yes" {
 				return send(c)
 			}
@@ -277,8 +299,9 @@ func determinePass(c *cli.Context) (pass string) {
 	pass = c.String("pass")
 	b, err := os.ReadFile(pass)
 	if err == nil {
-		pass = strings.TrimSpace(string(b))
+		pass = string(b)
 	}
+	pass = strings.TrimSpace(pass)
 	return
 }
 
@@ -291,6 +314,19 @@ func resolveSendSharedSecret(sharedSecret, envSecret string) string {
 
 func shouldExitForUnixSendCode(goos string, codeFlagSet, classicInsecureMode bool, envSecret string) bool {
 	return goos != "windows" && codeFlagSet && !classicInsecureMode && envSecret == ""
+}
+
+// parseRelayPorts splits a comma-separated --ports value, trimming whitespace
+// around each entry and dropping empties. This keeps "9009, 9010," working the
+// same as "9009,9010" instead of producing invalid port strings like " 9010".
+func parseRelayPorts(portsFlag string) []string {
+	var ports []string
+	for _, p := range strings.Split(portsFlag, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			ports = append(ports, p)
+		}
+	}
+	return ports
 }
 
 func send(c *cli.Context) (err error) {
@@ -311,6 +347,13 @@ func send(c *cli.Context) (err error) {
 		v = strings.ToLower(strings.TrimSpace(v))
 		if v != "" {
 			excludeStrings = append(excludeStrings, v)
+		}
+	}
+	excludeFiles := []string{}
+	for _, v := range strings.Split(c.String("exclude-file"), ",") {
+		v = utils.NormalizeRelativePath(strings.TrimSpace(v))
+		if v != "" && v != "." {
+			excludeFiles = append(excludeFiles, v)
 		}
 	}
 
@@ -337,6 +380,7 @@ func send(c *cli.Context) (err error) {
 		SendingText:       c.String("text") != "",
 		NoCompress:        c.Bool("no-compress"),
 		Overwrite:         c.Bool("overwrite"),
+		Rename:            c.Bool("rename"),
 		Curve:             c.String("curve"),
 		HashAlgorithm:     c.String("hash"),
 		ThrottleUpload:    c.String("throttleUpload"),
@@ -345,6 +389,7 @@ func send(c *cli.Context) (err error) {
 		ShowQrCode:        c.Bool("qrcode"),
 		MulticastAddress:  c.String("multicast"),
 		Exclude:           excludeStrings,
+		ExcludeFile:       excludeFiles,
 		Quiet:             c.Bool("quiet"),
 		DisableClipboard:  c.Bool("disable-clipboard"),
 		ExtendedClipboard: c.Bool("extended-clipboard"),
@@ -377,6 +422,9 @@ func send(c *cli.Context) (err error) {
 		}
 		if !c.IsSet("overwrite") {
 			crocOptions.Overwrite = rememberedOptions.Overwrite
+		}
+		if !c.IsSet("rename") {
+			crocOptions.Rename = rememberedOptions.Rename
 		}
 		if !c.IsSet("curve") && rememberedOptions.Curve != "" {
 			crocOptions.Curve = rememberedOptions.Curve
@@ -461,7 +509,7 @@ Or you can go back to the classic croc behavior by enabling classic mode:
 		// generate code phrase
 		crocOptions.SharedSecret = utils.GetRandomName()
 	}
-	minimalFileInfos, emptyFoldersToTransfer, totalNumberFolders, err := croc.GetFilesInfo(fnames, crocOptions.ZipFolder, crocOptions.GitIgnore, crocOptions.Exclude)
+	minimalFileInfos, emptyFoldersToTransfer, totalNumberFolders, err := croc.GetFilesInfoWithExactExclusions(fnames, crocOptions.ZipFolder, crocOptions.GitIgnore, crocOptions.Exclude, crocOptions.ExcludeFile)
 	if err != nil {
 		return
 	}
@@ -552,6 +600,30 @@ func makeTempFileWithString(s string) (fnames []string, err error) {
 	return
 }
 
+// writePrivateConfigFile writes configuration only after enforcing owner-only
+// permissions. os.WriteFile's permission argument applies only to newly created
+// files, so it does not harden configs created by older croc versions.
+func writePrivateConfigFile(name string, data []byte) (err error) {
+	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+
+	if err = f.Chmod(0o600); err != nil {
+		return err
+	}
+	if err = f.Truncate(0); err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	return err
+}
+
 func saveConfig(c *cli.Context, crocOptions croc.Options) {
 	if c.Bool("remember") {
 		configFile := getSendConfigFile(true)
@@ -576,43 +648,13 @@ func saveConfig(c *cli.Context, crocOptions croc.Options) {
 			log.Error(err)
 			return
 		}
-		err = os.WriteFile(configFile, bConfig, 0o644)
+		err = writePrivateConfigFile(configFile, bConfig)
 		if err != nil {
 			log.Error(err)
 			return
 		}
 		log.Debugf("wrote %s", configFile)
 	}
-}
-
-type TabComplete struct{}
-
-func (t TabComplete) Do(line []rune, pos int) ([][]rune, int) {
-	var words = strings.SplitAfter(string(line), "-")
-	var lastPartialWord = words[len(words)-1]
-	var nbCharacter = len(lastPartialWord)
-	if nbCharacter == 0 {
-		// No completion
-		return [][]rune{[]rune("")}, 0
-	}
-	if len(words) == 1 && nbCharacter == utils.NbPinNumbers {
-		// Check if word is indeed a number
-		_, err := strconv.Atoi(lastPartialWord)
-		if err == nil {
-			return [][]rune{[]rune("-")}, nbCharacter
-		}
-	}
-	var strArray [][]rune
-	for _, s := range mnemonicode.WordList {
-		if strings.HasPrefix(s, lastPartialWord) {
-			var completionCandidate = s[nbCharacter:]
-			if len(words) <= mnemonicode.WordsRequired(utils.NbBytesWords) {
-				completionCandidate += "-"
-			}
-			strArray = append(strArray, []rune(completionCandidate))
-		}
-	}
-	return strArray, nbCharacter
 }
 
 func receive(c *cli.Context) (err error) {
@@ -631,6 +673,7 @@ func receive(c *cli.Context) (err error) {
 		OnlyLocal:         c.Bool("local"),
 		IP:                c.String("ip"),
 		Overwrite:         c.Bool("overwrite"),
+		Rename:            c.Bool("rename"),
 		Curve:             c.String("curve"),
 		TestFlag:          c.Bool("testing"),
 		MulticastAddress:  c.String("multicast"),
@@ -685,6 +728,9 @@ func receive(c *cli.Context) (err error) {
 		if !c.IsSet("overwrite") {
 			crocOptions.Overwrite = rememberedOptions.Overwrite
 		}
+		if !c.IsSet("rename") {
+			crocOptions.Rename = rememberedOptions.Rename
+		}
 		if !c.IsSet("curve") && rememberedOptions.Curve != "" {
 			crocOptions.Curve = rememberedOptions.Curve
 		}
@@ -729,16 +775,9 @@ Or you can go back to the classic croc behavior by enabling classic mode:
 		}
 	}
 	if crocOptions.SharedSecret == "" {
-		l, err := readline.NewEx(&readline.Config{
-			Prompt:       "Enter receive code: ",
-			AutoComplete: TabComplete{},
-		})
+		crocOptions.SharedSecret, err = utils.GetInput("Enter receive code: ")
 		if err != nil {
-			return err
-		}
-		crocOptions.SharedSecret, err = l.Readline()
-		if err != nil {
-			return err
+			return fmt.Errorf("could not read receive code: %w", err)
 		}
 	}
 	if c.String("out") != "" {
@@ -771,7 +810,7 @@ Or you can go back to the classic croc behavior by enabling classic mode:
 			log.Error(err)
 			return
 		}
-		err = os.WriteFile(configFile, bConfig, 0o644)
+		err = writePrivateConfigFile(configFile, bConfig)
 		if err != nil {
 			log.Error(err)
 			return
@@ -793,7 +832,7 @@ func relay(c *cli.Context) (err error) {
 	var ports []string
 
 	if c.IsSet("ports") {
-		ports = strings.Split(c.String("ports"), ",")
+		ports = parseRelayPorts(c.String("ports"))
 	} else {
 		portString := c.Int("port")
 		if portString == 0 {
@@ -825,4 +864,75 @@ func relay(c *cli.Context) (err error) {
 		}(port)
 	}
 	return tcp.Run(debugString, host, ports[0], determinePass(c), tcpPorts)
+}
+
+func runServe(c *cli.Context) error {
+	if c.Args().Len() > 1 {
+		return errors.New("serve accepts one public website address")
+	}
+	publicAddress := c.Args().First()
+	bindAddress, origin, err := resolveServeAddress(
+		publicAddress,
+		c.String("bind"),
+		c.IsSet("bind"),
+	)
+	if err != nil {
+		return err
+	}
+	return webrelay.Run(context.Background(), webrelay.Config{
+		ListenAddress:  bindAddress,
+		PublicAddress:  origin,
+		RelayHost:      c.String("relay"),
+		RelayPassword:  determinePass(c),
+		AllowedPorts:   parseRelayPorts(c.String("ports")),
+		OriginPatterns: []string{origin},
+	})
+}
+
+func resolveServeAddress(publicAddress, bindAddress string, bindExplicit bool) (string, string, error) {
+	publicAddress = strings.TrimSpace(publicAddress)
+	publicExplicit := publicAddress != ""
+	if publicAddress == "" {
+		publicAddress = "localhost:5173"
+	}
+	if strings.Contains(publicAddress, "://") || strings.ContainsAny(publicAddress, "/?#") {
+		return "", "", fmt.Errorf("website address must be a host or host:port: %q", publicAddress)
+	}
+
+	host, port, err := net.SplitHostPort(publicAddress)
+	if err != nil {
+		if strings.Contains(publicAddress, ":") {
+			return "", "", fmt.Errorf("invalid website address %q: %w", publicAddress, err)
+		}
+		host = publicAddress
+		port = ""
+	}
+	host = strings.Trim(host, "[]")
+	if host == "" || strings.ContainsAny(host, " \t\r\n") {
+		return "", "", fmt.Errorf("invalid website host %q", host)
+	}
+	if port != "" {
+		portNumber, parseErr := strconv.ParseUint(port, 10, 16)
+		if parseErr != nil || portNumber == 0 {
+			return "", "", fmt.Errorf("invalid website port %q", port)
+		}
+	}
+
+	bindAddress = strings.TrimSpace(bindAddress)
+	if bindAddress == "" {
+		bindAddress = "127.0.0.1:9014"
+	}
+	if publicExplicit && !bindExplicit && port != "" {
+		ip := net.ParseIP(host)
+		if strings.EqualFold(host, "localhost") || (ip != nil && ip.IsLoopback()) {
+			bindAddress = publicAddress
+		}
+	}
+	if _, bindPort, splitErr := net.SplitHostPort(bindAddress); splitErr != nil {
+		return "", "", fmt.Errorf("invalid bind address %q: %w", bindAddress, splitErr)
+	} else if portNumber, parseErr := strconv.ParseUint(bindPort, 10, 16); parseErr != nil || portNumber == 0 {
+		return "", "", fmt.Errorf("invalid bind port %q", bindPort)
+	}
+
+	return bindAddress, publicAddress, nil
 }
