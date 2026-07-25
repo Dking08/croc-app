@@ -212,18 +212,24 @@ fun SettingsScreen(
 
                 // Only show the picker if there are 2+ languages
                 if (availableLocales.size > 1) {
-                    val currentLocale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales()
-                    val currentCode = if (currentLocale.isEmpty) "system"
-                    else currentLocale.get(0)?.language ?: "system"
+                    val currentLocaleList = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales()
+                    val activeTag = if (currentLocaleList.isEmpty) "system"
+                    else currentLocaleList.get(0)?.toLanguageTag() ?: "system"
+
+                    val currentCode = when {
+                        activeTag == "system" -> "system"
+                        availableLocales.contains(activeTag) -> activeTag
+                        else -> {
+                            val lang = activeTag.split("-")[0]
+                            availableLocales.find { it == lang || it.startsWith("$lang-") } ?: "system"
+                        }
+                    }
 
                     val systemDefaultLabel = stringResource(R.string.settings_language_system)
                     val displayNames = remember(availableLocales, systemDefaultLabel) {
                         val map = mutableMapOf("system" to systemDefaultLabel)
                         availableLocales.forEach { code ->
-                            val locale = java.util.Locale(code)
-                            val name = locale.getDisplayLanguage(locale)
-                                .replaceFirstChar { it.uppercase() }
-                            map[code] = "$name ($code)"
+                            map[code] = getLocaleDisplayName(code)
                         }
                         map
                     }
@@ -803,6 +809,25 @@ private fun DropdownSetting(
                         expanded = false
                     }
                 )
+            }
+        }
+    }
+}
+
+private fun getLocaleDisplayName(code: String): String {
+    val locale = java.util.Locale.forLanguageTag(code)
+    return when (code) {
+        "hi-IN", "hi" -> "हिन्दी (Hindi)"
+        "zh-CN" -> "简体中文 (Simplified Chinese)"
+        "zh-TW" -> "繁體中文 (Traditional Chinese)"
+        "en" -> "English"
+        else -> {
+            val nativeName = locale.getDisplayName(locale).replaceFirstChar { it.uppercase() }
+            val englishName = locale.getDisplayName(java.util.Locale.ENGLISH).replaceFirstChar { it.uppercase() }
+            if (nativeName.equals(englishName, ignoreCase = true) || englishName.isBlank()) {
+                nativeName
+            } else {
+                "$nativeName ($englishName)"
             }
         }
     }
