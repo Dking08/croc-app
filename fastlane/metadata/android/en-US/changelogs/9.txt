@@ -1,0 +1,5 @@
+Changes Made:
+
+1. New languages support - Simplified Chinese & Traditional Chinese
+2. QR Codes now can be expanded on clicking
+3. Croc version bump to v10.6.0

@@ -19,7 +19,7 @@ val goExecutable = providers.gradleProperty("crocGoExecutable")
 
 val buildCrocAndroidArm64 by tasks.registering(Exec::class) {
     group = "build"
-    description = "Build croc v10.4.2 for Android arm64 from vendored source."
+    description = "Build croc v10.6.0 for Android arm64 from vendored source."
     workingDir = crocSourceDir.asFile
 
     inputs.files(
@@ -83,8 +83,8 @@ android {
         applicationId = "com.dking.crocapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "5.0.0"
+        versionCode = 9
+        versionName = "5.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
