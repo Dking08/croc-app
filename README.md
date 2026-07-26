@@ -37,6 +37,7 @@ It is designed to make file and text sharing feel much more natural on Android: 
     </td>
   </tr>
 </table>
+  <h3><a id="change-log" href="https://github.com/Dking08/croc-app/tree/master/fastlane/metadata/android/en-US/changelogs">News - change logs</a></h3>
 </div>
 
 ## Why this project exists
