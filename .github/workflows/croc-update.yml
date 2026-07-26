@@ -30,6 +30,7 @@ jobs:
           echo "version=$LATEST" >> "$GITHUB_OUTPUT"
 
       - name: Replace vendored croc source
+        id: replace
         if: steps.current.outputs.version != steps.latest.outputs.version
         run: |
           rm -rf /tmp/croc-src
@@ -46,6 +47,7 @@ jobs:
           go-version-file: third_party/croc-src/go.mod
 
       - name: Tidy, vendor, and sanity-build
+        id: vendor
         if: steps.current.outputs.version != steps.latest.outputs.version
         working-directory: third_party/croc-src
         run: |
@@ -58,6 +60,7 @@ jobs:
         run: echo "${{ steps.latest.outputs.version }}" > third_party/CROC_VERSION
 
       - name: Open PR
+        id: create_pr
         if: steps.current.outputs.version != steps.latest.outputs.version
         uses: peter-evans/create-pull-request@v8
         with:
@@ -66,8 +69,30 @@ jobs:
           title: "Bump croc ${{ steps.current.outputs.version }} → ${{ steps.latest.outputs.version }}"
           body: |
             Auto-detected new croc release: https://github.com/schollz/croc/releases/tag/${{ steps.latest.outputs.version }}
-
             - Replaced `third_party/croc-src` with the tagged upstream source
             - Ran `go mod tidy && go mod vendor`
             - `go build ./...` passed
           labels: dependencies, automated
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### 🐊 croc version check"
+            echo ""
+            if [ "${{ steps.latest.outcome }}" != "success" ]; then
+              echo "❌ **Failed to fetch the latest release from GitHub.** Check the \"Get latest croc release\" step logs."
+            elif [ "${{ steps.current.outputs.version }}" == "${{ steps.latest.outputs.version }}" ]; then
+              echo "✅ Already up to date — croc \`${{ steps.current.outputs.version }}\`. Nothing to do."
+            elif [ "${{ steps.create_pr.outcome }}" == "success" ]; then
+              echo "🔄 **Updated** croc \`${{ steps.current.outputs.version }}\` → \`${{ steps.latest.outputs.version }}\`"
+              echo ""
+              echo "PR: ${{ steps.create_pr.outputs.pull-request-url }}"
+            elif [ "${{ steps.replace.outcome }}" != "success" ]; then
+              echo "❌ New version \`${{ steps.latest.outputs.version }}\` found, but cloning/replacing the source failed."
+            elif [ "${{ steps.vendor.outcome }}" != "success" ]; then
+              echo "❌ New version \`${{ steps.latest.outputs.version }}\` found, but \`go mod vendor\` / \`go build\` failed — upstream may have broken something. Needs a manual look."
+            else
+              echo "❌ Update process failed at an unexpected step — check the run logs."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
