@@ -96,8 +96,11 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(codePhrase = code.replace(" ", "-")) }
     }
 
-    fun setCodeFromQr(code: String) {
-        _uiState.update { it.copy(codePhrase = normalizeCodePhrase(code)) }
+    fun setCodeFromQr(scanned: String) {
+        // A scanned QR may be a deep link (croc://…/https://…); pull the code out.
+        _uiState.update {
+            it.copy(codePhrase = normalizeCodePhrase(com.dking.crocapp.util.extractCrocCode(scanned)))
+        }
     }
 
     fun startReceiveWithCode(code: String) {

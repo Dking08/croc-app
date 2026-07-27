@@ -241,7 +241,8 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startReceiveFromQr(code: String) {
-        startReceiveInternal(code, "qr")
+        // A scanned QR may be a deep link (croc://…/https://…); pull the code out.
+        startReceiveInternal(com.dking.crocapp.util.extractCrocCode(code), "qr")
     }
 
     private fun startReceiveInternal(code: String, action: String) {

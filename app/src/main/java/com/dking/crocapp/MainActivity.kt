@@ -138,8 +138,22 @@ class MainActivity : AppCompatActivity() {
                     SharedContent.None
                 }
             }
+            Intent.ACTION_VIEW -> {
+                val code = parseCrocCode(intent.data)
+                if (code != null) SharedContent.ReceiveCode(code) else SharedContent.None
+            }
             else -> SharedContent.None
         }
+    }
+
+    /** Extract the transfer code from a croc:// deep link:
+     *  croc://receive?code=<code>  (case-preserving, preferred) or croc://<code>. */
+    private fun parseCrocCode(uri: Uri?): String? {
+        if (uri == null || uri.scheme != "croc") return null
+        uri.getQueryParameter("code")?.trim()?.let { if (it.isNotEmpty()) return it }
+        uri.lastPathSegment?.trim()?.let { if (it.isNotEmpty()) return it }
+        uri.host?.trim()?.let { if (it.isNotEmpty() && it != "receive") return it }
+        return null
     }
 }
 
@@ -147,6 +161,7 @@ sealed class SharedContent {
     data object None : SharedContent()
     data class Files(val uris: List<Uri>) : SharedContent()
     data class Text(val text: String) : SharedContent()
+    data class ReceiveCode(val code: String) : SharedContent()
 }
 
 @Composable
@@ -195,6 +210,21 @@ fun CrocApp(
                         launchSingleTop = true
                         restoreState = true
                     }
+                }
+            }
+            is SharedContent.ReceiveCode -> {
+                // croc:// deep link: fill the code and (if the croc binary is ready)
+                // start receiving, mirroring the QR-scan flow.
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    receiveViewModel.setCodeFromQr(sharedContent.code)
+                    navController.navigate(CrocDestination.Receive.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                    if (binaryManager.isBinaryReady()) receiveViewModel.startReceive()
                 }
             }
             else -> {}

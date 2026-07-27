@@ -448,7 +448,8 @@ private fun QuickSendTransferCard(
                     ) {
                         if (code.isNotBlank()) {
                             QrCodeImage(
-                                data = code,
+                                // Deep link, so a phone camera opens the app directly.
+                                data = com.dking.crocapp.util.receiveDeepLink(code),
                                 size = 100.dp,
                                 padding = 4.dp
                             )
