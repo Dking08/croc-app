@@ -172,10 +172,17 @@ go install github.com/schollz/croc/v10@latest
 
 ### On Android
 
-There are two F-Droid apps available:
+There are F-Droid apps available:
 
 - [crocgui](https://f-droid.org/packages/com.github.howeyc.crocgui/) — original port (Go, basic UI)
 - [croc-app](https://f-droid.org/en/packages/com.dking.crocapp/) — native Kotlin/Jetpack Compose client with a modern, mobile-first interface
+- [FlCroc](https://github.com/576576/FlCroc) — cross-platform Flutter GUI (Android, Windows, Linux) that wraps the `croc` binary as its transfer core.
+
+### On Desktop
+
+Community made desktop apps:
+
+- [Croc GUI](https://github.com/interfluve-wav/croc-gui) — unofficial desktop GUI for macOS, Windows, and Linux that bundles the `croc` binary for drag-and-drop transfers, QR codes, LAN mode, and relay/proxy options.
 
 ## Usage
 
@@ -196,6 +203,43 @@ croc code-phrase
 The code phrase is used to establish password-authenticated key agreement ([PAKE](https://en.wikipedia.org/wiki/Password-authenticated_key_agreement)) which generates a secret key for the sender and recipient to use for end-to-end encryption.
 
 ### Customizations & Options
+
+#### Encrypted temporary storage
+
+When an immediate peer-to-peer transfer is inconvenient, `croc` can upload
+regular files as client-side encrypted ciphertext:
+
+```bash
+croc send --store [file1] [file2]
+```
+
+The command prints a browser link and a CLI token. The transfer expires after
+24 hours or after the first receiver downloads, authenticates, and verifies
+every file—whichever happens first. Run `croc` with no arguments and paste the
+token at the prompt to receive it. For automation, keep the token out of the
+process list:
+
+```bash
+CROC_STORE_TOKEN='croc-store-v1....' croc --out ./downloads
+```
+
+The browser link has the form
+`https://host/s/id#v1.decryption-key`. The decryption key is after `#` because
+URL fragments are not included in HTTP requests, so the storage service gets
+the opaque transfer ID but not the key. The full link is still a secret: anyone
+who has it can decrypt and claim the one allowed download.
+
+Until a transfer is downloaded or expires, its sender can delete it with the
+locally saved revoke receipt:
+
+```bash
+croc --revoke [transfer-id]
+```
+
+Stored mode is opt-in and separate from croc's normal live relay transfers. A
+self-hosted service can be selected with `--store-url` or `CROC_STORE_URL`.
+See [the stored-transfer design and operator guide](src/docs/STORED_TRANSFERS.md)
+for protocol, privacy, limits, and deployment details.
 
 #### Using `croc` on Linux or macOS
 
@@ -237,10 +281,16 @@ croc --yes --rename <code>
 
 #### Excluding Folders
 
-To exclude folders from being sent, use the `--exclude` flag with comma-delimited exclusions:
+To exclude folders from being sent, use the `--exclude` flag with comma-delimited exclusions. This does a case-insensitive **substring** match against each file's relative path, so any path containing one of the given strings anywhere is excluded:
 
 ```bash
 croc send --exclude "node_modules,.venv" [folder]
+```
+
+If you need to exclude one specific file rather than every path containing a substring (for example, two files share a name at different depths and only one should be excluded), use `--exclude-file` instead. It takes comma-delimited relative paths and matches them **exactly**:
+
+```bash
+croc send --exclude-file "subfolder/image.jpg" [folder]
 ```
 
 #### Use Pipes - stdin and stdout
@@ -380,13 +430,43 @@ croc serve getcroc.com
 ```
 
 This binds to `127.0.0.1:9014` by default for an HTTPS reverse proxy. `/`
-serves the website and `/ws` bridges to `croc.schollz.com`. For a directly
+serves the website and `/ws` bridges to `ipv4.getcroc.com`. For a directly
 accessible local development server, `croc serve localhost:5173` binds and
 serves on `localhost:5173`. Use `--bind`, `--relay`, and `--ports` before the
 website address to customize the local listener or upstream croc relay.
 
 See [`web/README.md`](web/README.md) for frontend development, embedded asset
 generation, custom relay, and reverse-proxy instructions.
+
+## Deployment
+
+### Disco
+
+[Disco](https://disco.cloud/) is used to deploy. The root [`Dockerfile`](Dockerfile) and [`disco.json`](disco.json) deploy the
+web client and TCP relay as two Disco services built from the same image.
+Disco serves the website over HTTPS, while relay ports 9009-9017 are published
+directly as TCP ports.
+
+Set the deployment environment variables with:
+
+```bash
+disco env:set \
+  STORE_DIR=/www/croc/storage \
+  SITE_URL=yoururl.com \
+  CROC_RELAY_PORTS=9009,9010,9011,9012,9013,9014,9015,9016,9017 \
+  CROC_PASS=yourpass \
+  --project croc
+```
+
+`SITE_URL` must be the public website hostname without `https://`. Change the
+project name if it is not `croc`. The storage directory is intentionally not
+attached to a Disco volume, so stored transfers are erased whenever the
+container is replaced.
+
+The ports in `CROC_RELAY_PORTS` must match the `publishedPorts` entries in
+[`disco.json`](disco.json); Disco cannot generate host port mappings from an
+environment variable. Make sure the same TCP ports are also open in the
+server's firewall or cloud security group.
 
 ## Acknowledgements
 

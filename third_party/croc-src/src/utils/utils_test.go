@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -11,11 +13,13 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
 
+	"github.com/schollz/croc/v10/src/codephrase"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -300,8 +304,10 @@ func TestLocalIPsFromAddrsIncludesRoutableIPv4AndIPv6(t *testing.T) {
 
 func TestGetRandomName(t *testing.T) {
 	name := GetRandomName()
-	fmt.Println(name)
-	assert.NotEmpty(t, name)
+	assert.Regexp(t, `^[a-z]+-[a-z]+-[a-z]+-[a-z]+$`, name)
+	components, err := codephrase.Parse(name)
+	assert.NoError(t, err)
+	assert.Equal(t, codephrase.FormatFourWord, components.Format)
 }
 
 func intSliceSame(a, b []int) bool {
@@ -428,6 +434,111 @@ func TestUnzipDirectory(t *testing.T) {
 	verifyFileContent(t, filepath.Join(extractDir, baseName+"/file4.txt"), "Test content 4")
 }
 
+func TestUnzipDirectoryRejectsExpansionBeyondArchiveSize(t *testing.T) {
+	tmpDir := t.TempDir()
+	zipPath := filepath.Join(tmpDir, "compression-bomb.zip")
+	extractDir := filepath.Join(tmpDir, "extracted")
+	payload := strings.Repeat("A", 2<<20)
+
+	if err := createZipWithEntries(zipPath, []zipTestEntry{
+		{name: "large.txt", content: payload},
+	}); err != nil {
+		t.Fatalf("Failed to create compression bomb: %v", err)
+	}
+	archiveInfo, err := os.Stat(zipPath)
+	if err != nil {
+		t.Fatalf("Failed to stat compression bomb: %v", err)
+	}
+	assert.Less(t, archiveInfo.Size(), int64(16<<10), "test archive should remain highly compressed")
+
+	err = UnzipDirectory(extractDir, zipPath)
+	assert.ErrorIs(t, err, ErrUnzipSizeLimit)
+	assert.ErrorContains(t, err, "large.txt")
+
+	_, statErr := os.Stat(filepath.Join(extractDir, "large.txt"))
+	assert.True(t, os.IsNotExist(statErr), "pre-validation should reject the archive before writing output")
+}
+
+func TestUnzipDirectoryWithLimitAllowsCompressedArchiveAtExactLimit(t *testing.T) {
+	tmpDir := t.TempDir()
+	zipPath := filepath.Join(tmpDir, "compressed.zip")
+	extractDir := filepath.Join(tmpDir, "extracted")
+	payload := strings.Repeat("B", 2<<20)
+
+	if err := createZipWithEntries(zipPath, []zipTestEntry{
+		{name: "large.txt", content: payload},
+	}); err != nil {
+		t.Fatalf("Failed to create compressed archive: %v", err)
+	}
+
+	err := UnzipDirectoryWithLimit(extractDir, zipPath, int64(len(payload)))
+	assert.NoError(t, err)
+	verifyFileContent(t, filepath.Join(extractDir, "large.txt"), payload)
+}
+
+func TestUnzipDirectoryWithLimitRejectsCombinedEntrySize(t *testing.T) {
+	tmpDir := t.TempDir()
+	zipPath := filepath.Join(tmpDir, "combined.zip")
+	extractDir := filepath.Join(tmpDir, "extracted")
+	payload := strings.Repeat("C", 768<<10)
+
+	if err := createZipWithEntries(zipPath, []zipTestEntry{
+		{name: "first.txt", content: payload},
+		{name: "second.txt", content: payload},
+	}); err != nil {
+		t.Fatalf("Failed to create combined archive: %v", err)
+	}
+
+	err := UnzipDirectoryWithLimit(extractDir, zipPath, 1<<20)
+	assert.ErrorIs(t, err, ErrUnzipSizeLimit)
+	assert.ErrorContains(t, err, "second.txt")
+
+	_, firstStatErr := os.Stat(filepath.Join(extractDir, "first.txt"))
+	assert.True(t, os.IsNotExist(firstStatErr), "declared-size validation should prevent partial extraction")
+}
+
+func TestUnzipDirectoryWithLimitRejectsForgedUncompressedSize(t *testing.T) {
+	tmpDir := t.TempDir()
+	zipPath := filepath.Join(tmpDir, "forged-size.zip")
+	extractDir := filepath.Join(tmpDir, "extracted")
+	payload := strings.Repeat("D", 2<<20)
+
+	if err := createZipWithEntries(zipPath, []zipTestEntry{
+		{name: "forged.txt", content: payload},
+	}); err != nil {
+		t.Fatalf("Failed to create archive: %v", err)
+	}
+	forgeCentralDirectoryUncompressedSize(t, zipPath, 1)
+
+	err := UnzipDirectoryWithLimit(extractDir, zipPath, 4<<10)
+	assert.ErrorIs(t, err, zip.ErrFormat)
+	assert.ErrorContains(t, err, "forged.txt")
+
+	_, statErr := os.Stat(filepath.Join(extractDir, "forged.txt"))
+	assert.True(t, os.IsNotExist(statErr), "streaming limit breach should remove partial output")
+}
+
+func TestUnzipDirectoryWithLimitRejectsNonPositiveLimit(t *testing.T) {
+	for _, limit := range []int64{0, -1} {
+		t.Run(fmt.Sprintf("limit_%d", limit), func(t *testing.T) {
+			err := UnzipDirectoryWithLimit(t.TempDir(), filepath.Join(t.TempDir(), "unused.zip"), limit)
+			assert.ErrorContains(t, err, "must be positive")
+			assert.False(t, errors.Is(err, ErrUnzipSizeLimit))
+		})
+	}
+}
+
+func TestCopyWithExtractedSizeLimitDoesNotWritePastLimit(t *testing.T) {
+	var destination bytes.Buffer
+	remainingBytes := int64(4)
+
+	written, err := copyWithExtractedSizeLimit(&destination, strings.NewReader("12345"), &remainingBytes)
+	assert.ErrorIs(t, err, ErrUnzipSizeLimit)
+	assert.Equal(t, int64(4), written)
+	assert.Equal(t, int64(0), remainingBytes)
+	assert.Equal(t, "1234", destination.String())
+}
+
 // TestUnzipToNonExistentDirectory tests unzip to non-existent destination
 func TestUnzipToNonExistentDirectory(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "unzip_nonexistent_dest_test")
@@ -513,6 +624,37 @@ func TestUnzipDirectoryRejectsPathTraversal(t *testing.T) {
 
 	_, statErr = os.Stat(filepath.Join(extractDir, "safe", "file.txt"))
 	assert.True(t, os.IsNotExist(statErr), "pre-validation should prevent partial extraction")
+}
+
+func TestUnzipDirectoryRejectsSymlinkParentEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on some Windows setups")
+	}
+
+	tmpDir := t.TempDir()
+	zipPath := filepath.Join(tmpDir, "symlink-parent.zip")
+	extractDir := filepath.Join(tmpDir, "extract")
+	outsideDir := filepath.Join(tmpDir, "outside")
+	if err := os.MkdirAll(extractDir, 0o755); err != nil {
+		t.Fatalf("Failed to create extraction directory: %v", err)
+	}
+	if err := os.MkdirAll(outsideDir, 0o755); err != nil {
+		t.Fatalf("Failed to create outside directory: %v", err)
+	}
+	if err := os.Symlink(outsideDir, filepath.Join(extractDir, "linked")); err != nil {
+		t.Fatalf("Failed to create symlink parent: %v", err)
+	}
+	if err := createZipWithEntries(zipPath, []zipTestEntry{
+		{name: "linked/escaped.txt", content: "escape"},
+	}); err != nil {
+		t.Fatalf("Failed to create malicious zip: %v", err)
+	}
+
+	err := UnzipDirectory(extractDir, zipPath)
+	assert.ErrorContains(t, err, "symlink destination path component")
+
+	_, statErr := os.Stat(filepath.Join(outsideDir, "escaped.txt"))
+	assert.True(t, os.IsNotExist(statErr), "zip extraction must not write through a symlink parent")
 }
 
 func TestResolveUnzipPathRejectsNonLocalEntries(t *testing.T) {
@@ -806,6 +948,27 @@ func createZipWithEntries(zipPath string, entries []zipTestEntry) error {
 	}
 
 	return writer.Close()
+}
+
+func forgeCentralDirectoryUncompressedSize(t *testing.T, zipPath string, size uint32) {
+	t.Helper()
+	archiveBytes, err := os.ReadFile(zipPath)
+	if err != nil {
+		t.Fatalf("Failed to read archive for mutation: %v", err)
+	}
+	centralDirectorySignature := []byte{'P', 'K', 1, 2}
+	centralDirectoryOffset := bytes.Index(archiveBytes, centralDirectorySignature)
+	if centralDirectoryOffset < 0 {
+		t.Fatal("Archive has no central directory entry")
+	}
+	uncompressedSizeOffset := centralDirectoryOffset + 24
+	if uncompressedSizeOffset+4 > len(archiveBytes) {
+		t.Fatal("Central directory entry is truncated")
+	}
+	binary.LittleEndian.PutUint32(archiveBytes[uncompressedSizeOffset:uncompressedSizeOffset+4], size)
+	if err := os.WriteFile(zipPath, archiveBytes, 0o600); err != nil {
+		t.Fatalf("Failed to write mutated archive: %v", err)
+	}
 }
 
 // Helper function to verify file content
