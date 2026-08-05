@@ -820,6 +820,7 @@ private fun getLocaleDisplayName(code: String): String {
         "hi-IN", "hi" -> "हिन्दी (Hindi)"
         "zh-CN" -> "简体中文 (Simplified Chinese)"
         "zh-TW" -> "繁體中文 (Traditional Chinese)"
+        "es-ES" -> "Español (Spanish)"
         "en" -> "English"
         else -> {
             val nativeName = locale.getDisplayName(locale).replaceFirstChar { it.uppercase() }
