@@ -19,6 +19,10 @@
     <string name="action_share_file">फ़ाइल शेयर करें</string>
     <string name="action_scan_qr">QR स्कैन करें</string>
     <string name="action_show_less">कम दिखाएं</string>
+    <string name="qr_code_title">QR कोड</string>
+    <string name="qr_code_tap_to_expand">QR कोड बड़ा करने के लिए टैप करें</string>
+    <string name="qr_code_expanded_hint">इस QR कोड को दूसरे डिवाइस से स्कैन करें</string>
+    <string name="qr_code_copied">कोड कॉपी हो गया</string>
     <string name="label_default">डिफ़ॉल्ट</string>
     <string name="label_more_files">+%1$d और फ़ाइल</string>
     <string name="label_more_files_plural">+%1$d और फ़ाइलें</string>
@@ -215,7 +219,7 @@
     <string name="settings_about">के बारे में</string>
     <string name="settings_app_version">ऐप वर्शन</string>
     <string name="settings_croc_version">Croc वर्शन</string>
-    <string name="settings_croc_version_value">v10.4.4</string>
+    <string name="settings_croc_version_value">v11.0.1</string>
     <string name="settings_developer">डेवलपर</string>
     <string name="settings_developer_value">Dking</string>
     <!-- ════ Setup / Binary ════ -->
@@ -257,7 +261,7 @@
     <string name="settings_about_label">के बारे में</string>
     <string name="settings_app_version_label">ऐप वर्शन</string>
     <string name="settings_croc_version_label">croc वर्शन</string>
-    <string name="settings_croc_version_val">v10.4.4</string>
+    <string name="settings_croc_version_val">v11.0.1</string>
     <string name="settings_built_with">❤️ के साथ Dastageer द्वारा बनाया गया</string>
     <string name="settings_croc_github">github.com/schollz/croc</string>
     <string name="settings_language">भाषा</string>
