@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -43,6 +44,37 @@ func TestWebReceiveURL(t *testing.T) {
 		"https://getcroc.com/?code=1234-word%2Fword%3F%26",
 		webReceiveURL("1234-word/word?&"),
 	)
+}
+
+func TestRejectsUnsupportedPeerPakeVersion(t *testing.T) {
+	client := &Client{}
+	for _, test := range []struct {
+		name string
+		call func() error
+	}{
+		{
+			name: "setup",
+			call: func() error {
+				return client.processMessagePake(message.Message{Type: message.TypePAKE}, nil)
+			},
+		},
+		{
+			name: "confirmation",
+			call: func() error {
+				return client.processMessagePakeConfirm(message.Message{Type: message.TypePAKEConfirm}, nil)
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var versionErr incompatiblePakeVersionError
+			if err := test.call(); !errors.As(err, &versionErr) {
+				t.Fatalf("expected incompatible version error, got %v", err)
+			}
+			if !strings.Contains(versionErr.Error(), "upgrade both croc clients") {
+				t.Fatalf("version error is not actionable: %v", versionErr)
+			}
+		})
+	}
 }
 
 func TestDiscoverReceivePeersTimesOut(t *testing.T) {
@@ -330,13 +362,69 @@ func TestHostileExistingSymlinkDestinationRejected(t *testing.T) {
 	assert.Equal(t, original, got)
 }
 
+func TestHostileExistingSymlinkParentRejected(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on some Windows setups")
+	}
+
+	tmpDir := t.TempDir()
+	receiveDir := filepath.Join(tmpDir, "receive")
+	outsideDir := filepath.Join(tmpDir, "outside")
+	if err := os.MkdirAll(receiveDir, 0o755); err != nil {
+		t.Fatalf("mkdir receive dir: %v", err)
+	}
+	if err := os.MkdirAll(outsideDir, 0o755); err != nil {
+		t.Fatalf("mkdir outside dir: %v", err)
+	}
+	if err := os.Symlink(outsideDir, filepath.Join(receiveDir, "nested")); err != nil {
+		t.Fatalf("create symlink parent: %v", err)
+	}
+
+	originalCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get cwd: %v", err)
+	}
+	if err := os.Chdir(receiveDir); err != nil {
+		t.Fatalf("chdir receive dir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(originalCwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+
+	client := &Client{
+		Options: Options{
+			SendingText: true,
+			Overwrite:   true,
+		},
+		FilesHasFinished: make(map[int]struct{}),
+		FilesToTransfer: []FileInfo{
+			{
+				Name:         "payload.txt",
+				FolderRemote: "nested",
+				Size:         1,
+				Mode:         0o644,
+			},
+		},
+	}
+
+	err = client.recipientInitializeFile()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink destination path component")
+
+	_, err = os.Stat(filepath.Join(outsideDir, "payload.txt"))
+	assert.True(t, os.IsNotExist(err), "receive must not write through a symlink parent")
+}
+
 func TestCrocReadme(t *testing.T) {
 	defer os.Remove("README.md")
+	const secret = "abbot-abide-abandon-abandoned"
 
 	log.Debug("setting up sender")
 	sender, err := New(Options{
 		IsSender:      true,
-		SharedSecret:  "8123-testingthecroc",
+		SharedSecret:  secret,
 		Debug:         true,
 		RelayAddress:  "127.0.0.1:8281",
 		RelayPorts:    []string{"8281"},
@@ -355,7 +443,7 @@ func TestCrocReadme(t *testing.T) {
 	log.Debug("setting up receiver")
 	receiver, err := New(Options{
 		IsSender:      false,
-		SharedSecret:  "8123-testingthecroc",
+		SharedSecret:  secret,
 		Debug:         true,
 		RelayAddress:  "127.0.0.1:8281",
 		RelayPassword: "pass123",
