@@ -19,6 +19,10 @@
     <string name="action_share_file">分享檔案</string>
     <string name="action_scan_qr">掃描 QR 碼</string>
     <string name="action_show_less">收起</string>
+    <string name="qr_code_title">QR 碼</string>
+    <string name="qr_code_tap_to_expand">點擊放大 QR 碼</string>
+    <string name="qr_code_expanded_hint">使用其他裝置掃描此 QR 碼</string>
+    <string name="qr_code_copied">代碼已複製到剪貼簿</string>
     <string name="label_default">預設</string>
     <string name="label_more_files">+%1$d 個檔案</string>
     <string name="label_more_files_plural">+%1$d 個檔案</string>
@@ -215,7 +219,7 @@
     <string name="settings_about">關於</string>
     <string name="settings_app_version">應用程式版本</string>
     <string name="settings_croc_version">Croc 版本</string>
-    <string name="settings_croc_version_value">v10.4.4</string>
+    <string name="settings_croc_version_value">v11.0.1</string>
     <string name="settings_developer">開發者</string>
     <string name="settings_developer_value">Dking</string>
     <!-- ════ Setup / Binary ════ -->
@@ -257,7 +261,7 @@
     <string name="settings_about_label">關於</string>
     <string name="settings_app_version_label">應用程式版本</string>
     <string name="settings_croc_version_label">croc 版本</string>
-    <string name="settings_croc_version_val">v10.4.4</string>
+    <string name="settings_croc_version_val">v11.0.1</string>
     <string name="settings_built_with">由 Dastageer 用 ❤️ 打造</string>
     <string name="settings_croc_github">github.com/schollz/croc</string>
     <string name="settings_language">語言</string>
