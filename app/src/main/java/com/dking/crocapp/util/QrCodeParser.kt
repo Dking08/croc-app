@@ -100,7 +100,9 @@ object QrCodeParser {
     }
 
     /**
-     * Generates a croc:// deep link for a given transfer code.
+     * Generates an App Link URL for a given transfer code.
+     * Web format: https://croc-app.github.io/receive?code=...
+     * Allows phone cameras, chat apps (WhatsApp/Telegram/SMS), and browsers to open the app or fallback page directly.
      */
     fun receiveDeepLink(code: String): String {
         val encodedCode = try {
@@ -108,6 +110,6 @@ object QrCodeParser {
         } catch (_: Exception) {
             code.trim()
         }
-        return "croc://receive?code=$encodedCode"
+        return "https://croc-app.github.io/receive?code=$encodedCode"
     }
 }
