@@ -1,0 +1,98 @@
+# .github/workflows/croc-update.yml
+name: Check for croc updates
+
+on:
+  schedule:
+    - cron: '0 5 * * 0'   # Sunday 5am UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout croc-app
+        uses: actions/checkout@v7
+
+      - name: Read current tracked version
+        id: current
+        run: echo "version=$(cat third_party/CROC_VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Get latest croc release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST=$(gh api repos/schollz/croc/releases/latest --jq .tag_name)
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+
+      - name: Replace vendored croc source
+        id: replace
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        run: |
+          rm -rf /tmp/croc-src
+          git clone --depth 1 --branch "${{ steps.latest.outputs.version }}" \
+            https://github.com/schollz/croc.git /tmp/croc-src
+          rm -rf third_party/croc-src
+          mkdir -p third_party/croc-src
+          rsync -a --exclude='.git' /tmp/croc-src/ third_party/croc-src/
+
+      - name: Setup Go (from new go.mod)
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: third_party/croc-src/go.mod
+
+      - name: Tidy, vendor, and sanity-build
+        id: vendor
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        working-directory: third_party/croc-src
+        run: |
+          go mod tidy
+          go mod vendor
+          go build ./...   # fail fast if upstream broke the build
+
+      - name: Update version marker
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        run: echo "${{ steps.latest.outputs.version }}" > third_party/CROC_VERSION
+
+      - name: Open PR
+        id: create_pr
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        uses: peter-evans/create-pull-request@v8
+        with:
+          commit-message: "chore: bump croc ${{ steps.current.outputs.version }} → ${{ steps.latest.outputs.version }}"
+          branch: bot/croc-${{ steps.latest.outputs.version }}
+          title: "Bump croc ${{ steps.current.outputs.version }} → ${{ steps.latest.outputs.version }}"
+          body: |
+            Auto-detected new croc release: https://github.com/schollz/croc/releases/tag/${{ steps.latest.outputs.version }}
+            - Replaced `third_party/croc-src` with the tagged upstream source
+            - Ran `go mod tidy && go mod vendor`
+            - `go build ./...` passed
+          labels: dependencies, automated
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### 🐊 croc version check"
+            echo ""
+            if [ "${{ steps.latest.outcome }}" != "success" ]; then
+              echo "❌ **Failed to fetch the latest release from GitHub.** Check the \"Get latest croc release\" step logs."
+            elif [ "${{ steps.current.outputs.version }}" == "${{ steps.latest.outputs.version }}" ]; then
+              echo "✅ Already up to date — croc \`${{ steps.current.outputs.version }}\`. Nothing to do."
+            elif [ "${{ steps.create_pr.outcome }}" == "success" ]; then
+              echo "🔄 **Updated** croc \`${{ steps.current.outputs.version }}\` → \`${{ steps.latest.outputs.version }}\`"
+              echo ""
+              echo "PR: ${{ steps.create_pr.outputs.pull-request-url }}"
+            elif [ "${{ steps.replace.outcome }}" != "success" ]; then
+              echo "❌ New version \`${{ steps.latest.outputs.version }}\` found, but cloning/replacing the source failed."
+            elif [ "${{ steps.vendor.outcome }}" != "success" ]; then
+              echo "❌ New version \`${{ steps.latest.outputs.version }}\` found, but \`go mod vendor\` / \`go build\` failed — upstream may have broken something. Needs a manual look."
+            else
+              echo "❌ Update process failed at an unexpected step — check the run logs."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

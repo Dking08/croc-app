@@ -9,10 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"path"
 	"strconv"
 	"strings"
@@ -20,6 +22,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/schollz/croc/v10/src/store"
 	"github.com/schollz/croc/v10/src/webassets"
 	log "github.com/schollz/logger"
 )
@@ -39,6 +42,9 @@ type Config struct {
 	PublicAddress  string
 	RelayPassword  string
 	StaticFiles    fs.FS
+	StoreService   *store.Service
+	UmamiURL       string
+	UmamiWebsiteID string
 }
 
 type handler struct {
@@ -51,9 +57,10 @@ type handler struct {
 }
 
 type runtimeConfig struct {
-	GatewayURL    string `json:"gatewayURL"`
-	RelayAddress  string `json:"relayAddress"`
-	RelayPassword string `json:"relayPassword"`
+	GatewayURL    string             `json:"gatewayURL"`
+	RelayAddress  string             `json:"relayAddress"`
+	RelayPassword string             `json:"relayPassword"`
+	Store         store.PublicConfig `json:"store"`
 }
 
 // Handler returns the unified croc web handler. It serves the embedded client,
@@ -63,7 +70,11 @@ func Handler(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	static, err := newStaticHandler(normalized.StaticFiles)
+	static, err := newStaticHandler(
+		normalized.StaticFiles,
+		normalized.UmamiURL,
+		normalized.UmamiWebsiteID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +88,12 @@ func Handler(config Config) (http.Handler, error) {
 			GatewayURL:    "/ws",
 			RelayAddress:  net.JoinHostPort(normalized.RelayHost, normalized.AllowedPorts[0]),
 			RelayPassword: normalized.RelayPassword,
+			Store: func() store.PublicConfig {
+				if normalized.StoreService == nil {
+					return store.PublicConfig{}
+				}
+				return normalized.StoreService.PublicConfig()
+			}(),
 		},
 		static: static,
 	}
@@ -88,6 +105,10 @@ func Handler(config Config) (http.Handler, error) {
 	mux.HandleFunc("/healthz", h.health)
 	mux.HandleFunc("/ws", h.websocket)
 	mux.HandleFunc("/config.js", h.config)
+	if normalized.StoreService != nil {
+		mux.Handle("/api/v1/store/transfers", normalized.StoreService)
+		mux.Handle("/api/v1/store/transfers/", normalized.StoreService)
+	}
 	mux.Handle("/", h.static)
 	return mux, nil
 }
@@ -114,6 +135,9 @@ func Run(ctx context.Context, config Config) error {
 	}
 
 	errc := make(chan error, 1)
+	if normalized.StoreService != nil {
+		go normalized.StoreService.RunCleanup(ctx)
+	}
 	go func() {
 		log.Infof(
 			"starting croc web server on %s for %s via %s (%s)",
@@ -150,7 +174,7 @@ func normalizeConfig(config Config) (Config, error) {
 		config.PublicAddress = config.ListenAddress
 	}
 	if config.RelayHost == "" {
-		config.RelayHost = "croc.schollz.com"
+		config.RelayHost = "ipv4.getcroc.com"
 	}
 	if config.RelayPassword == "" {
 		config.RelayPassword = "pass123"
@@ -297,7 +321,11 @@ type staticHandler struct {
 	installer  []byte
 }
 
-func newStaticHandler(files fs.FS) (http.Handler, error) {
+func newStaticHandler(
+	files fs.FS,
+	umamiURL string,
+	umamiWebsiteID string,
+) (http.Handler, error) {
 	if files == nil {
 		return nil, errors.New("static file system cannot be empty")
 	}
@@ -305,6 +333,7 @@ func newStaticHandler(files fs.FS) (http.Handler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("embedded web client is missing index.html: %w", err)
 	}
+	index = injectUmamiTracker(index, umamiURL, umamiWebsiteID)
 	installer, err := fs.ReadFile(files, "default.txt")
 	if err != nil {
 		return nil, fmt.Errorf("embedded web client is missing default.txt: %w", err)
@@ -315,6 +344,34 @@ func newStaticHandler(files fs.FS) (http.Handler, error) {
 		index:      index,
 		installer:  installer,
 	}, nil
+}
+
+func injectUmamiTracker(index []byte, baseURL, websiteID string) []byte {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	websiteID = strings.TrimSpace(websiteID)
+	if baseURL == "" || websiteID == "" {
+		return index
+	}
+
+	parsedURL, err := url.Parse(baseURL)
+	if err != nil || parsedURL.Scheme != "https" || parsedURL.Host == "" {
+		return index
+	}
+	scriptURL, err := url.JoinPath(baseURL, "script.js")
+	if err != nil {
+		return index
+	}
+
+	const closingBody = "</body>"
+	if !strings.Contains(string(index), closingBody) {
+		return index
+	}
+	script := `<script defer data-website-id="` +
+		html.EscapeString(websiteID) +
+		`" src="` +
+		html.EscapeString(scriptURL) +
+		`"></script>`
+	return []byte(strings.Replace(string(index), closingBody, script+closingBody, 1))
 }
 
 func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -358,6 +415,8 @@ func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write(h.index)
 		}
 		return
+	} else if requested == "croc-download-sw.js" || requested == "croc-worker.js" {
+		w.Header().Set("Cache-Control", "no-cache")
 	} else if strings.HasPrefix(requested, "assets/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}

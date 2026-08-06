@@ -96,8 +96,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(codePhrase = QrCodeParser.parseCode(code)) }
     }
 
-    fun setCodeFromQr(scanned: String) {
-        _uiState.update { it.copy(codePhrase = QrCodeParser.parseCode(scanned)) }
+    fun setCodeFromQr(code: String) {
+        _uiState.update { it.copy(codePhrase = QrCodeParser.parseCode(code)) }
     }
 
     fun startReceiveWithCode(code: String) {
