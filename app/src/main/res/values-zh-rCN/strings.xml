@@ -23,6 +23,8 @@
     <string name="qr_code_tap_to_expand">点击放大二维码</string>
     <string name="qr_code_expanded_hint">使用其他设备扫描此二维码</string>
     <string name="qr_code_copied">代码已复制到剪贴板</string>
+    <string name="qr_url_copied">URL 已复制到剪贴板</string>
+    <string name="action_copy_url">复制 URL</string>
     <string name="label_default">默认</string>
     <string name="label_more_files">+%1$d 个文件</string>
     <string name="label_more_files_plural">+%1$d 个文件</string>

@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -23,6 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.Link
+import com.dking.crocapp.util.QrCodeParser
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -143,9 +146,12 @@ fun QrCodeExpandedDialog(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
-    val expandedBitmap = remember(data) {
+    val codePhrase = remember(data) { QrCodeParser.parseCode(data) }
+    val deepLinkUrl = remember(codePhrase) { QrCodeParser.receiveDeepLink(codePhrase) }
+
+    val expandedBitmap = remember(deepLinkUrl) {
         generateQrCodeBitmap(
-            data,
+            deepLinkUrl,
             1024,
             android.graphics.Color.BLACK,
             android.graphics.Color.WHITE
@@ -207,31 +213,53 @@ fun QrCodeExpandedDialog(
                     ) {
                         Image(
                             bitmap = expandedBitmap.asImageBitmap(),
-                            contentDescription = "Expanded QR Code for $data",
+                            contentDescription = "Expanded QR Code for $codePhrase",
                             modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
 
-                // Code phrase display card
+                // Code phrase display card with embedded copy button
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 ) {
-                    Text(
-                        text = data,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 18.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                    )
+                            .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = codePhrase,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 18.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(codePhrase))
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.qr_code_copied),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.ContentCopy,
+                                contentDescription = stringResource(R.string.action_copy),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
 
                 // Subtitle hint
@@ -242,38 +270,50 @@ fun QrCodeExpandedDialog(
                     textAlign = TextAlign.Center
                 )
 
-                // Action buttons: Copy & Close
+                // Action buttons: Copy URL & Close
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     OutlinedButton(
                         onClick = {
-                            clipboardManager.setText(AnnotatedString(data))
+                            clipboardManager.setText(AnnotatedString(deepLinkUrl))
                             Toast.makeText(
                                 context,
-                                context.getString(R.string.qr_code_copied),
+                                context.getString(R.string.qr_url_copied),
                                 Toast.LENGTH_SHORT
                             ).show()
                         },
                         modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.ContentCopy,
+                            imageVector = Icons.Rounded.Link,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.action_copy))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.action_copy_url),
+                            maxLines = 1,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
 
                     Button(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text(stringResource(R.string.action_close))
+                        Text(
+                            text = stringResource(R.string.action_close),
+                            maxLines = 1,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }

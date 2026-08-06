@@ -784,17 +784,20 @@ private fun shareQrCode(
     context: Context,
     codePhrase: String
 ) {
-    if (codePhrase.isBlank()) return
+    val cleanCode = QrCodeParser.parseCode(codePhrase)
+    if (cleanCode.isBlank()) return
+    val deepLinkUrl = QrCodeParser.receiveDeepLink(cleanCode)
+
     // Always use black-on-white for universally scannable QR codes
     val bitmap = generateQrCodeBitmap(
-        codePhrase, 1024,
+        deepLinkUrl, 1024,
         android.graphics.Color.BLACK,
         android.graphics.Color.WHITE
     ) ?: return
 
     runCatching {
         val shareDir = File(context.cacheDir, "qr-share").apply { mkdirs() }
-        val safeName = codePhrase.replace(Regex("[^a-zA-Z0-9-_]"), "_")
+        val safeName = cleanCode.replace(Regex("[^a-zA-Z0-9-_]"), "_")
         val file = File(shareDir, "croc-$safeName.png")
 
         FileOutputStream(file).use { output ->
@@ -811,7 +814,7 @@ private fun shareQrCode(
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
             putExtra(Intent.EXTRA_SUBJECT, "croc receive QR")
-            putExtra(Intent.EXTRA_TEXT, "Use this croc code: $codePhrase")
+            putExtra(Intent.EXTRA_TEXT, "Use this croc code: $cleanCode\n$deepLinkUrl")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
 

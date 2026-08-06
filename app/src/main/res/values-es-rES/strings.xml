@@ -23,6 +23,8 @@
     <string name="qr_code_tap_to_expand">Toca para expandir el código QR</string>
     <string name="qr_code_expanded_hint">Escanea este código QR con otro dispositivo</string>
     <string name="qr_code_copied">Código copiado al portapapeles</string>
+    <string name="qr_url_copied">URL copiada al portapapeles</string>
+    <string name="action_copy_url">Copiar URL</string>
     <string name="label_default">Predeterminado</string>
     <string name="label_more_files">+%1$d archivo más</string>
     <string name="label_more_files_plural">+%1$d archivos más</string>

@@ -23,6 +23,8 @@
     <string name="qr_code_tap_to_expand">QR कोड बड़ा करने के लिए टैप करें</string>
     <string name="qr_code_expanded_hint">इस QR कोड को दूसरे डिवाइस से स्कैन करें</string>
     <string name="qr_code_copied">कोड कॉपी हो गया</string>
+    <string name="qr_url_copied">URL कॉपी हो गया</string>
+    <string name="action_copy_url">URL कॉपी करें</string>
     <string name="label_default">डिफ़ॉल्ट</string>
     <string name="label_more_files">+%1$d और फ़ाइल</string>
     <string name="label_more_files_plural">+%1$d और फ़ाइलें</string>

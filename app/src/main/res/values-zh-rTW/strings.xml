@@ -23,6 +23,8 @@
     <string name="qr_code_tap_to_expand">點擊放大 QR 碼</string>
     <string name="qr_code_expanded_hint">使用其他裝置掃描此 QR 碼</string>
     <string name="qr_code_copied">代碼已複製到剪貼簿</string>
+    <string name="qr_url_copied">URL 已複製到剪貼簿</string>
+    <string name="action_copy_url">複製 URL</string>
     <string name="label_default">預設</string>
     <string name="label_more_files">+%1$d 個檔案</string>
     <string name="label_more_files_plural">+%1$d 個檔案</string>
