@@ -13,6 +13,7 @@ import com.dking.crocapp.data.db.TransferHistory
 import com.dking.crocapp.data.db.TransferStatus
 import com.dking.crocapp.data.db.TransferType
 import com.dking.crocapp.data.preferences.UserPreferencesRepository
+import com.dking.crocapp.util.QrCodeParser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -92,15 +93,11 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun updateCodePhrase(code: String) {
-        // Replace spaces with dashes, like the original app
-        _uiState.update { it.copy(codePhrase = code.replace(" ", "-")) }
+        _uiState.update { it.copy(codePhrase = QrCodeParser.parseCode(code)) }
     }
 
     fun setCodeFromQr(scanned: String) {
-        // A scanned QR may be a deep link (croc://…/https://…); pull the code out.
-        _uiState.update {
-            it.copy(codePhrase = normalizeCodePhrase(com.dking.crocapp.util.extractCrocCode(scanned)))
-        }
+        _uiState.update { it.copy(codePhrase = QrCodeParser.parseCode(scanned)) }
     }
 
     fun startReceiveWithCode(code: String) {
@@ -237,6 +234,6 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun normalizeCodePhrase(code: String): String {
-        return code.trim().replace(" ", "-")
+        return QrCodeParser.parseCode(code)
     }
 }

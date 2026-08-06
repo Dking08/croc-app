@@ -66,6 +66,7 @@ import com.dking.crocapp.ui.setup.CrocBinarySetupScreen
 import com.dking.crocapp.ui.settings.SettingsScreen
 import com.dking.crocapp.ui.settings.SettingsViewModel
 import com.dking.crocapp.ui.theme.CrocTheme
+import com.dking.crocapp.util.QrCodeParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -139,21 +140,12 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             Intent.ACTION_VIEW -> {
-                val code = parseCrocCode(intent.data)
-                if (code != null) SharedContent.ReceiveCode(code) else SharedContent.None
+                val rawData = intent.data?.toString().orEmpty()
+                val code = QrCodeParser.parseCode(rawData)
+                if (code.isNotEmpty()) SharedContent.ReceiveCode(code) else SharedContent.None
             }
             else -> SharedContent.None
         }
-    }
-
-    /** Extract the transfer code from a croc:// deep link:
-     *  croc://receive?code=<code>  (case-preserving, preferred) or croc://<code>. */
-    private fun parseCrocCode(uri: Uri?): String? {
-        if (uri == null || uri.scheme != "croc") return null
-        uri.getQueryParameter("code")?.trim()?.let { if (it.isNotEmpty()) return it }
-        uri.lastPathSegment?.trim()?.let { if (it.isNotEmpty()) return it }
-        uri.host?.trim()?.let { if (it.isNotEmpty() && it != "receive") return it }
-        return null
     }
 }
 

@@ -101,6 +101,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dking.crocapp.R
 import com.dking.crocapp.croc.CrocTransferState
 import com.dking.crocapp.ui.components.QrCodeImage
+import com.dking.crocapp.util.QrCodeParser
 import com.dking.crocapp.ui.components.TransferProgressCard
 import com.dking.crocapp.ui.components.formatBytes
 import com.dking.crocapp.ui.components.generateQrCodeBitmap
@@ -714,7 +715,7 @@ fun SendScreen(
                         ) {
                             QrCodeImage(
                                 // Deep link, so a phone camera opens the app directly.
-                                data = com.dking.crocapp.util.receiveDeepLink(uiState.codePhrase),
+                                data = QrCodeParser.receiveDeepLink(uiState.codePhrase),
                                 size = 180.dp
                             )
                         }

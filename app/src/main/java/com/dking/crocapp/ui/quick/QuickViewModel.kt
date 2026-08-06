@@ -16,6 +16,7 @@ import com.dking.crocapp.data.db.TransferType
 import com.dking.crocapp.data.preferences.UserPreferencesRepository
 import com.dking.crocapp.ui.receive.ReceivedFile
 import com.dking.crocapp.ui.receive.ReceivedFilePublisher
+import com.dking.crocapp.util.QrCodeParser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -237,20 +238,20 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startReceiveWithCode(code: String) {
-        startReceiveInternal(code, "receive")
+        startReceiveInternal(QrCodeParser.parseCode(code), "receive")
     }
 
     fun startReceiveFromQr(code: String) {
-        // A scanned QR may be a deep link (croc://…/https://…); pull the code out.
-        startReceiveInternal(com.dking.crocapp.util.extractCrocCode(code), "qr")
+        startReceiveInternal(QrCodeParser.parseCode(code), "qr")
     }
 
     private fun startReceiveInternal(code: String, action: String) {
+        val parsedCode = QrCodeParser.parseCode(code)
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
                     lastAction = action,
-                    activeCode = code,
+                    activeCode = parsedCode,
                     sharePreview = emptyList(),
                     receivedText = null,
                     receivedFiles = emptyList()

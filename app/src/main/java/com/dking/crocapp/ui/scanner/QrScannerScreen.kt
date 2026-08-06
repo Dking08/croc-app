@@ -50,6 +50,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.dking.crocapp.ui.components.EmptyState
+import com.dking.crocapp.util.QrCodeParser
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
@@ -210,10 +211,13 @@ private fun CameraPreview(
 
                     val value = result?.text?.trim().orEmpty()
                     if (value.isNotEmpty()) {
-                        mainExecutor.execute {
-                            if (!scanned) {
-                                scanned = true
-                                onCodeScanned(value)
+                        val parsedCode = QrCodeParser.parseCode(value)
+                        if (parsedCode.isNotEmpty()) {
+                            mainExecutor.execute {
+                                if (!scanned) {
+                                    scanned = true
+                                    onCodeScanned(parsedCode)
+                                }
                             }
                         }
                     }
