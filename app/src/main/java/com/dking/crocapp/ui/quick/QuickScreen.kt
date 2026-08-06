@@ -84,6 +84,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dking.crocapp.R
 import com.dking.crocapp.croc.CrocTransferState
 import com.dking.crocapp.ui.components.QrCodeImage
+import com.dking.crocapp.util.QrCodeParser
 import com.dking.crocapp.ui.components.formatBytes
 import com.dking.crocapp.ui.receive.ReceivedFile
 import com.dking.crocapp.ui.receive.openReceivedFile
@@ -448,7 +449,8 @@ private fun QuickSendTransferCard(
                     ) {
                         if (code.isNotBlank()) {
                             QrCodeImage(
-                                data = code,
+                                // Deep link, so a phone camera opens the app directly.
+                                data = QrCodeParser.receiveDeepLink(code),
                                 size = 100.dp,
                                 padding = 4.dp
                             )

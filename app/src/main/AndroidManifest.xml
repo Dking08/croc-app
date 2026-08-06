@@ -56,6 +56,25 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="*/*" />
             </intent-filter>
+
+            <!-- Deep link: croc://receive?code=… (or croc://<code>) opens the app
+                 and starts receiving that code. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="croc" />
+            </intent-filter>
+
+            <!-- App Link: https://croc-app.github.io/receive?code=<value> -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                    android:host="croc-app.github.io"
+                    android:pathPrefix="/receive" />
+            </intent-filter>
         </activity>
 
         <service

@@ -66,6 +66,7 @@ import com.dking.crocapp.ui.setup.CrocBinarySetupScreen
 import com.dking.crocapp.ui.settings.SettingsScreen
 import com.dking.crocapp.ui.settings.SettingsViewModel
 import com.dking.crocapp.ui.theme.CrocTheme
+import com.dking.crocapp.util.QrCodeParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -138,6 +139,11 @@ class MainActivity : AppCompatActivity() {
                     SharedContent.None
                 }
             }
+            Intent.ACTION_VIEW -> {
+                val rawData = intent.data?.toString().orEmpty()
+                val code = QrCodeParser.parseCode(rawData)
+                if (code.isNotEmpty()) SharedContent.ReceiveCode(code) else SharedContent.None
+            }
             else -> SharedContent.None
         }
     }
@@ -147,6 +153,7 @@ sealed class SharedContent {
     data object None : SharedContent()
     data class Files(val uris: List<Uri>) : SharedContent()
     data class Text(val text: String) : SharedContent()
+    data class ReceiveCode(val code: String) : SharedContent()
 }
 
 @Composable
@@ -195,6 +202,21 @@ fun CrocApp(
                         launchSingleTop = true
                         restoreState = true
                     }
+                }
+            }
+            is SharedContent.ReceiveCode -> {
+                // croc:// deep link: fill the code and (if the croc binary is ready)
+                // start receiving, mirroring the QR-scan flow.
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    receiveViewModel.setCodeFromQr(sharedContent.code)
+                    navController.navigate(CrocDestination.Receive.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                    if (binaryManager.isBinaryReady()) receiveViewModel.startReceive()
                 }
             }
             else -> {}
