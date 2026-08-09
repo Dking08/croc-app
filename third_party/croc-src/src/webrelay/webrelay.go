@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"io/fs"
 	"net"
@@ -23,7 +22,6 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/schollz/croc/v10/src/store"
-	"github.com/schollz/croc/v10/src/webassets"
 	log "github.com/schollz/logger"
 )
 
@@ -174,7 +172,7 @@ func normalizeConfig(config Config) (Config, error) {
 		config.PublicAddress = config.ListenAddress
 	}
 	if config.RelayHost == "" {
-		config.RelayHost = "ipv4.getcroc.com"
+		config.RelayHost = "croc.schollz.com"
 	}
 	if config.RelayPassword == "" {
 		config.RelayPassword = "pass123"
@@ -215,9 +213,6 @@ func normalizeConfig(config Config) (Config, error) {
 	config.AllowedPorts = ports
 	if config.DialTimeout <= 0 {
 		config.DialTimeout = defaultDialTimeout
-	}
-	if config.StaticFiles == nil {
-		config.StaticFiles = webassets.Files()
 	}
 	return config, nil
 }
@@ -333,7 +328,7 @@ func newStaticHandler(
 	if err != nil {
 		return nil, fmt.Errorf("embedded web client is missing index.html: %w", err)
 	}
-	index = injectUmamiTracker(index, umamiURL, umamiWebsiteID)
+	index = injectUmamiConfig(index, umamiURL, umamiWebsiteID)
 	installer, err := fs.ReadFile(files, "default.txt")
 	if err != nil {
 		return nil, fmt.Errorf("embedded web client is missing default.txt: %w", err)
@@ -346,7 +341,7 @@ func newStaticHandler(
 	}, nil
 }
 
-func injectUmamiTracker(index []byte, baseURL, websiteID string) []byte {
+func injectUmamiConfig(index []byte, baseURL, websiteID string) []byte {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	websiteID = strings.TrimSpace(websiteID)
 	if baseURL == "" || websiteID == "" {
@@ -366,11 +361,20 @@ func injectUmamiTracker(index []byte, baseURL, websiteID string) []byte {
 	if !strings.Contains(string(index), closingBody) {
 		return index
 	}
-	script := `<script defer data-website-id="` +
-		html.EscapeString(websiteID) +
-		`" src="` +
-		html.EscapeString(scriptURL) +
-		`"></script>`
+	config, err := json.Marshal(struct {
+		ScriptURL string `json:"scriptURL"`
+		WebsiteID string `json:"websiteID"`
+	}{
+		ScriptURL: scriptURL,
+		WebsiteID: websiteID,
+	})
+	if err != nil {
+		return index
+	}
+
+	// Only expose inert configuration here. The browser client loads the
+	// analytics script after the visitor has explicitly opted in.
+	script := `<script>window.__CROC_ANALYTICS__ = ` + string(config) + `;</script>`
 	return []byte(strings.Replace(string(index), closingBody, script+closingBody, 1))
 }
 

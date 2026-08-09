@@ -58,6 +58,7 @@ func startEchoServer(t *testing.T) (host, port string) {
 func TestNormalizeConfigAllowsPublicRelayPortPools(t *testing.T) {
 	config, err := normalizeConfig(Config{})
 	require.NoError(t, err)
+	assert.Equal(t, "croc.schollz.com", config.RelayHost)
 	assert.Equal(
 		t,
 		[]string{"9009", "9010", "9011", "9012", "9013", "9014", "9015", "9016", "9017"},
@@ -134,21 +135,21 @@ func TestServesSiteAndRuntimeConfig(t *testing.T) {
 	)
 }
 
-func TestUmamiTrackerRequiresBothEnvironmentValues(t *testing.T) {
+func TestUmamiConfigRequiresBothEnvironmentValues(t *testing.T) {
 	for _, testCase := range []struct {
-		name      string
-		url       string
-		websiteID string
-		tracked   bool
+		name       string
+		url        string
+		websiteID  string
+		configured bool
 	}{
 		{name: "unset"},
 		{name: "URL only", url: "https://umami.schollz.com"},
 		{name: "website ID only", websiteID: "website-uuid"},
 		{
-			name:      "both values",
-			url:       "https://umami.schollz.com/",
-			websiteID: "website-uuid",
-			tracked:   true,
+			name:       "both values",
+			url:        "https://umami.schollz.com/",
+			websiteID:  "website-uuid",
+			configured: true,
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -167,12 +168,13 @@ func TestUmamiTrackerRequiresBothEnvironmentValues(t *testing.T) {
 				httptest.NewRequest(http.MethodGet, "/", nil),
 			)
 
-			script := `<script defer data-website-id="website-uuid" src="https://umami.schollz.com/script.js"></script>`
+			config := `<script>window.__CROC_ANALYTICS__ = {"scriptURL":"https://umami.schollz.com/script.js","websiteID":"website-uuid"};</script>`
 			assert.Equal(
 				t,
-				testCase.tracked,
-				strings.Contains(recorder.Body.String(), script),
+				testCase.configured,
+				strings.Contains(recorder.Body.String(), config),
 			)
+			assert.NotContains(t, recorder.Body.String(), `src="https://umami.schollz.com/script.js"`)
 		})
 	}
 }
