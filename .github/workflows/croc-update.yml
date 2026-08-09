@@ -55,6 +55,43 @@ jobs:
           go mod vendor
           go build ./...   # fail fast if upstream broke the build
 
+      - name: Scan for F-Droid disallowed file types
+        id: fdroid_scan
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        run: |
+          FLAGGED=""
+
+          # Extensions F-Droid's scanner.py unconditionally rejects
+          while IFS= read -r -d '' f; do
+            FLAGGED="${FLAGGED}${f}\n"
+          done < <(find third_party/croc-src \
+            \( -name '*.a' -o -name '*.aar' -o -name '*.class' -o -name '*.dex' \
+               -o -name '*.gz' -o -name '*.tgz' -o -name '*.so' -o -name '*.so.*' \
+               -o -name '*.zip' -o -name '*.jar' -o -name '*.wasm' \) \
+            ! -name 'gradle-wrapper.jar' ! -name 'gradlew.bat' \
+            -print0)
+
+          # Extensionless / .bin / .out / .exe files that are actually binary content
+          while IFS= read -r -d '' f; do
+            base="$(basename "$f")"
+            ext="${base##*.}"
+            if { [ "$base" = "$ext" ] || [ "$ext" = "bin" ] || [ "$ext" = "out" ] || [ "$ext" = "exe" ]; } \
+               && ! grep -Iq . "$f" 2>/dev/null; then
+              FLAGGED="${FLAGGED}${f}\n"
+            fi
+          done < <(find third_party/croc-src -type f -print0)
+
+          if [ -n "$FLAGGED" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "flagged<<EOF"
+              echo -e "$FLAGGED"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Update version marker
         if: steps.current.outputs.version != steps.latest.outputs.version
         run: echo "${{ steps.latest.outputs.version }}" > third_party/CROC_VERSION
@@ -72,6 +109,11 @@ jobs:
             - Replaced `third_party/croc-src` with the tagged upstream source
             - Ran `go mod tidy && go mod vendor`
             - `go build ./...` passed
+            ${{ steps.fdroid_scan.outputs.found == 'true' && format('
+            ⚠️ **F-Droid disallowed file types detected — review before merging:**
+            ```
+            {0}
+            ```', steps.fdroid_scan.outputs.flagged) || '' }}
           labels: dependencies, automated
 
       - name: Job summary
@@ -84,15 +126,19 @@ jobs:
               echo "❌ **Failed to fetch the latest release from GitHub.** Check the \"Get latest croc release\" step logs."
             elif [ "${{ steps.current.outputs.version }}" == "${{ steps.latest.outputs.version }}" ]; then
               echo "✅ Already up to date — croc \`${{ steps.current.outputs.version }}\`. Nothing to do."
-            elif [ "${{ steps.create_pr.outcome }}" == "success" ]; then
-              echo "🔄 **Updated** croc \`${{ steps.current.outputs.version }}\` → \`${{ steps.latest.outputs.version }}\`"
-              echo ""
-              echo "PR: ${{ steps.create_pr.outputs.pull-request-url }}"
             elif [ "${{ steps.replace.outcome }}" != "success" ]; then
               echo "❌ New version \`${{ steps.latest.outputs.version }}\` found, but cloning/replacing the source failed."
             elif [ "${{ steps.vendor.outcome }}" != "success" ]; then
               echo "❌ New version \`${{ steps.latest.outputs.version }}\` found, but \`go mod vendor\` / \`go build\` failed — upstream may have broken something. Needs a manual look."
+            elif [ "${{ steps.create_pr.outcome }}" != "success" ]; then
+              echo "❌ New version \`${{ steps.latest.outputs.version }}\` found and validated, but PR creation failed — check the \"Open PR\" step logs."
+            elif [ "${{ steps.fdroid_scan.outputs.found }}" == "true" ]; then
+              echo "⚠️ **Updated** croc \`${{ steps.current.outputs.version }}\` → \`${{ steps.latest.outputs.version }}\` — but F-Droid-disallowed files were found in the vendored source."
+              echo ""
+              echo "PR: ${{ steps.create_pr.outputs.pull-request-url }}"
             else
-              echo "❌ Update process failed at an unexpected step — check the run logs."
+              echo "🔄 **Updated** croc \`${{ steps.current.outputs.version }}\` → \`${{ steps.latest.outputs.version }}\`"
+              echo ""
+              echo "PR: ${{ steps.create_pr.outputs.pull-request-url }}"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
