@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout croc-app
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Read current tracked version
         id: current
