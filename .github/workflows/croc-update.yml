@@ -15,18 +15,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout croc-app
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Read current tracked version
         id: current
-        run: echo "version=$(cat third_party/CROC_VERSION)" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ -f third_party/CROC_VERSION ]; then
+            echo "version=$(tr -d '[:space:]' < third_party/CROC_VERSION)" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Get latest croc release
         id: latest
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          LATEST=$(gh api repos/schollz/croc/releases/latest --jq .tag_name)
+          LATEST=$(gh api repos/schollz/croc/releases/latest --jq .tag_name | tr -d '[:space:]')
           echo "version=$LATEST" >> "$GITHUB_OUTPUT"
 
       - name: Replace vendored croc source
@@ -92,9 +97,40 @@ jobs:
             echo "found=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Update version marker
+      - name: Update version marker and source code references
+        id: bump_version
         if: steps.current.outputs.version != steps.latest.outputs.version
-        run: echo "${{ steps.latest.outputs.version }}" > third_party/CROC_VERSION
+        run: |
+          NEW_TAG="${{ steps.latest.outputs.version }}"
+          NEW_VER="${NEW_TAG#v}"
+          OLD_TAG="${{ steps.current.outputs.version }}"
+          OLD_VER="${OLD_TAG#v}"
+
+          echo "Bumping croc version: $OLD_TAG ($OLD_VER) -> $NEW_TAG ($NEW_VER)"
+
+          # 1. Update version marker
+          echo "$NEW_TAG" > third_party/CROC_VERSION
+
+          # 2. Update app/build.gradle.kts description
+          sed -i -E "s/description = \"Build croc v?[0-9.]+ for Android arm64 from vendored source\.\"/description = \"Build croc v${NEW_VER} for Android arm64 from vendored source.\"/g" app/build.gradle.kts
+
+          # 3. Update CrocBinaryManager.kt (BINARY_VERSION and DOWNLOAD_URL)
+          sed -i -E "s/private const val BINARY_VERSION = \"[^\"]+\"/private const val BINARY_VERSION = \"${NEW_VER}\"/g" app/src/main/java/com/dking/crocapp/croc/CrocBinaryManager.kt
+          sed -i -E "s|https://github\.com/schollz/croc/releases/download/v[^/]+/croc_v[^_]+_Linux-ARM64\.tar\.gz|https://github.com/schollz/croc/releases/download/v${NEW_VER}/croc_v${NEW_VER}_Linux-ARM64.tar.gz|g" app/src/main/java/com/dking/crocapp/croc/CrocBinaryManager.kt
+
+          # 4. Update CrocProcess.kt comments / docstrings
+          sed -i -E "s/\* croc v?[0-9.]+ global flags:/\* croc v${NEW_VER} global flags:/g" app/src/main/java/com/dking/crocapp/croc/CrocProcess.kt
+          sed -i -E "s/\* Only includes flags that actually exist in croc v?[0-9.]+\./\* Only includes flags that actually exist in croc v${NEW_VER}./g" app/src/main/java/com/dking/crocapp/croc/CrocProcess.kt
+          sed -i -E "s|// Regex patterns for the v?[0-9.]+ output format|// Regex patterns for the v${NEW_VER} output format|g" app/src/main/java/com/dking/crocapp/croc/CrocProcess.kt
+
+          # 5. Update strings.xml in all locales
+          find app/src/main/res -name "strings.xml" -exec sed -i -E \
+            -e "s|<string name=\"settings_croc_version_value\">[^<]*</string>|<string name=\"settings_croc_version_value\">v${NEW_VER}</string>|g" \
+            -e "s|<string name=\"settings_croc_version_val\">[^<]*</string>|<string name=\"settings_croc_version_val\">v${NEW_VER}</string>|g" \
+            {} +
+
+          echo "Source code version bump complete. Changed files:"
+          git status --short
 
       - name: Open PR
         id: create_pr
@@ -109,6 +145,7 @@ jobs:
             - Replaced `third_party/croc-src` with the tagged upstream source
             - Ran `go mod tidy && go mod vendor`
             - `go build ./...` passed
+            - Updated croc version references across source code and localized strings
             ${{ steps.fdroid_scan.outputs.found == 'true' && format('
             ⚠️ **F-Droid disallowed file types detected — review before merging:**
             ```
