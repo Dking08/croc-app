@@ -132,6 +132,16 @@ jobs:
           echo "Source code version bump complete. Changed files:"
           git status --short
 
+      - name: Verify no stale version strings remain
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        run: |
+          OLD_VER="${{ steps.current.outputs.version }}"
+          OLD_VER="${OLD_VER#v}"
+          if [ -n "$OLD_VER" ] && grep -rl "$OLD_VER" --exclude-dir=third_party --exclude-dir=.git . ; then
+            echo "::error::Stale version references to $OLD_VER still present after bump — a sed pattern likely didn't match."
+            exit 1
+          fi
+
       - name: Open PR
         id: create_pr
         if: steps.current.outputs.version != steps.latest.outputs.version
