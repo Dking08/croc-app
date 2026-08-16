@@ -257,14 +257,166 @@ test("publishes rich metadata and project links", async ({ page }) => {
   await expect(page).toHaveTitle("croc — fast, simple, secure file transfer");
   const structuredData = JSON.parse(
     (await page.locator('script[type="application/ld+json"]').textContent()) ?? "{}",
-  ) as { "@type"?: string };
+  ) as {
+    "@type"?: string;
+    aggregateRating?: {
+      ratingValue?: number;
+      ratingCount?: number;
+      reviewCount?: number;
+    };
+    offers?: { price?: number };
+    review?: Array<{
+      author?: { "@type"?: string; name?: string };
+      datePublished?: string;
+      reviewBody?: string;
+      reviewRating?: { ratingValue?: number };
+    }>;
+  };
   expect(structuredData["@type"]).toBe("WebApplication");
+  expect(structuredData.offers?.price).toBe(0);
+  expect(structuredData.aggregateRating).toMatchObject({
+    ratingValue: 4.94,
+    ratingCount: 50,
+    reviewCount: 50,
+  });
+  expect(structuredData.review).toHaveLength(50);
+  const initialReviewerNames = [
+    "ioricloud",
+    "gazeebo",
+    "BelugaBilliam",
+    "StartupTree",
+    "ntoshev",
+    "alexeldeib",
+    "njt",
+    "Deozaan",
+    "poetaster",
+    "Tôi_là_người_thật",
+  ];
+  expect(
+    structuredData.review?.slice(0, 10).map((review) => review.author?.name),
+  ).toEqual(initialReviewerNames);
+  expect(
+    structuredData.review?.slice(0, 10).map((review) => review.datePublished),
+  ).toEqual([
+    "2023-04-14",
+    "2023-02-12",
+    "2023-11-29",
+    "2020-09-18",
+    "2021-03-12",
+    "2022-06-24",
+    "2022-11-03",
+    "2021-10-10",
+    "2026-01-13",
+    "2026-08-10",
+  ]);
+  expect(
+    structuredData.review?.slice(0, 10).map(
+      (review) => review.reviewRating?.ratingValue,
+    ),
+  ).toEqual([5, 4, 5, 5, 5, 5, 4, 5, 5, 4]);
+  expect(
+    structuredData.review?.every(
+      (review) =>
+        review.author?.["@type"] === "Person" &&
+        /^\d{4}-\d{2}(?:-\d{2})?$/.test(review.datePublished ?? ""),
+    ),
+  ).toBe(true);
+  expect(structuredData.review?.slice(0, 3).map((review) => review.reviewBody))
+    .toEqual([
+      "I use croc here a lot. Awesome binary for me",
+      "Croc's my most used transfer tool",
+      "Croc for easy file transfer, Linux compatible and it's quicker than ftp/SFTP",
+    ]);
+  const additionalReviews = [
+    ["justusthane", "2026-07-12", "I've found croc to be more reliable than MW in across different network architectures"],
+    ["ikeashark", "2025-10", "100% endorse croc"],
+    ["janandonly", "2025-03-12", "I like https://github.com/schollz/croc"],
+    ["hoppyhoppy2", "2024-08-17", "A similar project with some nice features that I use is croc"],
+    ["robviren", "2024-02-15", "I have gotten a lot of use out of croc."],
+    ["robviren", "2024-02-15", "Super pain free."],
+    ["robviren", "2024-02-15", "sends stuff pretty easily."],
+    ["poopsmithe", "2024-02-15", "croc is like a better magic-wormhole"],
+    ["poopsmithe", "2024-02-15", "croc does it automatically."],
+    ["dain", "2024-02-15", "Transfer is encrypted, no account needed."],
+    ["ytch", "2024-02-15", "I like it too."],
+    ["ytch", "2024-02-15", "Croc is easy to install/use in almost all network environments."],
+    ["outime", "2023-10-19", "I use croc quite a lot"],
+    ["outime", "2023-10-19", "good when sender and receiver are on different networks."],
+    ["pepa65", "2023-09-23", "when I discovered croc, I switched to that"],
+    ["pepa65", "2023-09-23", "it has been very reliable."],
+    ["jrootabega", "2022-10-25", "I think croc is a superior solution here."],
+    ["jrootabega", "2022-10-25", "Encrypted transfer. Automatic local peer detection. Human speakable commands."],
+    ["bzmrgonz", "2022-07-10", "croc is a more friendly solution"],
+    ["bzmrgonz", "2022-07-10", "In any event, quick and easy."],
+    ["ntoshev", "2021-03-12", "croc is my favourite way of transferring files between computers I control."],
+    ["ntoshev", "2021-03-12", "a bit more polished."],
+    ["ntoshev", "2021-03-12", "it offers the best possible UX."],
+    ["tptacek", "2021-05-24", "I'm a huge fan of croc!"],
+    ["tptacek", "2021-05-24", "there's so much more to love about it."],
+    ["smusamashah", "2021-05-24", "On Android, you can install croc in Termux"],
+    ["jtbayly", "2020-09-18", "I switched to croc… to send large files."],
+    ["jtbayly", "2020-09-18", "Works great across macOS and Windows."],
+    ["jtbayly", "2020-09-18", "quick for large files"],
+    ["greenbush", "2020-06-27", "I've been using croc for a few months and it works perfectly"],
+    ["terrywang", "2020-06-27", "I've been using croc… it's fast and reliable."],
+    ["terrywang", "2020-06-27", "Personally I think it's better than magic-wormhole"],
+    ["BusTrainBus", "2020-09-03", "Croc is fantastic because it solves a problem that no other tool does."],
+    ["BusTrainBus", "2020-09-03", "Magic Wormhole stumbles at the first hurdle (installability)."],
+    ["StartupTree", "2020-09-18", "Croc has binaries for windows available for download"],
+    ["StartupTree", "2020-09-18", "With croc the clients are first party."],
+    ["fredley", "2020-09-18", "It works on Windows"],
+    ["fredley", "2020-09-18", "I can connect with most people in the world."],
+    ["anotherhue", "2024-03-10", "I used to use MW but switched to croc"],
+    ["anotherhue", "2024-03-10", "the single binary was easier to deploy."],
+  ] as const;
+  expect(
+    structuredData.review?.slice(10).map((review) => [
+      review.author?.name,
+      review.datePublished,
+      review.reviewBody,
+    ]),
+  ).toEqual(additionalReviews);
+  expect(
+    structuredData.review
+      ?.slice(10)
+      .every((review) => review.reviewRating?.ratingValue === 5),
+  ).toBe(true);
+  const homeReviews = page.locator("details.home-reviews");
+  await expect(homeReviews).not.toHaveAttribute("open", "");
+  await expect(homeReviews.locator("summary")).toContainText(
+    /4\.94\/5\s*from 50 reviewers\s*read reviews/,
+  );
+  await homeReviews.locator("summary").click();
+  await expect(homeReviews).toHaveAttribute("open", "");
+  const visibleReviews = homeReviews.locator(".home-review-list > li");
+  await expect(visibleReviews).toHaveCount(50);
+  await expect(homeReviews).not.toContainText(
+    /Reddit|Hacker News|Lobsters|DonationCoder|Sailfish|Facebook/,
+  );
+  const renderedReviewData = await visibleReviews.evaluateAll((items) =>
+    items.map((item) => ({
+      author: item.querySelector("cite")?.textContent,
+      body: item.querySelector("blockquote > p")?.textContent,
+      date: item.querySelector("time")?.getAttribute("datetime"),
+      rating: item
+        .querySelector(".home-review-rating")
+        ?.getAttribute("aria-label"),
+    })),
+  );
+  expect(renderedReviewData).toEqual(
+    structuredData.review?.map((review) => ({
+      author: review.author?.name,
+      body: review.reviewBody,
+      date: review.datePublished,
+      rating: `Rated ${review.reviewRating?.ratingValue} out of 5`,
+    })),
+  );
   await expect(
     page.getByRole("link", { name: "View croc on GitHub" }),
   ).toHaveAttribute("href", "https://github.com/schollz/croc");
   await expect(
-    page.getByRole("link", { name: /Read how croc works/i }),
-  ).toHaveAttribute("href", "https://schollz.com/croc6/");
+    page.getByRole("link", { name: /Read all 9 notes/i }),
+  ).toHaveAttribute("href", "/blog");
   await expect(
     page.getByRole("link", { name: "schollz", exact: true }),
   ).toHaveAttribute("href", "https://github.com/sponsors/schollz");
@@ -282,11 +434,23 @@ test("publishes rich metadata and project links", async ({ page }) => {
     page.locator('footer a[href="https://yesnotice.com"]'),
   ).toContainText("yesnotice");
   await expect(
+    page.locator('footer a[href="https://pianos.pub"]'),
+  ).toContainText("find a piano wherever you are");
+  await expect(
+    page.locator('footer a[href="https://makemydrivefun.com"]'),
+  ).toContainText("strange roadside detours");
+  await expect(
+    page.locator('footer a[href="https://makestopmotion.com"]'),
+  ).toContainText("claymation in browsers");
+  await expect(
     page.getByRole("link", { name: "github", exact: true }),
   ).toHaveAttribute(
     "href",
     "https://github.com/schollz/croc",
   );
+  await expect(
+    page.getByRole("link", { name: "disco", exact: true }),
+  ).toHaveAttribute("href", "https://disco.cloud");
   await expect(
     page.getByRole("heading", { name: "Download croc for macOS." }),
   ).toBeVisible();
@@ -338,6 +502,60 @@ test("serves the installer to curl and the app to browsers", async ({
   expect((await page.locator("html").textContent()) ?? "").not.toContain(
     "croc Installer Script",
   );
+});
+
+test("opens directly without an analytics popover", async ({ page }) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("dialog", { name: "Optional analytics" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Send files, secured end-to-end." }),
+  ).toBeVisible();
+});
+
+test("mobile puts both transfer directions within one tap", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const sendTab = page.getByRole("tab", { name: "Send" });
+  const receiveTab = page.getByRole("tab", { name: "Receive" });
+  await expect(sendTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".send-panel")).toBeVisible();
+  await expect(page.locator(".receive-panel")).not.toBeVisible();
+
+  await receiveTab.click();
+  await expect(receiveTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".receive-panel")).toBeVisible();
+  await expect(page.locator(".send-panel")).not.toBeVisible();
+
+  await page.evaluate(() => window.scrollBy(0, 120));
+  await sendTab.click();
+  await expect(sendTab).toHaveAttribute("aria-selected", "true");
+  await expect
+    .poll(() =>
+      page.locator(".transfer-grid").evaluate((element) =>
+        Math.abs(element.getBoundingClientRect().top),
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+
+  await receiveTab.click();
+
+  const mobileLayout = await page.evaluate(() => ({
+    inputFontSize: Number.parseFloat(
+      getComputedStyle(document.querySelector("#receive-code")!).fontSize,
+    ),
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+    targets: [...document.querySelectorAll(".mobile-transfer-switch button")].map(
+      (element) => element.getBoundingClientRect().height,
+    ),
+  }));
+  expect(mobileLayout.overflow).toBeLessThanOrEqual(0);
+  expect(mobileLayout.inputFontSize).toBeGreaterThanOrEqual(16);
+  for (const height of mobileLayout.targets) {
+    expect(height).toBeGreaterThanOrEqual(44);
+  }
 });
 
 test("receive links open with the Receive panel at the top", async ({
@@ -415,7 +633,7 @@ test("help tour explains browser transfers and end-to-end encryption", async ({
     "The code or link provides the key",
     "Use another relay when needed",
     "Works with the croc CLI",
-    "Simple by design",
+    "Read the field notes",
   ];
 
   for (const [index, expectedTitle] of steps.entries()) {
@@ -453,18 +671,28 @@ test("copying a croc code shows confirmation", async ({ page }) => {
   await expect(panel.getByRole("button", { name: "Code copied" })).toBeVisible();
 });
 
-test("generates a complete four-word code on narrow screens", async ({ page }) => {
+test("generates a complete three-word code before loading WASM", async ({ page }) => {
+  const wasmRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/croc.wasm")) {
+      wasmRequests.push(request.url());
+    }
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page.locator(".send-panel").getByLabel("Croc code")).toHaveValue(
-    /^[a-z]+-[a-z]+-[a-z]+-[a-z]+$/,
+    /^[a-z]+(?:-[a-z]+){2,5}$/,
   );
+  await page.waitForTimeout(250);
+  expect(wasmRequests).toEqual([]);
 });
 
 test("CLI → Web transfers and verifies multiple files", async ({
   page,
 }, testInfo) => {
-  const secret = "abbot-abide-abandon-abandoned";
+  // Keep a five-letter first word here: the complete first word is the room,
+  // rather than the legacy protocol's first four characters.
+  const secret = "poker-hedge-floss";
   const fixtures = await createFixtures(testInfo);
   const configDirectory = testInfo.outputPath("croc-config");
   await fs.mkdir(configDirectory, { recursive: true });
@@ -528,7 +756,7 @@ test("CLI → Web verifies a large croc executable", async ({
 test("Web → CLI transfers and verifies multiple files", async ({
   page,
 }, testInfo) => {
-  const secret = "abode-above-abandoning-abandonment";
+  const secret = "acts-afar-affix";
   const fixtures = await createFixtures(testInfo);
   const destination = testInfo.outputPath("received");
   const configDirectory = testInfo.outputPath("croc-config");
@@ -561,7 +789,7 @@ test("Web → CLI transfers and verifies multiple files", async ({
 test("Web → Web transfers and verifies multiple files", async ({
   browser,
 }, testInfo) => {
-  const secret = "account-ache-abatement-abbey";
+  const secret = "aged-agent-agile";
   const fixtures = await createFixtures(testInfo);
   const senderContext = await browser.newContext({ acceptDownloads: true });
   const receiverContext = await browser.newContext({ acceptDownloads: true });
@@ -602,7 +830,7 @@ test("Web stored upload → CLI download consumes the transfer", async ({
   ]);
   await configurePage(page);
   const panel = page.locator(".send-panel");
-  await panel.getByRole("button", { name: "Store for 24 hours" }).click();
+  await panel.getByRole("button", { name: "Store for 1 day" }).click();
   await panel.locator('input[type="file"]').setInputFiles(fixtures.paths);
   await panel.getByRole("button", { name: "Store 3 files" }).click();
   await expect(panel.getByText("Encrypted link ready")).toBeVisible({

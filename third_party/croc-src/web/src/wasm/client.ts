@@ -17,7 +17,7 @@ export interface PeerKeys {
 export interface CodeComponents {
   room: string;
   passphrase: string;
-  format: "legacy" | "four-word";
+  format: "legacy" | "three-word" | "four-word";
 }
 
 type Pending = {
@@ -155,10 +155,6 @@ export class CrocWasm {
 
   hashFinal(handle: number) {
     return this.call<Uint8Array>("hashFinal", [handle]);
-  }
-
-  randomCode() {
-    return this.call<string>("randomCode");
   }
 
   codeComponents(secret: string) {

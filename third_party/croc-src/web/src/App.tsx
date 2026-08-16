@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  ArrowRight,
+  BookOpenText,
   Check,
   CircleHelp,
   Copy,
@@ -11,12 +13,17 @@ import {
   RefreshCw,
   Settings2,
   Sun,
+  Terminal,
   Upload,
   X,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import { driver, type DriveStep, type Driver } from "driver.js";
-import { trackTransferEvent, transferEvents } from "./analytics";
+import {
+  trackTransferEvent,
+  transferEvents,
+} from "./analytics";
+import { generateCode } from "./codephrase";
 import { errorMessage, formatBytes } from "./protocol/bytes";
 import {
   prepareFiles,
@@ -54,8 +61,13 @@ import {
   type TransferEstimate,
 } from "./progress";
 import {
+  formatStoredExpiration,
+  StoredExpirationControl,
   StoredModeSwitch,
   StoredShareCard,
+  storedExpirationParts,
+  storedExpirationSeconds,
+  maxStoredExpirationSeconds,
   type SendMode,
 } from "./stored-ui";
 import { makeDirectReceiveURL, ShareQRCode } from "./share-qr";
@@ -71,10 +83,12 @@ import {
   type GitHubRelease,
 } from "./releases";
 import { wasm } from "./wasm/client";
+import { blogPosts } from "./blog-posts";
 
 type Activity = "idle" | "working" | "done" | "error";
 type Theme = "dark" | "light";
 type CopyState = "idle" | "copied" | "error";
+type MobileTransferPanel = "send" | "receive";
 
 const runtimeSettings = window.__CROC_RUNTIME_CONFIG__ ?? {};
 const requestedReceiveCode =
@@ -90,6 +104,25 @@ const storeRuntime = runtimeSettings.store ?? {};
 const storeEnabled = storeRuntime.enabled === true;
 const storeMaxTransferBytes = storeRuntime.maxTransferBytes || 1024 ** 3;
 const storeMaxFiles = storeRuntime.maxFiles || 100;
+const storeMaxDownloads = storeRuntime.maxDownloads || 1;
+const storeMaxExpiresSeconds =
+  Number.isSafeInteger(storeRuntime.maxExpiresSeconds) &&
+  (storeRuntime.maxExpiresSeconds ?? 0) >= 60
+    ? Math.min(storeRuntime.maxExpiresSeconds!, maxStoredExpirationSeconds)
+    : 0;
+const configuredStoreExpiresSeconds =
+  Number.isSafeInteger(storeRuntime.expiresSeconds) &&
+  (storeRuntime.expiresSeconds ?? 0) >= 60
+    ? Math.min(storeRuntime.expiresSeconds!, maxStoredExpirationSeconds)
+    : storeMaxExpiresSeconds > 0
+      ? Math.min(24 * 60 * 60, storeMaxExpiresSeconds)
+      : 24 * 60 * 60;
+const storeExpiresSeconds =
+  storeMaxExpiresSeconds > 0
+    ? Math.min(configuredStoreExpiresSeconds, storeMaxExpiresSeconds)
+    : configuredStoreExpiresSeconds;
+const crocWebsite = "https://infinitedigits.co/croc/";
+const crocRepository = "https://github.com/schollz/croc";
 const otherTools = [
   {
     description: "local weather, minus clutter",
@@ -106,7 +139,104 @@ const otherTools = [
     href: "https://yesnotice.com",
     name: "yesnotice",
   },
+  {
+    description: "find a piano wherever you are",
+    href: "https://pianos.pub",
+    name: "pianos.pub",
+  },
+  {
+    description: "strange roadside detours",
+    href: "https://makemydrivefun.com",
+    name: "makemydrivefun",
+  },
+  {
+    description: "claymation in browsers",
+    href: "https://makestopmotion.com",
+    name: "makestopmotion",
+  },
 ];
+
+type HomeReview = {
+  author: { name: string };
+  datePublished: string;
+  reviewBody: string;
+  reviewRating: { ratingValue: number };
+};
+
+type HomeReviewData = {
+  ratingValue: number;
+  reviewCount: number;
+  reviews: HomeReview[];
+};
+
+function readHomeReviewData(): HomeReviewData | undefined {
+  const element = document.querySelector<HTMLScriptElement>(
+    'script[type="application/ld+json"][data-croc-home="true"]',
+  );
+  if (!element?.textContent) return undefined;
+
+  try {
+    const data = JSON.parse(element.textContent) as {
+      aggregateRating?: { ratingValue?: unknown; reviewCount?: unknown };
+      review?: Array<{
+        author?: { name?: unknown };
+        datePublished?: unknown;
+        reviewBody?: unknown;
+        reviewRating?: { ratingValue?: unknown };
+      }>;
+    };
+    const ratingValue = Number(data.aggregateRating?.ratingValue);
+    const reviewCount = Number(data.aggregateRating?.reviewCount);
+    const reviews = (data.review ?? []).filter(
+      (review): review is HomeReview =>
+        typeof review.author?.name === "string" &&
+        typeof review.datePublished === "string" &&
+        /^\d{4}-\d{2}(?:-\d{2})?$/.test(review.datePublished) &&
+        typeof review.reviewBody === "string" &&
+        typeof review.reviewRating?.ratingValue === "number" &&
+        Number.isFinite(review.reviewRating.ratingValue),
+    );
+
+    if (
+      !Number.isFinite(ratingValue) ||
+      !Number.isFinite(reviewCount) ||
+      reviews.length !== reviewCount
+    ) {
+      return undefined;
+    }
+
+    return { ratingValue, reviewCount, reviews };
+  } catch {
+    return undefined;
+  }
+}
+
+const homeReviewData = readHomeReviewData();
+const homeReviewDateFormatter = new Intl.DateTimeFormat("en-US", {
+  day: "numeric",
+  month: "short",
+  timeZone: "UTC",
+  year: "numeric",
+});
+const homeReviewMonthFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  timeZone: "UTC",
+  year: "numeric",
+});
+
+function formatHomeReviewDate(value: string) {
+  const formatter = value.length === 7
+    ? homeReviewMonthFormatter
+    : homeReviewDateFormatter;
+  const normalizedValue = value.length === 7 ? `${value}-01` : value;
+  return formatter.format(new Date(`${normalizedValue}T00:00:00Z`));
+}
+
+function homeReviewStars(value: number) {
+  const filled = Math.max(0, Math.min(5, Math.round(value)));
+  return `${"★".repeat(filled)}${"☆".repeat(5 - filled)}`;
+}
+
 const defaultSettings: TransferSettings = {
   gatewayURL:
     runtimeSettings.gatewayURL ||
@@ -115,7 +245,7 @@ const defaultSettings: TransferSettings = {
   relayAddress:
     runtimeSettings.relayAddress ||
     import.meta.env.VITE_CROC_RELAY_ADDRESS ||
-    "ipv4.getcroc.com:9009",
+    "croc.schollz.com:9009",
   relayPassword:
     runtimeSettings.relayPassword ||
     import.meta.env.VITE_CROC_RELAY_PASSWORD ||
@@ -145,6 +275,7 @@ function restoreStoredUpload() {
           browserURL?: string;
           uploadToken?: string;
           expiresAt?: string;
+          downloads?: number;
         };
         const expiresAt = new Date(receipt.expiresAt ?? "");
         if (
@@ -162,6 +293,11 @@ function restoreStoredUpload() {
           expiresAt: expiresAt.toISOString(),
           browserURL: receipt.browserURL,
           cliToken: formatStoredCLIToken(share),
+          downloads:
+            Number.isSafeInteger(receipt.downloads) &&
+            (receipt.downloads ?? 0) > 0
+              ? receipt.downloads!
+              : 1,
         };
         if (
           !restored ||
@@ -335,6 +471,7 @@ function CliDownload() {
 
   return (
     <section
+      id="cli-download"
       className="cli-download"
       aria-labelledby="cli-download-title"
       data-tour="cli"
@@ -400,6 +537,114 @@ function CliDownload() {
   );
 }
 
+function TransferLinks() {
+  return (
+    <nav className="transfer-links" aria-label="More ways to transfer with croc">
+      <a href="/#send-panel">
+        <Upload aria-hidden="true" />
+        <span><strong>Send in your browser</strong><small>No install needed</small></span>
+      </a>
+      <a href="/#receive">
+        <Download aria-hidden="true" />
+        <span><strong>Receive in your browser</strong><small>Paste a code or link</small></span>
+      </a>
+      <a href="/#cli-download">
+        <Terminal aria-hidden="true" />
+        <span><strong>Download the croc CLI</strong><small>Windows, macOS, and Linux</small></span>
+      </a>
+      <a href={crocWebsite} target="_blank" rel="noopener noreferrer">
+        <BookOpenText aria-hidden="true" />
+        <span><strong>Read the croc guide</strong><small>Install and usage docs</small></span>
+      </a>
+      <a href={crocRepository} target="_blank" rel="noopener noreferrer">
+        <FaGithub aria-hidden="true" />
+        <span><strong>Explore the codebase</strong><small>Source, issues, and releases</small></span>
+      </a>
+    </nav>
+  );
+}
+
+function BlogTeaser() {
+  return (
+    <section
+      className="home-blog-teaser"
+      aria-labelledby="home-blog-title"
+      data-tour="blog"
+    >
+      <div className="home-blog-heading">
+        <div>
+          <p className="eyebrow">Field notes</p>
+          <h2 id="home-blog-title">What happens after you press Send?</h2>
+          <p>
+            Plainspoken notes about the relay, the three-word code, and the ways
+            browsers and terminals meet in the same transfer.
+          </p>
+        </div>
+        <a href="/blog">Read all {blogPosts.length} notes <ArrowRight /></a>
+      </div>
+      <div className="home-blog-list">
+        {blogPosts.slice(0, 3).map((post) => (
+          <a href={`/blog/${post.slug}`} key={post.slug}>
+            <span>{post.number}</span>
+            <strong>{post.title}</strong>
+            <small>{post.readingMinutes} min read</small>
+            <ArrowRight aria-hidden="true" />
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function HomeReviews() {
+  if (!homeReviewData) return null;
+
+  const { ratingValue, reviewCount, reviews } = homeReviewData;
+
+  return (
+    <details className="home-reviews">
+      <summary>
+        <span className="home-reviews-score">
+          <span aria-hidden="true">{homeReviewStars(ratingValue)}</span>
+          <strong>{ratingValue}/5</strong>
+          <span>
+            from {reviewCount} reviewer{reviewCount === 1 ? "" : "s"}
+          </span>
+        </span>
+        <span className="home-reviews-action">read reviews</span>
+      </summary>
+      <div className="home-reviews-body">
+        <p>Comments from people using croc to move their files.</p>
+        <ol className="home-review-list">
+          {reviews.map((review, index) => (
+            <li key={`${review.author.name}-${index}`}>
+              <blockquote>
+                <p>{review.reviewBody}</p>
+                <footer>
+                  <cite>{review.author.name}</cite>
+                  <span className="home-review-meta">
+                    <time dateTime={review.datePublished}>
+                      {formatHomeReviewDate(review.datePublished)}
+                    </time>
+                    <span
+                      className="home-review-rating"
+                      aria-label={`Rated ${review.reviewRating.ratingValue} out of 5`}
+                    >
+                      <span aria-hidden="true">
+                        {homeReviewStars(review.reviewRating.ratingValue)}
+                      </span>
+                    </span>
+                  </span>
+                </footer>
+              </blockquote>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </details>
+  );
+}
+
 export function App() {
   const restoredStoredUpload = useMemo(restoreStoredUpload, []);
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -427,7 +672,11 @@ export function App() {
   const [sendMode, setSendMode] = useState<SendMode>(
     restoredStoredUpload ? "stored" : "direct",
   );
-  const [sendCode, setSendCode] = useState("");
+  const [mobileTransferPanel, setMobileTransferPanel] =
+    useState<MobileTransferPanel>(receiveOnly ? "receive" : "send");
+  const [sendCode, setSendCode] = useState(() =>
+    receiveOnly ? "" : generateCode(),
+  );
   const [sendActivity, setSendActivity] = useState<Activity>("idle");
   const [sendStatus, setSendStatus] = useState("");
   const [sendProgress, setSendProgress] = useState<FileProgress>();
@@ -435,6 +684,10 @@ export function App() {
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const [storedUpload, setStoredUpload] =
     useState<StoredUploadResult | undefined>(restoredStoredUpload);
+  const [storedDownloads, setStoredDownloads] = useState(1);
+  const [storedExpiration, setStoredExpiration] = useState(() =>
+    storedExpirationParts(storeExpiresSeconds),
+  );
 
   const [receiveCode, setReceiveCode] = useState(requestedReceiveValue);
   const [receiveActivity, setReceiveActivity] = useState<Activity>("idle");
@@ -451,6 +704,7 @@ export function App() {
   const sendAbort = useRef<AbortController>(undefined);
   const receiveAbort = useRef<AbortController>(undefined);
   const fileInput = useRef<HTMLInputElement>(null);
+  const transferGrid = useRef<HTMLElement>(null);
   const receivePanel = useRef<HTMLFormElement>(null);
   const copyReset = useRef<number>(undefined);
   const tour = useRef<Driver>(undefined);
@@ -468,6 +722,8 @@ export function App() {
       storeAPI: settings.storeAPI,
       maxTransferBytes: storeMaxTransferBytes,
       maxFiles: storeMaxFiles,
+      maxDownloads: storeMaxDownloads,
+      maxExpiresSeconds: storeMaxExpiresSeconds,
     }),
     [settings.storeAPI],
   );
@@ -504,22 +760,7 @@ export function App() {
   }, [settings, rememberPassword]);
 
   useEffect(() => {
-    let active = true;
-    void wasm()
-      .randomCode()
-      .then((code) => {
-        if (active) {
-          setSendCode((current) => current || code);
-        }
-      })
-      .catch((error) => {
-        if (active) {
-          setSendActivity("error");
-          setSendStatus(`Could not initialize croc: ${errorMessage(error)}`);
-        }
-      });
     return () => {
-      active = false;
       if (copyReset.current !== undefined) {
         window.clearTimeout(copyReset.current);
       }
@@ -546,6 +787,13 @@ export function App() {
     }
   }, []);
 
+  function showMobileTransferPanel(panel: MobileTransferPanel) {
+    setMobileTransferPanel(panel);
+    window.requestAnimationFrame(() => {
+      transferGrid.current?.scrollIntoView({ block: "start" });
+    });
+  }
+
   function addFiles(files: File[]) {
     if (sendActivity === "working") return;
     setSelectedFiles((current) => {
@@ -557,19 +805,21 @@ export function App() {
     setSendStatus("");
   }
 
-  async function regenerateCode() {
+  function regenerateCode() {
     if (sendActivity === "working") return;
     setCopyState("idle");
-    setSendCode(await wasm().randomCode());
+    setSendCode(generateCode());
   }
 
   async function copyValue(value: string) {
     if (copyReset.current !== undefined) {
       window.clearTimeout(copyReset.current);
     }
+    let copied = false;
     try {
       await navigator.clipboard.writeText(value);
       setCopyState("copied");
+      copied = true;
     } catch {
       setCopyState("error");
     }
@@ -577,6 +827,7 @@ export function App() {
       setCopyState("idle");
       copyReset.current = undefined;
     }, 2_000);
+    return copied;
   }
 
   function rememberStoredUpload(result: StoredUploadResult) {
@@ -588,6 +839,7 @@ export function App() {
           browserURL: result.browserURL,
           uploadToken: result.uploadToken,
           expiresAt: result.expiresAt,
+          downloads: result.downloads,
         }),
       );
     } catch {
@@ -605,6 +857,11 @@ export function App() {
     const result = await uploadStoredFiles({
       files: prepared,
       settings: storedSettings,
+      downloads: storedDownloads,
+      expiresSeconds: storedExpirationSeconds(
+        storedExpiration.value,
+        storedExpiration.unit,
+      ),
       signal,
       callbacks: {
         onStatus: setSendStatus,
@@ -694,13 +951,14 @@ export function App() {
       signal,
     );
     setStoredReceiveExpiresAt(inspection.expiresAt ?? "");
-    await receiveStoredTransfer({
+    const remaining = await receiveStoredTransfer({
       inspection,
       settings: storedSettings,
       signal,
       callbacks: receiveCallbacks(),
     });
     window.history.replaceState({}, "", "/");
+    return remaining;
   }
 
   async function receiveDirect(signal: AbortSignal) {
@@ -725,15 +983,22 @@ export function App() {
     setStoredReceiveExpiresAt("");
     try {
       const stored = isStoredShareValue(receiveCode);
-      await (stored
-        ? receiveStored(controller.signal)
-        : receiveDirect(controller.signal));
+      let remaining: number | undefined;
+      if (stored) {
+        remaining = await receiveStored(controller.signal);
+      } else {
+        await receiveDirect(controller.signal);
+      }
       trackTransferEvent(transferEvents.receive);
       setOffer(undefined);
       setReceiveActivity("done");
       setReceiveStatus(
         stored
-          ? "All files received, verified, and removed from storage"
+          ? remaining === 0
+            ? "All files received and verified; stored ciphertext removed"
+            : `All files received and verified; ${remaining} ${
+                remaining === 1 ? "download remains" : "downloads remain"
+              }`
           : "All files received and verified",
       );
     } catch (error) {
@@ -810,7 +1075,7 @@ export function App() {
           title: "Welcome to croc web",
           description: receiveOnly
             ? requestedStoredURL
-              ? "This encrypted stored link is opening its manifest. Review the incoming files, then choose where to save them before claiming its one download."
+              ? "This encrypted stored link is opening its manifest. Review the incoming files, then choose where to save them before claiming an allowed download."
               : "This receive link already filled its croc code and started connecting. You only need to review the incoming files and choose where to save them."
             : "Send or receive files from this page with any compatible croc browser or command-line peer. This tour shows the complete flow.",
         },
@@ -822,8 +1087,10 @@ export function App() {
         element: '[data-tour="send"]',
         popover: {
           title: "Send one or several files",
-          description:
-            "Use Direct for a live croc-code transfer, or Store for an encrypted link that lasts up to 24 hours or one verified download. Choose files or drag them here to begin.",
+          description: `Use Direct for a live croc-code transfer, or Store for an encrypted link that lasts ${formatStoredExpiration(
+            storedExpiration.value,
+            storedExpiration.unit,
+          )} or until its configured verified-download limit. Choose files or drag them here to begin.`,
           side: "right",
           align: "start",
         },
@@ -872,11 +1139,11 @@ export function App() {
         },
       },
       {
-        element: '[data-tour="about"]',
+        element: '[data-tour="blog"]',
         popover: {
-          title: "Simple by design",
+          title: "Read the field notes",
           description:
-            "No account, port forwarding, or local server is required. Follow the “Read how croc works” link for a deeper explanation of the protocol and its security model.",
+            "Plainspoken notes explain the relay, PAKE, encryption, browser and terminal interoperability, stored sharing, and the decisions behind croc.",
           side: "top",
           align: "start",
         },
@@ -908,15 +1175,20 @@ export function App() {
 
   const sendBusy = sendActivity === "working";
   const receiveBusy = receiveActivity === "working";
+  const storedShareReady =
+    sendMode === "stored" && sendActivity === "done" && storedUpload !== undefined;
 
   return (
-    <main className="site-shell">
+    <>
+      <main className="site-shell">
       <aside className="donation-banner" aria-label="Support croc">
         <div className="donation-copy">
           <Heart aria-hidden="true" />
           <p>
-            <strong>croc is free, but depends on donations to keep going.</strong>{" "}
-            If just 1% of users donate $1, it will be sustainable.
+            <strong>croc is free and supported by donations.</strong>{" "}
+            <span className="donation-detail">
+              If just 1% of users donate $1, it will be sustainable.
+            </span>
           </p>
         </div>
         <a
@@ -959,6 +1231,14 @@ export function App() {
             <CircleHelp aria-hidden="true" />
           </button>
           <a
+            className="icon-button blog-header-link"
+            href="/blog"
+            aria-label="Read croc field notes"
+            title="Read croc field notes"
+          >
+            <BookOpenText aria-hidden="true" />
+          </a>
+          <a
             className="icon-button"
             href="https://github.com/schollz/croc"
             target="_blank"
@@ -982,11 +1262,46 @@ export function App() {
       </header>
 
       <section
+        ref={transferGrid}
         className={`transfer-grid${receiveOnly ? " receive-only" : ""}`}
         aria-label="File transfer controls"
       >
         {!receiveOnly && (
-          <article className="panel send-panel" data-tour="send">
+          <div
+            className="mobile-transfer-switch"
+            role="tablist"
+            aria-label="Choose transfer direction"
+          >
+            <button
+              id="mobile-send-tab"
+              type="button"
+              role="tab"
+              aria-controls="send-panel"
+              aria-selected={mobileTransferPanel === "send"}
+              onClick={() => showMobileTransferPanel("send")}
+            >
+              <Upload aria-hidden="true" />
+              Send
+            </button>
+            <button
+              id="mobile-receive-tab"
+              type="button"
+              role="tab"
+              aria-controls="receive"
+              aria-selected={mobileTransferPanel === "receive"}
+              onClick={() => showMobileTransferPanel("receive")}
+            >
+              <Download aria-hidden="true" />
+              Receive
+            </button>
+          </div>
+        )}
+        {!receiveOnly && (
+          <article
+            id="send-panel"
+            className={`panel send-panel${mobileTransferPanel === "send" ? " mobile-active" : ""}`}
+            data-tour="send"
+          >
           <div className="panel-heading">
             <span className="step">
               <Upload aria-hidden="true" />
@@ -995,7 +1310,12 @@ export function App() {
               <h2>Send</h2>
               <p>
                 {sendMode === "stored"
-                  ? "Upload encrypted files for 24 hours or one download."
+                  ? `Upload encrypted files for ${formatStoredExpiration(
+                      storedExpiration.value,
+                      storedExpiration.unit,
+                    )} or ${storedDownloads} ${
+                      storedDownloads === 1 ? "download" : "downloads"
+                    }.`
                   : "Choose several files. Share one croc code."}
               </p>
             </div>
@@ -1005,6 +1325,10 @@ export function App() {
             <StoredModeSwitch
               mode={sendMode}
               disabled={sendBusy}
+              durationLabel={formatStoredExpiration(
+                storedExpiration.value,
+                storedExpiration.unit,
+              )}
               onChange={(mode) => {
                 setSendMode(mode);
                 setStoredUpload(undefined);
@@ -1033,7 +1357,10 @@ export function App() {
             }}
           >
             <span>Choose files</span>
-            <small>or drop them here</small>
+            <small>
+              <span className="drop-desktop-copy">or drop them here</span>
+              <span className="drop-mobile-copy">Select from this device</span>
+            </small>
             <input
               ref={fileInput}
               type="file"
@@ -1089,6 +1416,8 @@ export function App() {
                   disabled={sendBusy}
                   spellCheck={false}
                   autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
                   onChange={(event) => {
                     setCopyState("idle");
                     setSendCode(event.target.value);
@@ -1125,8 +1454,8 @@ export function App() {
                 </span>
               </div>
               <p className="field-help">
-                Generated codes use the first two words to find the transfer
-                and the last two words to secure it.
+                Generated codes use the first word to find the transfer and the
+                last two words to secure it.
               </p>
               <ShareQRCode
                 value={directReceiveURL}
@@ -1137,56 +1466,93 @@ export function App() {
           )}
 
           {sendMode === "stored" && (
-            <p className="field-help stored-privacy-note">
-              Files and names are encrypted in this browser. The server never
-              receives the decryption key.
-            </p>
+            <>
+              <StoredExpirationControl
+                value={storedExpiration.value}
+                unit={storedExpiration.unit}
+                maxExpiresSeconds={storeMaxExpiresSeconds}
+                disabled={sendBusy}
+                onChange={(value, unit) =>
+                  setStoredExpiration({ value, unit })
+                }
+              />
+              <label className="field-label" htmlFor="stored-downloads">
+                Verified downloads
+              </label>
+              <input
+                id="stored-downloads"
+                type="number"
+                min={1}
+                max={storeMaxDownloads}
+                step={1}
+                value={storedDownloads}
+                disabled={sendBusy}
+                onChange={(event) => {
+                  const next = Number(event.target.value);
+                  if (Number.isSafeInteger(next)) {
+                    setStoredDownloads(
+                      Math.max(1, Math.min(storeMaxDownloads, next)),
+                    );
+                  }
+                }}
+              />
+              <p className="field-help stored-privacy-note">
+                Files and names are encrypted in this browser. The server never
+                receives the decryption key.
+              </p>
+            </>
           )}
 
-          {storedUpload && (
+          {storedShareReady && storedUpload && (
             <StoredShareCard
               upload={storedUpload}
-              onCopy={(value) => void copyValue(value)}
+              onCopy={copyValue}
               onRevoke={() => void revokeCurrentStoredUpload()}
             />
           )}
 
-          {sendBusy || sendProgress ? (
-            <ProgressBlock progress={sendProgress} status={sendStatus} />
-          ) : (
-            <StatusMessage activity={sendActivity} message={sendStatus} />
-          )}
-          {completedSend.length > 0 && (
-            <p className="completed-count">
-              <Check /> {completedSend.length} verified
-            </p>
+          {!storedShareReady && (
+            <>
+              {sendBusy || sendProgress ? (
+                <ProgressBlock progress={sendProgress} status={sendStatus} />
+              ) : (
+                <StatusMessage activity={sendActivity} message={sendStatus} />
+              )}
+              {completedSend.length > 0 && (
+                <p className="completed-count">
+                  <Check /> {completedSend.length} verified
+                </p>
+              )}
+            </>
           )}
 
-          {sendBusy ? (
-            <button
-              className="primary-button inverted"
-              type="button"
-              onClick={() => sendAbort.current?.abort()}
-            >
-              <X /> Cancel send
-            </button>
-          ) : (
-            <button
-              className="primary-button"
-              type="button"
-              disabled={
-                selectedFiles.length === 0 ||
-                (sendMode === "direct" && sendCode.trim().length < 6) ||
-                (sendMode === "stored" &&
-                  (selectedFiles.length > storeMaxFiles ||
-                    totalSelectedSize > storeMaxTransferBytes))
-              }
-              onClick={() => void startSend()}
-            >
-              <Upload /> {sendMode === "stored" ? "Store" : "Send"}{" "}
-              {selectedFiles.length || ""} file
-              {selectedFiles.length === 1 ? "" : "s"}
-            </button>
+          {!storedShareReady && (
+            sendBusy ? (
+              <button
+                className="primary-button inverted"
+                type="button"
+                onClick={() => sendAbort.current?.abort()}
+              >
+                <X /> Cancel send
+              </button>
+            ) : (
+              <button
+                className="primary-button"
+                type="button"
+                disabled={
+                  selectedFiles.length === 0 ||
+                  (sendMode === "direct" && sendCode.trim().length < 6) ||
+                  (sendMode === "stored" &&
+                    (selectedFiles.length > storeMaxFiles ||
+                      totalSelectedSize > storeMaxTransferBytes))
+                }
+                onClick={() => void startSend()}
+              >
+                <Upload /> {sendMode === "stored" ? "Store" : "Send"}{" "}
+                {selectedFiles.length || ""} file
+                {selectedFiles.length === 1 ? "" : "s"}
+              </button>
+            )
           )}
           </article>
         )}
@@ -1194,7 +1560,7 @@ export function App() {
         <form
           id="receive"
           ref={receivePanel}
-          className="panel receive-panel"
+          className={`panel receive-panel${mobileTransferPanel === "receive" ? " mobile-active" : ""}`}
           data-tour="receive"
           onSubmit={(event) => {
             event.preventDefault();
@@ -1219,9 +1585,12 @@ export function App() {
             id="receive-code"
             value={receiveCode}
             disabled={receiveBusy}
-            placeholder="word-word-word-word or encrypted link"
+            placeholder="word-word-word or encrypted link"
             spellCheck={false}
             autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
+            enterKeyHint="go"
             onChange={(event) => setReceiveCode(event.target.value)}
           />
           <p className="field-help">
@@ -1256,8 +1625,8 @@ export function App() {
               {storedReceiveActive && storedReceiveExpiresAt && (
                 <p>
                   Encrypted storage expires{" "}
-                  {new Date(storedReceiveExpiresAt).toLocaleString()} and is
-                  removed after this verified download.
+                  {new Date(storedReceiveExpiresAt).toLocaleString()}; this
+                  verified download consumes one allowed download.
                 </p>
               )}
               <p>
@@ -1337,6 +1706,8 @@ export function App() {
         </form>
       </section>
 
+      <TransferLinks />
+
       <details className="settings" data-tour="settings">
         <summary>
           <span>
@@ -1400,30 +1771,9 @@ export function App() {
 
       <CliDownload />
 
-      <section
-        className="about-croc"
-        aria-labelledby="about-croc-title"
-        data-tour="about"
-      >
-        <div>
-          <p className="eyebrow">Why croc?</p>
-          <h2 id="about-croc-title">
-            Fast, simple, and secure file transfer between any two computers.
-          </h2>
-          <p>
-            croc relays files in real time, derives a strong end-to-end
-            encryption key with PAKE, and works without running a server or
-            configuring port forwarding.
-          </p>
-        </div>
-        <a
-          href="https://schollz.com/croc6/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Read how croc works <span aria-hidden="true">↗</span>
-        </a>
-      </section>
+      <BlogTeaser />
+
+      {!receiveOnly && <HomeReviews />}
 
       <footer className="site-footer">
         <div className="site-footer-links">
@@ -1439,12 +1789,33 @@ export function App() {
           </span>
           <span aria-hidden="true">·</span>
           <a
-            href="https://github.com/schollz/croc"
+            href={crocRepository}
             target="_blank"
             rel="noopener noreferrer"
           >
             github
           </a>
+          <span aria-hidden="true">·</span>
+          <a href="/blog">blog</a>
+          <span aria-hidden="true">·</span>
+          <a
+            href={crocWebsite}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            croc website
+          </a>
+          <span aria-hidden="true">·</span>
+          <span>
+            hosted with{" "}
+            <a
+              href="https://disco.cloud"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              disco
+            </a>
+          </span>
         </div>
 
         <details className="tools-menu">
@@ -1465,6 +1836,7 @@ export function App() {
           </ul>
         </details>
       </footer>
-    </main>
+      </main>
+    </>
   );
 }

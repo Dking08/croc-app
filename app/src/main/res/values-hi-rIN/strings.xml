@@ -221,7 +221,7 @@
     <string name="settings_about">के बारे में</string>
     <string name="settings_app_version">ऐप वर्शन</string>
     <string name="settings_croc_version">Croc वर्शन</string>
-    <string name="settings_croc_version_value">v11.0.1</string>
+    <string name="settings_croc_version_value">v11.1.1</string>
     <string name="settings_developer">डेवलपर</string>
     <string name="settings_developer_value">Dking</string>
     <!-- ════ Setup / Binary ════ -->
@@ -263,7 +263,7 @@
     <string name="settings_about_label">के बारे में</string>
     <string name="settings_app_version_label">ऐप वर्शन</string>
     <string name="settings_croc_version_label">croc वर्शन</string>
-    <string name="settings_croc_version_val">v11.0.1</string>
+    <string name="settings_croc_version_val">v11.1.1</string>
     <string name="settings_built_with">❤️ के साथ Dastageer द्वारा बनाया गया</string>
     <string name="settings_croc_github">github.com/schollz/croc</string>
     <string name="settings_language">भाषा</string>

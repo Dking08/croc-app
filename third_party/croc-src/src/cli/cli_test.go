@@ -6,11 +6,12 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/schollz/cli/v2"
-	"github.com/schollz/croc/v10/src/tcp"
+	"github.com/schollz/croc/v11/internal/cli"
+	"github.com/schollz/croc/v11/src/tcp"
 )
 
 func TestRelayMaxRoomsOpenConfiguration(t *testing.T) {
@@ -260,6 +261,115 @@ func TestRevokeIsRootFlag(t *testing.T) {
 	}
 }
 
+func TestStoreDownloadsFlagParsing(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		args []string
+		want int
+	}{
+		{name: "default", args: []string{"croc", "send"}, want: 1},
+		{name: "custom", args: []string{"croc", "send", "--store-downloads", "4"}, want: 4},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			app := newApp()
+			for _, command := range app.Commands {
+				if command.Name != "send" {
+					continue
+				}
+				var got int
+				command.Action = func(ctx *cli.Context) error {
+					got = ctx.Int("store-downloads")
+					return nil
+				}
+				if err := app.Run(testCase.args); err != nil {
+					t.Fatalf("parse store downloads: %v", err)
+				}
+				if got != testCase.want {
+					t.Fatalf("store downloads = %d, want %d", got, testCase.want)
+				}
+				return
+			}
+			t.Fatal("send command not found")
+		})
+	}
+}
+
+func TestStoreExpirationFlagParsing(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "default", args: []string{"croc", "send"}, want: "1d"},
+		{name: "custom", args: []string{"croc", "send", "--store-expiration", "3d"}, want: "3d"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			app := newApp()
+			for _, command := range app.Commands {
+				if command.Name != "send" {
+					continue
+				}
+				var got string
+				command.Action = func(ctx *cli.Context) error {
+					got = ctx.String("store-expiration")
+					return nil
+				}
+				if err := app.Run(testCase.args); err != nil {
+					t.Fatalf("parse store expiration: %v", err)
+				}
+				if got != testCase.want {
+					t.Fatalf("store expiration = %q, want %q", got, testCase.want)
+				}
+				return
+			}
+			t.Fatal("send command not found")
+		})
+	}
+}
+
+func TestStoredSendRejectsInvalidExpiration(t *testing.T) {
+	err := newApp().Run([]string{
+		"croc",
+		"--ignore-stdin",
+		"send",
+		"--store",
+		"--store-expiration=30s",
+		"unused-file",
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid --store-expiration") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestStoredSendRejectsNonPositiveDownloadCount(t *testing.T) {
+	for _, value := range []string{"0", "-1"} {
+		t.Run(value, func(t *testing.T) {
+			err := newApp().Run([]string{
+				"croc",
+				"--ignore-stdin",
+				"send",
+				"--store",
+				"--store-downloads=" + value,
+				"unused-file",
+			})
+			if err == nil || err.Error() != "--store-downloads must be positive" {
+				t.Fatalf("unexpected error for %s downloads: %v", value, err)
+			}
+		})
+	}
+}
+
+func TestServeIsNotRegistered(t *testing.T) {
+	for _, command := range newApp().Commands {
+		if command.Name == "serve" {
+			t.Fatal("serve belongs to the standalone croc-web binary")
+		}
+	}
+	if err := newApp().Run([]string{"croc", "serve"}); err == nil || err.Error() != "the web server has moved to the standalone croc-web binary" {
+		t.Fatalf("croc serve error = %v", err)
+	}
+}
+
 func TestParseRelayPorts(t *testing.T) {
 	tests := []struct {
 		name string
@@ -300,122 +410,6 @@ func TestParseRelayPorts(t *testing.T) {
 				t.Fatalf("parseRelayPorts(%q) = %#v, want %#v", tt.in, got, tt.want)
 			}
 		})
-	}
-}
-
-func TestResolveServeAddress(t *testing.T) {
-	tests := []struct {
-		name          string
-		publicAddress string
-		bindAddress   string
-		bindExplicit  bool
-		wantBind      string
-		wantOrigin    string
-		wantError     bool
-	}{
-		{
-			name:          "defaults",
-			publicAddress: "",
-			bindAddress:   "127.0.0.1:9014",
-			wantBind:      "127.0.0.1:9014",
-			wantOrigin:    "localhost:5173",
-		},
-		{
-			name:          "public host uses default bind",
-			publicAddress: "getcroc.com",
-			bindAddress:   "127.0.0.1:9014",
-			wantBind:      "127.0.0.1:9014",
-			wantOrigin:    "getcroc.com",
-		},
-		{
-			name:          "local development host binds directly",
-			publicAddress: "localhost:5173",
-			bindAddress:   "127.0.0.1:9014",
-			wantBind:      "localhost:5173",
-			wantOrigin:    "localhost:5173",
-		},
-		{
-			name:          "explicit bind wins for local host",
-			publicAddress: "localhost:5173",
-			bindAddress:   "0.0.0.0:8080",
-			bindExplicit:  true,
-			wantBind:      "0.0.0.0:8080",
-			wantOrigin:    "localhost:5173",
-		},
-		{
-			name:          "loopback IP binds directly",
-			publicAddress: "127.0.0.1:7000",
-			bindAddress:   "127.0.0.1:9014",
-			wantBind:      "127.0.0.1:7000",
-			wantOrigin:    "127.0.0.1:7000",
-		},
-		{
-			name:          "rejects URL",
-			publicAddress: "https://getcroc.com",
-			bindAddress:   "127.0.0.1:9014",
-			wantError:     true,
-		},
-		{
-			name:          "rejects invalid public port",
-			publicAddress: "localhost:not-a-port",
-			bindAddress:   "127.0.0.1:9014",
-			wantError:     true,
-		},
-		{
-			name:          "rejects invalid bind",
-			publicAddress: "getcroc.com",
-			bindAddress:   "localhost",
-			bindExplicit:  true,
-			wantError:     true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotBind, gotOrigin, err := resolveServeAddress(
-				tt.publicAddress,
-				tt.bindAddress,
-				tt.bindExplicit,
-			)
-			if tt.wantError {
-				if err == nil {
-					t.Fatal("expected an error")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if gotBind != tt.wantBind {
-				t.Fatalf("bind = %q, want %q", gotBind, tt.wantBind)
-			}
-			if gotOrigin != tt.wantOrigin {
-				t.Fatalf("origin = %q, want %q", gotOrigin, tt.wantOrigin)
-			}
-		})
-	}
-}
-
-func TestParseByteSize(t *testing.T) {
-	tests := map[string]int64{
-		"1":      1,
-		"512MiB": 512 << 20,
-		"5GB":    5_000_000_000,
-		"2 GiB":  2 << 30,
-	}
-	for input, expected := range tests {
-		actual, err := parseByteSize(input)
-		if err != nil {
-			t.Fatalf("parseByteSize(%q): %v", input, err)
-		}
-		if actual != expected {
-			t.Fatalf("parseByteSize(%q) = %d, want %d", input, actual, expected)
-		}
-	}
-	for _, input := range []string{"", "-1", "1.5GiB", "999999999999999999999TiB"} {
-		if _, err := parseByteSize(input); err == nil {
-			t.Fatalf("parseByteSize(%q) unexpectedly succeeded", input)
-		}
 	}
 }
 

@@ -24,7 +24,7 @@ import kotlin.coroutines.coroutineContext
 /**
  * Executes croc CLI commands and parses output for transfer progress.
  *
- * croc v11.0.1 global flags:
+ * croc v11.1.1 global flags:
  *   --yes, --relay, --pass, --curve, --overwrite,
  *   --no-compress, --local, --throttleUpload, --internal-dns,
  *   --classic, --multicast, --ip, --relay6, --out, --quiet
@@ -68,7 +68,7 @@ class CrocProcess(
 
     /**
      * Build common global flags from preferences.
-     * Only includes flags that actually exist in croc v11.0.1.
+     * Only includes flags that actually exist in croc v11.1.1.
      */
     private fun buildGlobalFlags(prefs: UserPreferencesRepository.CrocPreferences): List<String> {
         val relayAddress = resolveRelayAddress(prefs.relayAddress)
@@ -400,7 +400,7 @@ class CrocProcess(
         var capturingText = false
         val receivedTextLines = mutableListOf<String>()
 
-        // Regex patterns for the v11.0.1 output format
+        // Regex patterns for the v11.1.1 output format
         // Matches: "Sending (->1.2.3.4:9009)" or "Receiving (<-1.2.3.4:9009)"
         val peerIpRegex = Regex("""(?:->|<-)(\d+\.\d+\.\d+\.\d+)""")
         // Matches progress lines: "filename... 42% |...| (size) N/M" or "file.txt 42% |...| (size)"

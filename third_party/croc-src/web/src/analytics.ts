@@ -9,7 +9,11 @@ export type TransferEvent =
 
 export function trackTransferEvent(event: TransferEvent) {
   try {
-    window.umami?.track(event);
+    window.umami?.track((properties) => ({
+      ...properties,
+      name: event,
+      url: window.location.pathname,
+    }));
   } catch {
     // Analytics must never interfere with a transfer.
   }

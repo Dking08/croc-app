@@ -22,8 +22,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/schollz/croc/v10/src/store"
-	"github.com/schollz/croc/v10/src/webassets"
+	"github.com/schollz/croc/v11/src/store"
 	log "github.com/schollz/logger"
 )
 
@@ -45,6 +44,8 @@ type Config struct {
 	StoreService   *store.Service
 	UmamiURL       string
 	UmamiWebsiteID string
+	GoogleAdSense  string
+	GoogleAdsTXT   string
 }
 
 type handler struct {
@@ -74,6 +75,7 @@ func Handler(config Config) (http.Handler, error) {
 		normalized.StaticFiles,
 		normalized.UmamiURL,
 		normalized.UmamiWebsiteID,
+		normalized.GoogleAdSense,
 	)
 	if err != nil {
 		return nil, err
@@ -105,6 +107,9 @@ func Handler(config Config) (http.Handler, error) {
 	mux.HandleFunc("/healthz", h.health)
 	mux.HandleFunc("/ws", h.websocket)
 	mux.HandleFunc("/config.js", h.config)
+	if normalized.GoogleAdsTXT != "" {
+		mux.HandleFunc("/ads.txt", adsTXT(normalized.GoogleAdsTXT))
+	}
 	if normalized.StoreService != nil {
 		mux.Handle("/api/v1/store/transfers", normalized.StoreService)
 		mux.Handle("/api/v1/store/transfers/", normalized.StoreService)
@@ -174,7 +179,7 @@ func normalizeConfig(config Config) (Config, error) {
 		config.PublicAddress = config.ListenAddress
 	}
 	if config.RelayHost == "" {
-		config.RelayHost = "ipv4.getcroc.com"
+		config.RelayHost = "croc.schollz.com"
 	}
 	if config.RelayPassword == "" {
 		config.RelayPassword = "pass123"
@@ -216,9 +221,6 @@ func normalizeConfig(config Config) (Config, error) {
 	if config.DialTimeout <= 0 {
 		config.DialTimeout = defaultDialTimeout
 	}
-	if config.StaticFiles == nil {
-		config.StaticFiles = webassets.Files()
-	}
 	return config, nil
 }
 
@@ -250,6 +252,22 @@ func (h *handler) config(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = fmt.Fprintf(w, "window.__CROC_RUNTIME_CONFIG__ = %s;\n", payload)
+}
+
+func adsTXT(contents string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Content-Length", strconv.Itoa(len(contents)))
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, contents)
+		}
+	}
 }
 
 func (h *handler) websocket(w http.ResponseWriter, r *http.Request) {
@@ -318,6 +336,7 @@ type staticHandler struct {
 	files      fs.FS
 	fileServer http.Handler
 	index      []byte
+	htmlPages  map[string][]byte
 	installer  []byte
 }
 
@@ -325,15 +344,35 @@ func newStaticHandler(
 	files fs.FS,
 	umamiURL string,
 	umamiWebsiteID string,
+	googleAdSense string,
 ) (http.Handler, error) {
 	if files == nil {
 		return nil, errors.New("static file system cannot be empty")
 	}
-	index, err := fs.ReadFile(files, "index.html")
+	htmlPages := make(map[string][]byte)
+	err := fs.WalkDir(files, ".", func(filePath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || path.Base(filePath) != "index.html" {
+			return nil
+		}
+		page, readErr := fs.ReadFile(files, filePath)
+		if readErr != nil {
+			return readErr
+		}
+		page = injectUmamiScript(page, umamiURL, umamiWebsiteID)
+		page = injectGoogleAdSense(page, googleAdSense)
+		htmlPages[filePath] = page
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("embedded web client is missing index.html: %w", err)
+		return nil, fmt.Errorf("read embedded HTML pages: %w", err)
 	}
-	index = injectUmamiTracker(index, umamiURL, umamiWebsiteID)
+	index, exists := htmlPages["index.html"]
+	if !exists {
+		return nil, fmt.Errorf("embedded web client is missing index.html")
+	}
 	installer, err := fs.ReadFile(files, "default.txt")
 	if err != nil {
 		return nil, fmt.Errorf("embedded web client is missing default.txt: %w", err)
@@ -342,11 +381,28 @@ func newStaticHandler(
 		files:      files,
 		fileServer: http.FileServer(http.FS(files)),
 		index:      index,
+		htmlPages:  htmlPages,
 		installer:  installer,
 	}, nil
 }
 
-func injectUmamiTracker(index []byte, baseURL, websiteID string) []byte {
+func injectGoogleAdSense(index []byte, publisherID string) []byte {
+	publisherID = strings.TrimSpace(publisherID)
+	if publisherID == "" {
+		return index
+	}
+
+	const closingHead = "</head>"
+	if !strings.Contains(string(index), closingHead) {
+		return index
+	}
+	scriptURL := "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=" +
+		url.QueryEscape(publisherID)
+	script := `<script async src="` + scriptURL + `" crossorigin="anonymous"></script>`
+	return []byte(strings.Replace(string(index), closingHead, script+closingHead, 1))
+}
+
+func injectUmamiScript(index []byte, baseURL, websiteID string) []byte {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	websiteID = strings.TrimSpace(websiteID)
 	if baseURL == "" || websiteID == "" {
@@ -362,16 +418,13 @@ func injectUmamiTracker(index []byte, baseURL, websiteID string) []byte {
 		return index
 	}
 
-	const closingBody = "</body>"
-	if !strings.Contains(string(index), closingBody) {
+	const closingHead = "</head>"
+	if !strings.Contains(string(index), closingHead) {
 		return index
 	}
-	script := `<script defer data-website-id="` +
-		html.EscapeString(websiteID) +
-		`" src="` +
-		html.EscapeString(scriptURL) +
-		`"></script>`
-	return []byte(strings.Replace(string(index), closingBody, script+closingBody, 1))
+	script := `<script defer src="` + html.EscapeString(scriptURL) +
+		`" data-website-id="` + html.EscapeString(websiteID) + `" data-performance="true"></script>`
+	return []byte(strings.Replace(string(index), closingHead, script+closingHead, 1))
 }
 
 func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -399,20 +452,32 @@ func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		requested = "index.html"
 	}
 	info, err := fs.Stat(h.files, requested)
-	if err != nil || info.IsDir() {
+	if err == nil && info.IsDir() {
+		routeIndex := path.Join(requested, "index.html")
+		if _, exists := h.htmlPages[routeIndex]; exists {
+			requested = routeIndex
+		} else {
+			requested = "index.html"
+		}
+	} else if err != nil {
 		if path.Ext(requested) != "" {
 			http.NotFound(w, r)
 			return
 		}
-		requested = "index.html"
+		routeIndex := path.Join(requested, "index.html")
+		if _, exists := h.htmlPages[routeIndex]; exists {
+			requested = routeIndex
+		} else {
+			requested = "index.html"
+		}
 	}
 
-	if requested == "index.html" {
+	if page, exists := h.htmlPages[requested]; exists {
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Content-Length", strconv.Itoa(len(h.index)))
+		w.Header().Set("Content-Length", strconv.Itoa(len(page)))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if r.Method == http.MethodGet {
-			_, _ = w.Write(h.index)
+			_, _ = w.Write(page)
 		}
 		return
 	} else if requested == "croc-download-sw.js" || requested == "croc-worker.js" {

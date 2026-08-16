@@ -12,7 +12,11 @@ interface ImportMeta {
 
 interface Window {
   umami?: {
-    track(event: string): void;
+    track(
+      payload:
+        | string
+        | ((properties: Record<string, unknown>) => Record<string, unknown>),
+    ): void;
   };
   __CROC_RUNTIME_CONFIG__?: {
     gatewayURL?: string;
@@ -22,7 +26,9 @@ interface Window {
       enabled?: boolean;
       maxTransferBytes?: number;
       maxFiles?: number;
+      maxDownloads?: number;
       expiresSeconds?: number;
+      maxExpiresSeconds?: number;
     };
   };
 }
