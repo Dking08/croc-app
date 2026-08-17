@@ -195,11 +195,12 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         lastSendText = null
 
         viewModelScope.launch {
-            val targetEngine = engine ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
-                CrocEngine.LEGACY
-            } else {
-                CrocEngine.CURRENT
-            }
+            val targetEngine = engine ?: _uiState.value.activeEngine.takeIf { it == CrocEngine.LEGACY }
+                ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
+                    CrocEngine.LEGACY
+                } else {
+                    CrocEngine.CURRENT
+                }
 
             _uiState.update {
                 it.copy(
@@ -237,11 +238,12 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         lastSendUris = emptyList()
 
         viewModelScope.launch {
-            val targetEngine = engine ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
-                CrocEngine.LEGACY
-            } else {
-                CrocEngine.CURRENT
-            }
+            val targetEngine = engine ?: _uiState.value.activeEngine.takeIf { it == CrocEngine.LEGACY }
+                ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
+                    CrocEngine.LEGACY
+                } else {
+                    CrocEngine.CURRENT
+                }
 
             _uiState.update {
                 it.copy(
@@ -281,11 +283,12 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
     private fun startReceiveInternal(code: String, action: String, engine: CrocEngine? = null) {
         val parsedCode = QrCodeParser.parseCode(code)
         viewModelScope.launch {
-            val targetEngine = engine ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
-                CrocEngine.LEGACY
-            } else {
-                CrocEngine.CURRENT
-            }
+            val targetEngine = engine ?: _uiState.value.activeEngine.takeIf { it == CrocEngine.LEGACY }
+                ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
+                    CrocEngine.LEGACY
+                } else {
+                    CrocEngine.CURRENT
+                }
 
             _uiState.update {
                 it.copy(

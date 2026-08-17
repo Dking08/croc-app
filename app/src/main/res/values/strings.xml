@@ -341,8 +341,8 @@
     <string name="action_receive_legacy">Receive in Legacy Mode</string>
     <string name="action_switch_legacy_receive">Enter New Code (Legacy Mode)</string>
     <string name="action_retry_same_code">Retry Same Code</string>
-    <string name="badge_legacy_mode">Legacy v10.6</string>
-    <string name="badge_current_mode">Croc v11</string>
+    <string name="badge_legacy_mode">Legacy</string>
+    <string name="badge_current_mode">Latest</string>
     <string name="settings_try_legacy_first">Try legacy croc first</string>
     <string name="settings_try_legacy_first_desc">Attempt transfers using legacy croc (v10.6.0) first instead of waiting for version mismatch. Default is off.</string>
     <string name="settings_clear_legacy_binary">Clear cached legacy engine</string>

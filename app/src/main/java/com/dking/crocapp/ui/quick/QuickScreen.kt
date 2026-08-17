@@ -678,7 +678,6 @@ private fun QuickReceiveStatusTile(
                 if (state.receivedText != null) "Text"
                 else "${fileCount} file${if (fileCount == 1) "" else "s"}"
             }
-            is CrocTransferState.Transferring -> "${state.progressPercent}%"
             is CrocTransferState.Error -> "Issue"
             is CrocTransferState.Cancelled -> "Stopped"
             else -> if (code.isNotBlank()) code else "Waiting"
@@ -694,7 +693,6 @@ private fun QuickReceiveStatusTile(
         Text(
             text = when (state) {
                 is CrocTransferState.Completed -> receiveLocationLabel.substringAfterLast("/")
-                is CrocTransferState.Transferring -> "Saving"
                 is CrocTransferState.Error -> "Retry"
                 is CrocTransferState.Cancelled -> "Idle"
                 else -> "Secret code"
