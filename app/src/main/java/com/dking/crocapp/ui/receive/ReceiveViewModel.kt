@@ -113,16 +113,37 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun toggleEngine() {
+        val next = if (_uiState.value.activeEngine == CrocEngine.CURRENT) CrocEngine.LEGACY else CrocEngine.CURRENT
+        _uiState.update { it.copy(activeEngine = next) }
+    }
+
+    fun setEngine(engine: CrocEngine) {
+        _uiState.update { it.copy(activeEngine = engine) }
+    }
+
+    fun switchToLegacyForNextReceive() {
+        crocProcess.reset()
+        _uiState.update {
+            it.copy(
+                activeEngine = CrocEngine.LEGACY,
+                codePhrase = "",
+                transferState = CrocTransferState.Idle
+            )
+        }
+    }
+
     fun startReceive(engine: CrocEngine? = null) {
         val code = _uiState.value.codePhrase.trim()
         if (code.isBlank()) return
 
         viewModelScope.launch {
-            val targetEngine = engine ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
-                CrocEngine.LEGACY
-            } else {
-                CrocEngine.CURRENT
-            }
+            val targetEngine = engine ?: _uiState.value.activeEngine.takeIf { it == CrocEngine.LEGACY }
+                ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
+                    CrocEngine.LEGACY
+                } else {
+                    CrocEngine.CURRENT
+                }
 
             _uiState.update { it.copy(activeEngine = targetEngine) }
 
@@ -143,6 +164,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun retryWithLegacy() {
+        _uiState.update { it.copy(activeEngine = CrocEngine.LEGACY) }
         startReceive(engine = CrocEngine.LEGACY)
     }
 

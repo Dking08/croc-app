@@ -310,6 +310,29 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleEngine() {
+        val next = if (_uiState.value.activeEngine == CrocEngine.CURRENT) CrocEngine.LEGACY else CrocEngine.CURRENT
+        _uiState.update { it.copy(activeEngine = next) }
+    }
+
+    fun setEngine(engine: CrocEngine) {
+        _uiState.update { it.copy(activeEngine = engine) }
+    }
+
+    fun switchToLegacyForNextReceive() {
+        crocProcess.reset()
+        _uiState.update {
+            it.copy(
+                activeEngine = CrocEngine.LEGACY,
+                activeCode = "",
+                lastAction = "",
+                transferState = CrocTransferState.Idle,
+                statusMessage = "Ready",
+                statusDetail = "Legacy Mode (v10.6) active. Tap Receive to enter code."
+            )
+        }
+    }
+
     fun retryWithLegacy() {
         val state = _uiState.value
         when (state.lastAction) {

@@ -235,16 +235,26 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(sendMode = SendMode.TEXT, textToSend = text) }
     }
 
+    fun toggleEngine() {
+        val next = if (_uiState.value.activeEngine == CrocEngine.CURRENT) CrocEngine.LEGACY else CrocEngine.CURRENT
+        _uiState.update { it.copy(activeEngine = next) }
+    }
+
+    fun setEngine(engine: CrocEngine) {
+        _uiState.update { it.copy(activeEngine = engine) }
+    }
+
     fun startSend(engine: CrocEngine? = null) {
         viewModelScope.launch {
             val state = _uiState.value
             if (!state.hasContent) return@launch
 
-            val targetEngine = engine ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
-                CrocEngine.LEGACY
-            } else {
-                CrocEngine.CURRENT
-            }
+            val targetEngine = engine ?: _uiState.value.activeEngine.takeIf { it == CrocEngine.LEGACY }
+                ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
+                    CrocEngine.LEGACY
+                } else {
+                    CrocEngine.CURRENT
+                }
 
             _uiState.update { it.copy(activeEngine = targetEngine) }
 
