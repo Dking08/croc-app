@@ -31,6 +31,7 @@ class UserPreferencesRepository(private val context: Context) {
         val QUICK_SEND_CODE = stringPreferencesKey("quick_send_code")
         val QUICK_RECEIVE_CODE = stringPreferencesKey("quick_receive_code")
         val RECEIVE_LOCATION_URI = stringPreferencesKey("receive_location_uri")
+        val TRY_LEGACY_FIRST = booleanPreferencesKey("try_legacy_first")
     }
 
     data class CrocPreferences(
@@ -48,7 +49,8 @@ class UserPreferencesRepository(private val context: Context) {
         val savedCodePhrases: List<String> = emptyList(),
         val quickSendCode: String = "",
         val quickReceiveCode: String = "",
-        val receiveLocationUri: String = ""
+        val receiveLocationUri: String = "",
+        val tryLegacyFirst: Boolean = false
     ) {
         /** Effective Quick Send code: explicit quick code → defaultCodePhrase → empty */
         val effectiveQuickSendCode: String
@@ -81,7 +83,8 @@ class UserPreferencesRepository(private val context: Context) {
             savedCodePhrases = savedCodes,
             quickSendCode = normalizeCodePhrase(prefs[QUICK_SEND_CODE] ?: ""),
             quickReceiveCode = normalizeCodePhrase(prefs[QUICK_RECEIVE_CODE] ?: ""),
-            receiveLocationUri = prefs[RECEIVE_LOCATION_URI] ?: ""
+            receiveLocationUri = prefs[RECEIVE_LOCATION_URI] ?: "",
+            tryLegacyFirst = prefs[TRY_LEGACY_FIRST] ?: false
         )
     }
 
@@ -199,6 +202,10 @@ class UserPreferencesRepository(private val context: Context) {
                 prefs[RECEIVE_LOCATION_URI] = value
             }
         }
+    }
+
+    suspend fun updateTryLegacyFirst(value: Boolean) {
+        context.dataStore.edit { it[TRY_LEGACY_FIRST] = value }
     }
 
     suspend fun clearReceiveLocationUri() {

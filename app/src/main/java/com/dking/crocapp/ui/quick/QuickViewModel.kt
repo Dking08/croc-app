@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dking.crocapp.CrocApp
 import com.dking.crocapp.croc.CrocBinaryManager
+import com.dking.crocapp.croc.CrocEngine
 import com.dking.crocapp.croc.CrocProcess
 import com.dking.crocapp.croc.CrocTransferState
 import com.dking.crocapp.data.db.TransferHistory
@@ -33,6 +34,7 @@ data class QuickSharePreview(
 
 data class QuickUiState(
     val transferState: CrocTransferState = CrocTransferState.Idle,
+    val activeEngine: CrocEngine = CrocEngine.CURRENT,
     val quickSendCode: String = "",
     val quickReceiveCode: String = "",
     val activeCode: String = "",
@@ -53,6 +55,9 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
     private val binaryManager = CrocBinaryManager(application)
     private val crocProcess = CrocProcess(application, binaryManager, prefsRepo)
     private var currentOutputDir: File? = null
+
+    private var lastSendUris: List<Uri> = emptyList()
+    private var lastSendText: String? = null
 
     private val _uiState = MutableStateFlow(QuickUiState())
     val uiState: StateFlow<QuickUiState> = _uiState.asStateFlow()
@@ -140,6 +145,14 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         saveToHistory(historyState, receivedFiles)
                     }
+                    is CrocTransferState.LegacyFallbackAvailable -> {
+                        _uiState.update {
+                            it.copy(
+                                statusMessage = "Older Croc Detected",
+                                statusDetail = "The other device is using an older croc version. Retry with legacy mode?"
+                            )
+                        }
+                    }
                     is CrocTransferState.Error -> {
                         _uiState.update {
                             it.copy(
@@ -174,13 +187,23 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendFiles(uris: List<Uri>) {
+    fun sendFiles(uris: List<Uri>, engine: CrocEngine? = null) {
         val code = _uiState.value.quickSendCode
         if (code.isBlank() || uris.isEmpty()) return
 
+        lastSendUris = uris
+        lastSendText = null
+
         viewModelScope.launch {
+            val targetEngine = engine ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
+                CrocEngine.LEGACY
+            } else {
+                CrocEngine.CURRENT
+            }
+
             _uiState.update {
                 it.copy(
+                    activeEngine = targetEngine,
                     lastAction = "send",
                     activeCode = code,
                     sharePreview = buildFileSharePreview(uris),
@@ -202,17 +225,27 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 return@launch
             }
-            crocProcess.send(filePaths, code)
+            crocProcess.send(filePaths, code, engine = targetEngine)
         }
     }
 
-    fun sendClipboardText(text: String) {
+    fun sendClipboardText(text: String, engine: CrocEngine? = null) {
         val code = _uiState.value.quickSendCode
         if (code.isBlank() || text.isBlank()) return
 
+        lastSendText = text
+        lastSendUris = emptyList()
+
         viewModelScope.launch {
+            val targetEngine = engine ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
+                CrocEngine.LEGACY
+            } else {
+                CrocEngine.CURRENT
+            }
+
             _uiState.update {
                 it.copy(
+                    activeEngine = targetEngine,
                     lastAction = "clipboard",
                     activeCode = code,
                     sharePreview = listOf(
@@ -227,29 +260,36 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
             }
             crocProcess.reset()
             kotlinx.coroutines.delay(50)
-            crocProcess.sendText(text, code)
+            crocProcess.sendText(text, code, engine = targetEngine)
         }
     }
 
-    fun startReceive() {
+    fun startReceive(engine: CrocEngine? = null) {
         val code = _uiState.value.quickReceiveCode
         if (code.isBlank()) return
-        startReceiveInternal(code, "receive")
+        startReceiveInternal(code, "receive", engine)
     }
 
-    fun startReceiveWithCode(code: String) {
-        startReceiveInternal(QrCodeParser.parseCode(code), "receive")
+    fun startReceiveWithCode(code: String, engine: CrocEngine? = null) {
+        startReceiveInternal(QrCodeParser.parseCode(code), "receive", engine)
     }
 
-    fun startReceiveFromQr(code: String) {
-        startReceiveInternal(QrCodeParser.parseCode(code), "qr")
+    fun startReceiveFromQr(code: String, engine: CrocEngine? = null) {
+        startReceiveInternal(QrCodeParser.parseCode(code), "qr", engine)
     }
 
-    private fun startReceiveInternal(code: String, action: String) {
+    private fun startReceiveInternal(code: String, action: String, engine: CrocEngine? = null) {
         val parsedCode = QrCodeParser.parseCode(code)
         viewModelScope.launch {
+            val targetEngine = engine ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
+                CrocEngine.LEGACY
+            } else {
+                CrocEngine.CURRENT
+            }
+
             _uiState.update {
                 it.copy(
+                    activeEngine = targetEngine,
                     lastAction = action,
                     activeCode = parsedCode,
                     sharePreview = emptyList(),
@@ -266,7 +306,29 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
             ).apply { mkdirs() }
             currentOutputDir = outputDir
 
-            crocProcess.receive(code, outputDir)
+            crocProcess.receive(code, outputDir, engine = targetEngine)
+        }
+    }
+
+    fun retryWithLegacy() {
+        val state = _uiState.value
+        when (state.lastAction) {
+            "send" -> {
+                if (lastSendUris.isNotEmpty()) {
+                    sendFiles(lastSendUris, engine = CrocEngine.LEGACY)
+                }
+            }
+            "clipboard" -> {
+                if (!lastSendText.isNullOrBlank()) {
+                    sendClipboardText(lastSendText!!, engine = CrocEngine.LEGACY)
+                }
+            }
+            "receive", "qr" -> {
+                val code = state.activeCode.ifBlank { state.quickReceiveCode }
+                if (code.isNotBlank()) {
+                    startReceiveInternal(code, state.lastAction, engine = CrocEngine.LEGACY)
+                }
+            }
         }
     }
 

@@ -17,10 +17,16 @@ import java.io.FileDescriptor
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import java.util.zip.GZIPInputStream
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+
+enum class CrocEngine {
+    CURRENT,
+    LEGACY
+}
 
 enum class BinarySetupPhase {
     Idle,
@@ -46,10 +52,19 @@ class CrocBinaryManager(private val context: Context) {
     companion object {
         private const val TAG = "CrocBinaryManager"
         private const val BINARY_NAME = "croc"
-        private const val NATIVE_BINARY_NAME = "libcroc.so"
         private const val BINARY_VERSION = "11.0.1"
         private const val DOWNLOAD_URL =
-        "https://github.com/schollz/croc/releases/download/v11.0.1/croc_v11.0.1_Linux-ARM64.tar.gz"
+            "https://github.com/schollz/croc/releases/download/v11.0.1/croc_v11.0.1_Linux-ARM64.tar.gz"
+        private const val CURRENT_SHA256 =
+            "1626c4a5ce73da171146e0f336ca40118c0a2b4b617421aa53f6addc54de6459"
+
+        private const val LEGACY_BINARY_NAME = "croc_legacy"
+        private const val LEGACY_BINARY_VERSION = "10.6.0"
+        private const val LEGACY_DOWNLOAD_URL =
+            "https://github.com/schollz/croc/releases/download/v10.6.0/croc_v10.6.0_Linux-ARM64.tar.gz"
+        private const val LEGACY_SHA256 =
+            "ee950b1dcd1f284b3f2223d3ebac2767d1b3406f58c978c8854ddb88fe75a121"
+
         private const val EXEC_MODE = 493 // 0755
         private const val MFD_EXEC = 0x0010
         private const val TAR_BLOCK_SIZE = 512
@@ -57,25 +72,59 @@ class CrocBinaryManager(private val context: Context) {
         private const val READ_TIMEOUT_MS = 60_000
     }
 
+    private data class EngineSpec(
+        val engine: CrocEngine,
+        val version: String,
+        val downloadUrl: String,
+        val nativeBinaryName: String,
+        val cachedBinaryName: String,
+        val versionFileName: String,
+        val sha256: String
+    )
+
+    private fun specFor(engine: CrocEngine): EngineSpec {
+        return when (engine) {
+            CrocEngine.CURRENT -> EngineSpec(
+                engine = CrocEngine.CURRENT,
+                version = BINARY_VERSION,
+                downloadUrl = DOWNLOAD_URL,
+                nativeBinaryName = "libcroc.so",
+                cachedBinaryName = BINARY_NAME,
+                versionFileName = ".version",
+                sha256 = CURRENT_SHA256
+            )
+            CrocEngine.LEGACY -> EngineSpec(
+                engine = CrocEngine.LEGACY,
+                version = LEGACY_BINARY_VERSION,
+                downloadUrl = LEGACY_DOWNLOAD_URL,
+                nativeBinaryName = "libcroc_legacy.so",
+                cachedBinaryName = LEGACY_BINARY_NAME,
+                versionFileName = ".version_legacy",
+                sha256 = LEGACY_SHA256
+            )
+        }
+    }
+
     private val binaryDir = File(context.filesDir, "bin")
-    private val extractedBinary = File(binaryDir, BINARY_NAME)
-    private val nativeLibBinary = File(context.applicationInfo.nativeLibraryDir, NATIVE_BINARY_NAME)
-    private val versionFile = File(binaryDir, ".version")
     private val installLock = Any()
     private val _setupState = MutableStateFlow(BinarySetupState())
     val setupState: StateFlow<BinarySetupState> = _setupState.asStateFlow()
 
     /**
-     * Returns the cached on-disk path for the downloaded croc binary.
+     * Returns the cached on-disk path for the specified croc binary.
      */
-    fun getBinaryPath(): String = synchronized(installLock) {
-        if (hasPackagedNativeBinary()) {
+    fun getBinaryPath(engine: CrocEngine = CrocEngine.CURRENT): String = synchronized(installLock) {
+        val spec = specFor(engine)
+        val nativeLibBinary = File(context.applicationInfo.nativeLibraryDir, spec.nativeBinaryName)
+        val extractedBinary = File(binaryDir, spec.cachedBinaryName)
+
+        if (hasPackagedNativeBinary(spec)) {
             markReady("Built-in transfer engine is ready.")
             return nativeLibBinary.absolutePath
         }
 
-        val hasCachedBinary = hasInstalledBinary()
-        if (hasCachedBinary && !shouldUpdate()) {
+        val hasCachedBinary = hasInstalledBinary(spec)
+        if (hasCachedBinary && !shouldUpdate(spec)) {
             markReady("Local transfer engine is ready.")
             return extractedBinary.absolutePath
         }
@@ -83,7 +132,7 @@ class CrocBinaryManager(private val context: Context) {
         val setupCopy = if (hasCachedBinary) {
             "Refreshing your local croc engine."
         } else {
-            "Downloading croc for first-time setup."
+            "Downloading croc ${if (engine == CrocEngine.LEGACY) "legacy engine " else ""}for setup."
         }
         updateSetupState(
             phase = BinarySetupPhase.Checking,
@@ -92,10 +141,10 @@ class CrocBinaryManager(private val context: Context) {
         )
 
         try {
-            installBinaryFromNetwork()
+            installBinaryFromNetwork(spec)
         } catch (e: Exception) {
             if (hasCachedBinary) {
-                Log.w(TAG, "Binary refresh failed, falling back to cached version", e)
+                Log.w(TAG, "Binary refresh failed for $engine, falling back to cached version", e)
                 markReady("Using your cached transfer engine.")
                 return extractedBinary.absolutePath
             }
@@ -103,10 +152,10 @@ class CrocBinaryManager(private val context: Context) {
             throw e
         }
 
-        if (!hasInstalledBinary()) {
+        if (!hasInstalledBinary(spec)) {
             markError("croc setup finished without installing the transfer engine.")
             throw IllegalStateException(
-                "Failed to install the croc binary. Check logcat '$TAG' for details."
+                "Failed to install the croc binary for $engine. Check logcat '$TAG' for details."
             )
         }
 
@@ -114,53 +163,75 @@ class CrocBinaryManager(private val context: Context) {
         extractedBinary.absolutePath
     }
 
-    fun isBinaryReady(): Boolean {
-        return hasPackagedNativeBinary() || hasInstalledBinary()
+    fun isBinaryReady(engine: CrocEngine = CrocEngine.CURRENT): Boolean {
+        val spec = specFor(engine)
+        return hasPackagedNativeBinary(spec) || hasInstalledBinary(spec)
     }
 
-    fun initialize(): Boolean {
+    fun isBinaryCached(engine: CrocEngine): Boolean {
+        val spec = specFor(engine)
+        val extractedBinary = File(binaryDir, spec.cachedBinaryName)
+        return extractedBinary.exists() && extractedBinary.length() > 0L
+    }
+
+    fun clearBinary(engine: CrocEngine) = synchronized(installLock) {
+        val spec = specFor(engine)
+        val extractedBinary = File(binaryDir, spec.cachedBinaryName)
+        val versionFile = File(binaryDir, spec.versionFileName)
+        extractedBinary.delete()
+        versionFile.delete()
+        Log.i(TAG, "Cleared cached binary for engine $engine")
+    }
+
+    fun initialize(engine: CrocEngine = CrocEngine.CURRENT): Boolean {
         return try {
-            getBinaryPath()
+            getBinaryPath(engine)
             true
         } catch (e: Exception) {
-            if (!hasInstalledBinary() && !hasPackagedNativeBinary()) {
+            val spec = specFor(engine)
+            if (!hasInstalledBinary(spec) && !hasPackagedNativeBinary(spec)) {
                 markError("We couldn't finish setting up croc. Check your connection and try again.")
             }
-            Log.e(TAG, "Binary initialization failed", e)
+            Log.e(TAG, "Binary initialization failed for $engine", e)
             false
         }
     }
 
-    fun getVersion(): String? {
-        if (!isBinaryReady()) return null
+    fun getVersion(engine: CrocEngine = CrocEngine.CURRENT): String? {
+        if (!isBinaryReady(engine)) return null
         return try {
-            val path = getBinaryPath()
-            val process = startProcess(listOf(path, "--version"))
+            val path = getBinaryPath(engine)
+            val process = startProcess(listOf(path, "--version"), engine = engine)
             val output = process?.inputStream?.bufferedReader()?.readText()?.trim()
             process?.waitFor()
             output
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to get version", e)
+            Log.e(TAG, "Failed to get version for $engine", e)
             null
         }
     }
 
-    fun reinstallBinary() {
+    fun reinstallBinary(engine: CrocEngine = CrocEngine.CURRENT) {
         synchronized(installLock) {
+            val spec = specFor(engine)
+            val versionFile = File(binaryDir, spec.versionFileName)
             versionFile.delete()
-            installBinaryFromNetwork()
+            installBinaryFromNetwork(spec)
         }
     }
 
     fun startProcess(
         command: List<String>,
         workDir: File? = null,
-        extraEnv: Map<String, String> = emptyMap()
+        extraEnv: Map<String, String> = emptyMap(),
+        engine: CrocEngine = CrocEngine.CURRENT
     ): java.lang.Process? {
         require(command.isNotEmpty()) { "Command must not be empty." }
 
-        val preferredPath = getBinaryPath()
-        val stagedBinary = if (preferredPath == nativeLibBinary.absolutePath) null else stageBinaryForExecution()
+        val spec = specFor(engine)
+        val nativeLibBinary = File(context.applicationInfo.nativeLibraryDir, spec.nativeBinaryName)
+        val preferredPath = getBinaryPath(engine)
+        val stagedBinary = if (preferredPath == nativeLibBinary.absolutePath) null else stageBinaryForExecution(spec)
         val processBuilder = ProcessBuilder(command.toMutableList().apply {
             this[0] = stagedBinary?.execPath ?: preferredPath
         }).redirectErrorStream(true)
@@ -175,7 +246,7 @@ class CrocBinaryManager(private val context: Context) {
         return try {
             processBuilder.start()
         } catch (e: Exception) {
-            throw wrapProcessStartException(e, preferredPath)
+            throw wrapProcessStartException(e, preferredPath, nativeLibBinary)
         } finally {
             stagedBinary?.close()
         }
@@ -196,35 +267,40 @@ class CrocBinaryManager(private val context: Context) {
         }
     }
 
-    private fun shouldUpdate(): Boolean {
+    private fun shouldUpdate(spec: EngineSpec): Boolean {
+        val versionFile = File(binaryDir, spec.versionFileName)
         if (!versionFile.exists()) return true
-        return runCatching { versionFile.readText().trim() != BINARY_VERSION }.getOrDefault(true)
+        return runCatching { versionFile.readText().trim() != spec.version }.getOrDefault(true)
     }
 
-    private fun hasInstalledBinary(): Boolean {
+    private fun hasInstalledBinary(spec: EngineSpec): Boolean {
+        val extractedBinary = File(binaryDir, spec.cachedBinaryName)
         return extractedBinary.exists() && extractedBinary.length() > 0L
     }
 
-    private fun hasPackagedNativeBinary(): Boolean {
+    private fun hasPackagedNativeBinary(spec: EngineSpec): Boolean {
+        val nativeLibBinary = File(context.applicationInfo.nativeLibraryDir, spec.nativeBinaryName)
         return nativeLibBinary.exists()
     }
 
-    private fun installBinaryFromNetwork() {
+    private fun installBinaryFromNetwork(spec: EngineSpec) {
         requireSupportedAbi()
         binaryDir.mkdirs()
 
-        val tempBinary = File(binaryDir, "$BINARY_NAME.download")
-        val backupBinary = File(binaryDir, "$BINARY_NAME.backup")
+        val extractedBinary = File(binaryDir, spec.cachedBinaryName)
+        val versionFile = File(binaryDir, spec.versionFileName)
+        val tempBinary = File(binaryDir, "${spec.cachedBinaryName}.download")
+        val backupBinary = File(binaryDir, "${spec.cachedBinaryName}.backup")
         tempBinary.delete()
         backupBinary.delete()
 
         try {
-            Log.i(TAG, "Downloading croc $BINARY_VERSION from $DOWNLOAD_URL")
-            downloadAndExtractBinary(tempBinary)
+            Log.i(TAG, "Downloading croc ${spec.version} (${spec.engine}) from ${spec.downloadUrl}")
+            downloadAndExtractBinary(tempBinary, spec)
             ensureExecutable(tempBinary)
 
             if (!tempBinary.exists() || tempBinary.length() == 0L) {
-                throw IllegalStateException("Downloaded croc binary is empty.")
+                throw IllegalStateException("Downloaded croc binary (${spec.engine}) is empty.")
             }
 
             if (extractedBinary.exists()) {
@@ -239,9 +315,9 @@ class CrocBinaryManager(private val context: Context) {
                 tempBinary.delete()
             }
 
-            versionFile.writeText(BINARY_VERSION)
+            versionFile.writeText(spec.version)
             backupBinary.delete()
-            Log.i(TAG, "Installed croc binary at ${extractedBinary.absolutePath}")
+            Log.i(TAG, "Installed croc binary (${spec.engine}) at ${extractedBinary.absolutePath}")
         } catch (e: Exception) {
             tempBinary.delete()
             if (!extractedBinary.exists() && backupBinary.exists()) {
@@ -267,10 +343,13 @@ class CrocBinaryManager(private val context: Context) {
         }
     }
 
-    private fun downloadAndExtractBinary(outputFile: File) {
+    private fun downloadAndExtractBinary(outputFile: File, spec: EngineSpec) {
         // F-Droid forbids bundling prebuilt binaries in the APK, so we fetch the
         // upstream release on demand and cache the extracted executable locally.
-        val connection = (URL(DOWNLOAD_URL).openConnection() as HttpURLConnection).apply {
+        val tempTarFile = File(binaryDir, "${spec.cachedBinaryName}.tar.gz.download")
+        tempTarFile.delete()
+
+        val connection = (URL(spec.downloadUrl).openConnection() as HttpURLConnection).apply {
             instanceFollowRedirects = true
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
@@ -281,7 +360,7 @@ class CrocBinaryManager(private val context: Context) {
             connection.connect()
             val code = connection.responseCode
             if (code !in 200..299) {
-                throw IllegalStateException("Failed to download croc binary (HTTP $code).")
+                throw IllegalStateException("Failed to download croc binary for ${spec.engine} (HTTP $code).")
             }
             val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
             updateSetupState(
@@ -292,40 +371,67 @@ class CrocBinaryManager(private val context: Context) {
                 downloadedBytes = 0L,
                 totalBytes = totalBytes
             )
+
+            // Download raw tar.gz to tempTarFile while calculating SHA-256 checksum
+            val digest = MessageDigest.getInstance("SHA-256")
             connection.inputStream.use { rawInput ->
                 ProgressInputStream(rawInput) { bytesRead ->
                     updateDownloadProgress(bytesRead, totalBytes)
-                }.use { input ->
-                    extractFromTar(
-                        input = input,
-                        isGzipped = true,
-                        outputFile = outputFile,
-                        onBinaryFound = {
-                            val current = setupState.value
-                            updateSetupState(
-                                phase = BinarySetupPhase.Installing,
-                                title = "Installing croc",
-                                detail = "Unpacking the transfer engine and wiring it into the app.",
-                                progress = current.progress,
-                                downloadedBytes = current.downloadedBytes,
-                                totalBytes = current.totalBytes
-                            )
+                }.use { progressInput ->
+                    FileOutputStream(tempTarFile).use { fileOut ->
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        while (progressInput.read(buffer).also { bytesRead = it } != -1) {
+                            digest.update(buffer, 0, bytesRead)
+                            fileOut.write(buffer, 0, bytesRead)
                         }
-                    )
+                        fileOut.flush()
+                    }
                 }
+            }
+
+            // Verify checksum
+            val calculatedSha = digest.digest().joinToString("") { "%02x".format(it) }
+            Log.i(TAG, "Downloaded ${spec.cachedBinaryName}, SHA-256: $calculatedSha, Expected: ${spec.sha256}")
+            if (!calculatedSha.equals(spec.sha256, ignoreCase = true)) {
+                tempTarFile.delete()
+                throw IllegalStateException(
+                    "Checksum mismatch for downloaded croc binary (${spec.engine}): expected ${spec.sha256}, got $calculatedSha"
+                )
+            }
+
+            // Extract binary from verified tar archive
+            val current = setupState.value
+            updateSetupState(
+                phase = BinarySetupPhase.Installing,
+                title = "Installing croc",
+                detail = "Unpacking the transfer engine and wiring it into the app.",
+                progress = current.progress,
+                downloadedBytes = current.downloadedBytes,
+                totalBytes = current.totalBytes
+            )
+
+            FileInputStream(tempTarFile).use { tarInput ->
+                extractFromTar(
+                    input = tarInput,
+                    isGzipped = true,
+                    outputFile = outputFile
+                )
             }
         } finally {
             connection.disconnect()
+            tempTarFile.delete()
         }
     }
 
-    private fun stageBinaryForExecution(): StagedBinary {
-        if (!hasInstalledBinary()) {
-            throw IllegalStateException("Croc binary is not installed.")
+    private fun stageBinaryForExecution(spec: EngineSpec): StagedBinary {
+        val extractedBinary = File(binaryDir, spec.cachedBinaryName)
+        if (!hasInstalledBinary(spec)) {
+            throw IllegalStateException("Croc binary (${spec.engine}) is not installed.")
         }
 
         val ownerPid = Process.myPid()
-        val memfd = createMemfd()
+        val memfd = createMemfd(spec)
         try {
             FileInputStream(extractedBinary).use { input ->
                 ParcelFileDescriptor.dup(memfd).use { writePfd ->
@@ -339,21 +445,21 @@ class CrocBinaryManager(private val context: Context) {
             return StagedBinary(execPfd, "/proc/$ownerPid/fd/${execPfd.fd}")
         } catch (e: Exception) {
             closeQuietly(memfd)
-            throw IllegalStateException("Failed to stage croc for execution.", e)
+            throw IllegalStateException("Failed to stage croc for execution (${spec.engine}).", e)
         } finally {
             closeQuietly(memfd)
         }
     }
 
-    private fun createMemfd(): FileDescriptor {
+    private fun createMemfd(spec: EngineSpec): FileDescriptor {
         return try {
-            Os.memfd_create("croc-$BINARY_VERSION", MFD_EXEC)
+            Os.memfd_create("croc-${spec.version}", MFD_EXEC)
         } catch (e: ErrnoException) {
             if (e.errno == OsConstants.EINVAL) {
                 Log.w(TAG, "MFD_EXEC unsupported on this kernel, falling back to legacy memfd flags", e)
-                return Os.memfd_create("croc-$BINARY_VERSION", 0)
+                return Os.memfd_create("croc-${spec.version}", 0)
             }
-            throw IllegalStateException("Unable to create executable memfd for croc.", e)
+            throw IllegalStateException("Unable to create executable memfd for croc (${spec.engine}).", e)
         } catch (e: NoSuchMethodError) {
             throw IllegalStateException(
                 "This Android version cannot execute the downloaded croc binary from app storage.",
@@ -368,7 +474,8 @@ class CrocBinaryManager(private val context: Context) {
 
     private fun wrapProcessStartException(
         error: Exception,
-        preferredPath: String
+        preferredPath: String,
+        nativeLibBinary: File
     ): IllegalStateException {
         val message = if (preferredPath == nativeLibBinary.absolutePath) {
             "The packaged croc native library could not be executed."
@@ -412,8 +519,9 @@ class CrocBinaryManager(private val context: Context) {
                 val baseName = entryName.trimEnd('/').substringAfterLast('/')
                 val isFile = typeFlag == 0.toByte() || typeFlag == '0'.code.toByte()
 
+                // Inside upstream Linux-ARM64 tarball, the binary is always named "croc"
                 if (baseName == BINARY_NAME && isFile && entrySize > 0) {
-                    Log.i(TAG, "Found croc binary ($entrySize bytes), extracting...")
+                    Log.i(TAG, "Found croc binary ($entrySize bytes), extracting to ${outputFile.name}...")
                     onBinaryFound?.invoke()
                     FileOutputStream(outputFile).use { out ->
                         val buf = ByteArray(8192)

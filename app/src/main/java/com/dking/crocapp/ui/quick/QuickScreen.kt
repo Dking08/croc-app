@@ -37,7 +37,9 @@ import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Upload
+import com.dking.crocapp.croc.CrocEngine
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -110,7 +112,9 @@ fun QuickScreen(
     val isTransferFinished = uiState.transferState is CrocTransferState.Completed ||
         uiState.transferState is CrocTransferState.Error ||
         uiState.transferState is CrocTransferState.Cancelled
-    val showActionButtons = !isTransferActive && !isTransferFinished
+    val isLegacyFallback = uiState.transferState is CrocTransferState.LegacyFallbackAvailable
+    val showTransferSection = isTransferActive || isTransferFinished || isLegacyFallback
+    val showActionButtons = !isTransferActive && !isTransferFinished && !isLegacyFallback
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -162,9 +166,10 @@ fun QuickScreen(
             ) {
                 QuickBrandHeader()
 
-                if (isTransferActive || isTransferFinished) {
+                if (showTransferSection) {
                     TransferStatusSection(
                         state = uiState.transferState,
+                        activeEngine = uiState.activeEngine,
                         lastAction = uiState.lastAction,
                         activeCode = uiState.activeCode,
                         sharePreview = uiState.sharePreview,
@@ -172,6 +177,7 @@ fun QuickScreen(
                         receivedFiles = uiState.receivedFiles,
                         receiveLocationLabel = uiState.receiveLocationLabel,
                         onCancel = { viewModel.cancelTransfer() },
+                        onRetryLegacy = { viewModel.retryWithLegacy() },
                         onDismiss = { viewModel.dismissResult() },
                         onCopyText = { text ->
                             clipboardManager.setText(AnnotatedString(text))
@@ -332,6 +338,7 @@ private fun QuickInfoDialog(
 @Composable
 private fun TransferStatusSection(
     state: CrocTransferState,
+    activeEngine: CrocEngine,
     lastAction: String,
     activeCode: String,
     sharePreview: List<QuickSharePreview>,
@@ -339,12 +346,14 @@ private fun TransferStatusSection(
     receivedFiles: List<ReceivedFile>,
     receiveLocationLabel: String = "Downloads/croc-received",
     onCancel: () -> Unit,
+    onRetryLegacy: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onCopyText: (String) -> Unit
 ) {
     val isSending = lastAction == "send" || lastAction == "clipboard"
     val isFinished = state is CrocTransferState.Completed ||
         state is CrocTransferState.Error ||
+        state is CrocTransferState.LegacyFallbackAvailable ||
         state is CrocTransferState.Cancelled
 
     Column(
@@ -355,14 +364,16 @@ private fun TransferStatusSection(
             QuickSendTransferCard(
                 state = state,
                 code = activeCode,
-                sharePreview = sharePreview
+                sharePreview = sharePreview,
+                activeEngine = activeEngine
             )
         } else {
             QuickReceiveTransferCard(
                 state = state,
                 code = activeCode,
                 receivedFiles = receivedFiles,
-                receiveLocationLabel = receiveLocationLabel
+                receiveLocationLabel = receiveLocationLabel,
+                activeEngine = activeEngine
             )
         }
 
@@ -376,6 +387,16 @@ private fun TransferStatusSection(
                 totalBytes = state.totalBytes,
                 onCopyText = onCopyText
             )
+        }
+
+        if (state is CrocTransferState.LegacyFallbackAvailable && onRetryLegacy != null) {
+            Button(
+                onClick = onRetryLegacy,
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large
+            ) {
+                Text(stringResource(R.string.action_retry_legacy))
+            }
         }
 
         FilledTonalButton(
@@ -392,9 +413,11 @@ private fun TransferStatusSection(
 private fun QuickSendTransferCard(
     state: CrocTransferState,
     code: String,
-    sharePreview: List<QuickSharePreview>
+    sharePreview: List<QuickSharePreview>,
+    activeEngine: CrocEngine = CrocEngine.CURRENT
 ) {
-    val hasSidePanel = state !is CrocTransferState.Error
+    val hasSidePanel = state !is CrocTransferState.Error && state !is CrocTransferState.LegacyFallbackAvailable
+    val isLegacy = activeEngine == CrocEngine.LEGACY
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -416,12 +439,32 @@ private fun QuickSendTransferCard(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = "Quick Send",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Quick Send",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (isLegacy) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .background(MaterialTheme.colorScheme.tertiaryContainer)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.badge_legacy_mode),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = quickTransferTitle(state, isSending = true),
                         style = MaterialTheme.typography.titleLarge,
@@ -480,9 +523,11 @@ private fun QuickReceiveTransferCard(
     state: CrocTransferState,
     code: String,
     receivedFiles: List<ReceivedFile>,
-    receiveLocationLabel: String = "Downloads/croc-received"
+    receiveLocationLabel: String = "Downloads/croc-received",
+    activeEngine: CrocEngine = CrocEngine.CURRENT
 ) {
-    val hasSideTile = state !is CrocTransferState.Error
+    val hasSideTile = state !is CrocTransferState.Error && state !is CrocTransferState.LegacyFallbackAvailable
+    val isLegacy = activeEngine == CrocEngine.LEGACY
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -504,12 +549,32 @@ private fun QuickReceiveTransferCard(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = "Quick Receive",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.tertiary,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Quick Receive",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (isLegacy) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .background(MaterialTheme.colorScheme.tertiaryContainer)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.badge_legacy_mode),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = quickTransferTitle(state, isSending = false),
                         style = MaterialTheme.typography.titleLarge,
@@ -992,6 +1057,7 @@ private fun quickTransferTitle(state: CrocTransferState, isSending: Boolean): St
         is CrocTransferState.WaitingForPeer -> if (isSending) stringResource(R.string.quick_waiting_send) else stringResource(R.string.quick_waiting_receive)
         is CrocTransferState.Transferring -> if (isSending) stringResource(R.string.quick_transferring_send) else stringResource(R.string.quick_transferring_receive)
         is CrocTransferState.Completed -> if (isSending) stringResource(R.string.quick_completed_send) else stringResource(R.string.quick_completed_receive)
+        is CrocTransferState.LegacyFallbackAvailable -> stringResource(R.string.transfer_legacy_fallback_title)
         is CrocTransferState.Error -> if (isSending) stringResource(R.string.quick_error_send) else stringResource(R.string.quick_error_receive)
         is CrocTransferState.Cancelled -> if (isSending) stringResource(R.string.quick_cancelled_send) else stringResource(R.string.quick_cancelled_receive)
         else -> stringResource(R.string.quick_transfer)
@@ -1021,6 +1087,7 @@ private fun quickTransferSubtitle(state: CrocTransferState, isSending: Boolean):
                 else stringResource(R.string.quick_sub_completed_receive_many, state.fileCount)
             }
         }
+        is CrocTransferState.LegacyFallbackAvailable -> stringResource(R.string.transfer_legacy_fallback_desc)
         is CrocTransferState.Error -> if (isSending) {
             stringResource(R.string.quick_sub_error_send)
         } else {
@@ -1038,6 +1105,7 @@ private fun quickProgressLabel(state: CrocTransferState, isSending: Boolean): St
         is CrocTransferState.WaitingForPeer -> if (isSending) stringResource(R.string.quick_progress_waiting_send) else stringResource(R.string.quick_progress_waiting_receive)
         is CrocTransferState.Transferring -> if (isSending) stringResource(R.string.quick_progress_transferring_send) else stringResource(R.string.quick_progress_transferring_receive)
         is CrocTransferState.Completed -> stringResource(R.string.quick_progress_complete)
+        is CrocTransferState.LegacyFallbackAvailable -> stringResource(R.string.transfer_legacy_fallback_title)
         is CrocTransferState.Error -> stringResource(R.string.quick_progress_error)
         is CrocTransferState.Cancelled -> stringResource(R.string.quick_progress_cancelled)
         else -> ""

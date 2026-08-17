@@ -60,5 +60,10 @@ sealed class CrocTransferState {
         val message: String
     ) : CrocTransferState()
 
+    data class LegacyFallbackAvailable(
+        val room: String,
+        val reason: String = "The other device is using an older croc version (PAKE protocol version mismatch)."
+    ) : CrocTransferState()
+
     data object Cancelled : CrocTransferState()
 }

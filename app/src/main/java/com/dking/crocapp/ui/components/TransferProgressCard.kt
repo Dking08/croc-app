@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +20,8 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Error
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -36,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.dking.crocapp.R
+import com.dking.crocapp.croc.CrocEngine
 import com.dking.crocapp.croc.CrocTransferState
 
 @Composable
@@ -43,8 +47,12 @@ fun TransferProgressCard(
     state: CrocTransferState,
     isSending: Boolean,
     onCancel: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRetryLegacy: (() -> Unit)? = null,
+    activeEngine: CrocEngine = CrocEngine.CURRENT
 ) {
+    val isLegacy = activeEngine == CrocEngine.LEGACY
+
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -63,7 +71,8 @@ fun TransferProgressCard(
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
                         title = if (isSending) stringResource(R.string.transfer_preparing_upload) else stringResource(R.string.transfer_preparing_download),
-                        subtitle = null
+                        subtitle = null,
+                        showLegacyBadge = isLegacy
                     )
                     LinearProgressIndicator(
                         modifier = Modifier
@@ -82,7 +91,8 @@ fun TransferProgressCard(
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
                         title = if (isSending) stringResource(R.string.transfer_waiting_peer) else stringResource(R.string.transfer_connecting),
-                        subtitle = if (isSending) stringResource(R.string.transfer_share_code_hint) else stringResource(R.string.transfer_verifying_code)
+                        subtitle = if (isSending) stringResource(R.string.transfer_share_code_hint) else stringResource(R.string.transfer_verifying_code),
+                        showLegacyBadge = isLegacy
                     )
                     LinearProgressIndicator(
                         modifier = Modifier
@@ -114,7 +124,8 @@ fun TransferProgressCard(
                         iconTint = MaterialTheme.colorScheme.primary,
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
                         title = if (isSending) stringResource(R.string.transfer_uploading) else stringResource(R.string.transfer_downloading),
-                        subtitle = subtitle
+                        subtitle = subtitle,
+                        showLegacyBadge = isLegacy
                     )
 
                     val animatedProgress by animateFloatAsState(
@@ -174,8 +185,41 @@ fun TransferProgressCard(
                         iconBackground = MaterialTheme.colorScheme.primaryContainer,
                         title = if (isSending) stringResource(R.string.transfer_upload_complete) else stringResource(R.string.transfer_download_complete),
                         subtitle = subtitle,
-                        titleColor = MaterialTheme.colorScheme.primary
+                        titleColor = MaterialTheme.colorScheme.primary,
+                        showLegacyBadge = isLegacy
                     )
+                }
+
+                is CrocTransferState.LegacyFallbackAvailable -> {
+                    TransferHeader(
+                        icon = Icons.Rounded.Info,
+                        iconTint = MaterialTheme.colorScheme.tertiary,
+                        iconBackground = MaterialTheme.colorScheme.tertiaryContainer,
+                        title = stringResource(R.string.transfer_legacy_fallback_title),
+                        subtitle = stringResource(R.string.transfer_legacy_fallback_desc),
+                        titleColor = MaterialTheme.colorScheme.onSurface
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (onRetryLegacy != null) {
+                            Button(
+                                onClick = onRetryLegacy,
+                                modifier = Modifier.weight(1f),
+                                shape = MaterialTheme.shapes.large
+                            ) {
+                                Text(stringResource(R.string.action_retry_legacy))
+                            }
+                        }
+                        FilledTonalButton(
+                            onClick = onCancel,
+                            modifier = if (onRetryLegacy != null) Modifier.weight(1f) else Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Text(stringResource(R.string.action_cancel))
+                        }
+                    }
                 }
 
                 is CrocTransferState.Error -> {
@@ -185,7 +229,8 @@ fun TransferProgressCard(
                         iconBackground = MaterialTheme.colorScheme.errorContainer,
                         title = stringResource(R.string.transfer_failed),
                         subtitle = state.message,
-                        titleColor = MaterialTheme.colorScheme.error
+                        titleColor = MaterialTheme.colorScheme.error,
+                        showLegacyBadge = isLegacy
                     )
                 }
 
@@ -195,7 +240,8 @@ fun TransferProgressCard(
                         iconTint = MaterialTheme.colorScheme.outline,
                         iconBackground = MaterialTheme.colorScheme.surfaceContainerHighest,
                         title = stringResource(R.string.transfer_cancelled),
-                        subtitle = null
+                        subtitle = null,
+                        showLegacyBadge = isLegacy
                     )
                 }
 
@@ -212,11 +258,11 @@ private fun TransferHeader(
     iconBackground: androidx.compose.ui.graphics.Color,
     title: String,
     subtitle: String?,
-    titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
+    titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
+    showLegacyBadge: Boolean = false
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        // Tinted circle behind the icon
-        androidx.compose.foundation.layout.Box(
+        Box(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
@@ -231,13 +277,33 @@ private fun TransferHeader(
             )
         }
         Spacer(modifier = Modifier.width(14.dp))
-        Column {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = titleColor
-            )
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = titleColor
+                )
+                if (showLegacyBadge) {
+                    Box(
+                        modifier = Modifier
+                            .clip(MaterialTheme.shapes.extraSmall)
+                            .background(MaterialTheme.colorScheme.tertiaryContainer)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.badge_legacy_mode),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
             if (subtitle != null) {
                 Text(
                     text = subtitle,
