@@ -364,16 +364,24 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissResult() {
         crocProcess.reset()
-        _uiState.update {
-            it.copy(
-                lastAction = "",
-                sharePreview = emptyList(),
-                statusMessage = "Ready",
-                statusDetail = "Tap Send or Receive to start",
-                activeCode = "",
-                receivedText = null,
-                receivedFiles = emptyList()
-            )
+        viewModelScope.launch {
+            val defaultEngine = if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
+                CrocEngine.LEGACY
+            } else {
+                CrocEngine.CURRENT
+            }
+            _uiState.update {
+                it.copy(
+                    activeEngine = defaultEngine,
+                    lastAction = "",
+                    sharePreview = emptyList(),
+                    statusMessage = "Ready",
+                    statusDetail = "Tap Send or Receive to start",
+                    activeCode = "",
+                    receivedText = null,
+                    receivedFiles = emptyList()
+                )
+            }
         }
     }
 

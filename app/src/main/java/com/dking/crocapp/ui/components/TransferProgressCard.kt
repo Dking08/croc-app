@@ -6,8 +6,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -38,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dking.crocapp.R
 import com.dking.crocapp.croc.CrocEngine
@@ -208,26 +211,43 @@ fun TransferProgressCard(
 
                     if (isSending) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(IntrinsicSize.Min),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (onRetryLegacy != null) {
                                 Button(
                                     onClick = onRetryLegacy,
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
                                     shape = MaterialTheme.shapes.large
                                 ) {
                                     Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text(stringResource(R.string.action_send_legacy))
+                                    Text(
+                                        text = stringResource(R.string.action_send_legacy),
+                                        textAlign = TextAlign.Center
+                                    )
                                 }
                             }
                             FilledTonalButton(
                                 onClick = onCancel,
-                                modifier = if (onRetryLegacy != null) Modifier.weight(0.6f) else Modifier.fillMaxWidth(),
+                                modifier = if (onRetryLegacy != null) {
+                                    Modifier
+                                        .weight(0.6f)
+                                        .fillMaxHeight()
+                                } else {
+                                    Modifier.fillMaxWidth()
+                                },
                                 shape = MaterialTheme.shapes.large
                             ) {
-                                Text(stringResource(R.string.action_cancel))
+                                Text(
+                                    text = stringResource(R.string.action_cancel),
+                                    textAlign = TextAlign.Center
+                                )
                             }
                         }
                     } else {
@@ -247,24 +267,37 @@ fun TransferProgressCard(
                             }
 
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(IntrinsicSize.Min),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (onRetryLegacy != null) {
                                     OutlinedButton(
                                         onClick = onRetryLegacy,
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight(),
                                         shape = MaterialTheme.shapes.large
                                     ) {
-                                        Text(stringResource(R.string.action_retry_same_code))
+                                        Text(
+                                            text = stringResource(R.string.action_retry_same_code),
+                                            textAlign = TextAlign.Center
+                                        )
                                     }
                                 }
                                 FilledTonalButton(
                                     onClick = onCancel,
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
                                     shape = MaterialTheme.shapes.large
                                 ) {
-                                    Text(stringResource(R.string.action_cancel))
+                                    Text(
+                                        text = stringResource(R.string.action_cancel),
+                                        textAlign = TextAlign.Center
+                                    )
                                 }
                             }
                         }
