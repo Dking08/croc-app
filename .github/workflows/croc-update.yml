@@ -111,8 +111,8 @@ jobs:
           # 1. Update version marker
           echo "$NEW_TAG" > third_party/CROC_VERSION
 
-          # 2. Update app/build.gradle.kts description
-          sed -i -E "s/description = \"Build croc v?[0-9.]+ for Android arm64 from vendored source\.\"/description = \"Build croc v${NEW_VER} for Android arm64 from vendored source.\"/g" app/build.gradle.kts
+          # 2. Update app/build.gradle.kts description (current engine only)
+          sed -i -E '/buildCrocAndroidArm64/,/outputs.file/ s/Build croc v[0-9.]+ for Android arm64/Build croc v'"${NEW_VER}"' for Android arm64/' app/build.gradle.kts
 
           # 3. Update CrocBinaryManager.kt (BINARY_VERSION and DOWNLOAD_URL)
           sed -i -E "s/private const val BINARY_VERSION = \"[^\"]+\"/private const val BINARY_VERSION = \"${NEW_VER}\"/g" app/src/main/java/com/dking/crocapp/croc/CrocBinaryManager.kt

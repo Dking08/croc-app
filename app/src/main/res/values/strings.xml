@@ -331,4 +331,15 @@
     <string name="setup_guide2_bullet2">Later launches reuse that engine, so send and receive feel immediate.</string>
     <string name="setup_guide2_bullet3">Keeping the app open on this screen is enough. No extra action needed.</string>
 
+    <!-- ════ Dual Engine & Legacy Support ════ -->
+    <string name="transfer_legacy_fallback_title">Older Croc Detected</string>
+    <string name="transfer_legacy_fallback_desc">The other device is using an older croc — retry with legacy mode?</string>
+    <string name="action_retry_legacy">Retry in Legacy Mode</string>
+    <string name="badge_legacy_mode">Legacy mode</string>
+    <string name="settings_try_legacy_first">Try legacy croc first</string>
+    <string name="settings_try_legacy_first_desc">Attempt transfers using legacy croc (v10.6.0) first instead of waiting for version mismatch. Default is off.</string>
+    <string name="settings_clear_legacy_binary">Clear cached legacy engine</string>
+    <string name="settings_clear_legacy_binary_desc">Delete the downloaded legacy croc binary from device storage.</string>
+    <string name="settings_clear_legacy_button">Clear</string>
+
 </resources>

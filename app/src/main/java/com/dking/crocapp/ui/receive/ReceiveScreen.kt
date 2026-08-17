@@ -123,11 +123,14 @@ fun ReceiveScreen(
     val isTransferFinished = uiState.transferState is CrocTransferState.Completed ||
             uiState.transferState is CrocTransferState.Error ||
             uiState.transferState is CrocTransferState.Cancelled
+    val isLegacyFallback = uiState.transferState is CrocTransferState.LegacyFallbackAvailable
+    val showTransferSection = isTransferActive || isTransferFinished || isLegacyFallback
     val canReceive = uiState.codePhrase.isNotBlank()
     val fabLabel = when (uiState.transferState) {
-        is CrocTransferState.Completed -> "Receive Again"
-        is CrocTransferState.Error, CrocTransferState.Cancelled -> "Retry"
-        else -> "Receive"
+        is CrocTransferState.Completed -> stringResource(R.string.receive_again)
+        is CrocTransferState.LegacyFallbackAvailable -> stringResource(R.string.action_retry_legacy)
+        is CrocTransferState.Error, CrocTransferState.Cancelled -> stringResource(R.string.action_retry)
+        else -> stringResource(R.string.nav_receive)
     }
 
     // Animated progress for the code card border
@@ -149,7 +152,7 @@ fun ReceiveScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Receive",
+                        stringResource(R.string.nav_receive),
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -170,10 +173,14 @@ fun ReceiveScreen(
             if (!isTransferActive) {
                 ExtendedFloatingActionButton(
                     onClick = {
-                        if (isTransferFinished) {
-                            viewModel.dismissTransferResult()
+                        if (isLegacyFallback) {
+                            viewModel.retryWithLegacy()
+                        } else {
+                            if (isTransferFinished) {
+                                viewModel.dismissTransferResult()
+                            }
+                            viewModel.startReceive()
                         }
-                        viewModel.startReceive()
                     },
                     icon = {
                         Icon(Icons.Rounded.Download, contentDescription = null)
@@ -396,7 +403,7 @@ fun ReceiveScreen(
 
             // ──── Transfer Progress — between code and received files ────
             AnimatedVisibility(
-                visible = isTransferActive || isTransferFinished,
+                visible = showTransferSection,
                 enter = fadeIn() + slideInVertically { it / 2 },
                 exit = fadeOut() + slideOutVertically { it / 2 }
             ) {
@@ -404,7 +411,9 @@ fun ReceiveScreen(
                     TransferProgressCard(
                         state = uiState.transferState,
                         isSending = false,
-                        onCancel = { viewModel.cancelTransfer() }
+                        onCancel = { viewModel.cancelTransfer() },
+                        onRetryLegacy = { viewModel.retryWithLegacy() },
+                        activeEngine = uiState.activeEngine
                     )
                     if (isTransferFinished) {
                         OutlinedButton(

@@ -6,9 +6,11 @@ plugins {
 }
 
 val crocSourceDir = rootProject.layout.projectDirectory.dir("third_party/croc-src")
+val crocLegacySourceDir = rootProject.layout.projectDirectory.dir("third_party/croc-src-legacy")
 val crocJniLibsRootDir = layout.buildDirectory.dir("generated/jniLibs/croc")
 val crocOutputDir = crocJniLibsRootDir.map { it.dir("arm64-v8a") }
 val crocOutputFile = crocOutputDir.map { it.file("libcroc.so") }
+val crocLegacyOutputFile = crocOutputDir.map { it.file("libcroc_legacy.so") }
 val goTelemetryDir = rootProject.layout.buildDirectory.dir("go/telemetry")
 val goCacheDir = rootProject.layout.buildDirectory.dir("go/cache")
 val goModCacheDir = rootProject.layout.buildDirectory.dir("go/mod-cache")
@@ -66,6 +68,55 @@ val buildCrocAndroidArm64 by tasks.registering(Exec::class) {
     )
 }
 
+val buildCrocLegacyAndroidArm64 by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Build croc v10.6.0 for Android arm64 from vendored source."
+    workingDir = crocLegacySourceDir.asFile
+
+    inputs.files(
+        fileTree(crocLegacySourceDir) {
+            exclude(".git/**")
+            exclude("build/**")
+        }
+    )
+    outputs.file(crocLegacyOutputFile)
+
+    doFirst {
+        val vendorDir = crocLegacySourceDir.dir("vendor").asFile
+        check(vendorDir.exists()) {
+            "Vendored legacy croc dependencies are missing at ${vendorDir.absolutePath}. Run `go mod vendor` in third_party/croc-src-legacy."
+        }
+
+        crocOutputDir.get().asFile.mkdirs()
+        goTelemetryDir.get().asFile.mkdirs()
+        goCacheDir.get().asFile.mkdirs()
+        goModCacheDir.get().asFile.mkdirs()
+    }
+
+    environment("GOENV", "off")
+    environment("GOWORK", "off")
+    environment("GOTELEMETRY", "off")
+    environment("GOTELEMETRYDIR", goTelemetryDir.get().asFile.absolutePath)
+    environment("GOCACHE", goCacheDir.get().asFile.absolutePath)
+    environment("GOMODCACHE", goModCacheDir.get().asFile.absolutePath)
+    environment("GOOS", "android")
+    environment("GOARCH", "arm64")
+    environment("GOARM64", "v8.0")
+    environment("CGO_ENABLED", "0")
+
+    commandLine(
+        goExecutable.get(),
+        "build",
+        "-mod=vendor",
+        "-trimpath",
+        "-buildvcs=false",
+        "-ldflags=-s -w -buildid=",
+        "-o",
+        crocLegacyOutputFile.get().asFile.absolutePath,
+        "."
+    )
+}
+
 tasks.configureEach {
     if (
         name.contains("ArtProfile", ignoreCase = true) ||
@@ -83,8 +134,8 @@ android {
         applicationId = "com.dking.crocapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "5.1.0"
+        versionCode = 10
+        versionName = "6.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -118,12 +169,13 @@ android {
     packaging {
         jniLibs {
             keepDebugSymbols += "**/libcroc.so"
+            keepDebugSymbols += "**/libcroc_legacy.so"
         }
     }
 }
 
 tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(buildCrocAndroidArm64)
+    dependsOn(buildCrocAndroidArm64, buildCrocLegacyAndroidArm64)
 }
 
 dependencies {

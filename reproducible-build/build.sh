@@ -40,15 +40,17 @@ echo "      Commit: $COMMIT_HASH"
 
 # ── 2. Verify vendored Go deps exist ─────────────────────────────────────────
 echo "[2/6] Checking vendored Go dependencies..."
-VENDOR_DIR="third_party/croc-src/vendor"    # adjust if your path differs
-if [ ! -d "$VENDOR_DIR" ]; then
-    echo "ERROR: $VENDOR_DIR not found."
-    echo "       You must commit 'go mod vendor' output to your repo."
+VENDOR_DIR="third_party/croc-src/vendor"
+LEGACY_VENDOR_DIR="third_party/croc-src-legacy/vendor"
+if [ ! -d "$VENDOR_DIR" ] || [ ! -d "$LEGACY_VENDOR_DIR" ]; then
+    echo "ERROR: Vendored Go dependencies missing."
+    echo "       You must commit 'go mod vendor' output for both croc-src and croc-src-legacy to your repo."
     echo "       On your dev machine, run:"
     echo "         cd third_party/croc-src && go mod vendor && git add vendor && git commit"
+    echo "         cd third_party/croc-src-legacy && go mod vendor && git add vendor && git commit"
     exit 1
 fi
-echo "      vendor/ found ✓"
+echo "      vendor/ found for current and legacy engines ✓"
 
 # ── 3. Gradle build (assembleRelease) ────────────────────────────────────────
 echo "[3/6] Building APK with Gradle..."

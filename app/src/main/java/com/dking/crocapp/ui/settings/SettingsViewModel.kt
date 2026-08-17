@@ -3,6 +3,8 @@ package com.dking.crocapp.ui.settings
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.dking.crocapp.CrocApp
+import com.dking.crocapp.croc.CrocEngine
 import com.dking.crocapp.data.preferences.UserPreferencesRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -10,7 +12,9 @@ import kotlinx.coroutines.launch
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val app = application as CrocApp
     private val prefsRepo = UserPreferencesRepository(application)
+    private val binaryManager = app.binaryManager
 
     val preferences = prefsRepo.preferencesFlow.stateIn(
         viewModelScope,
@@ -35,4 +39,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updateQuickReceiveCode(value: String) = viewModelScope.launch { prefsRepo.updateQuickReceiveCode(value) }
     fun updateReceiveLocation(uri: String) = viewModelScope.launch { prefsRepo.updateReceiveLocationUri(uri) }
     fun clearReceiveLocation() = viewModelScope.launch { prefsRepo.clearReceiveLocationUri() }
+    fun updateTryLegacyFirst(value: Boolean) = viewModelScope.launch { prefsRepo.updateTryLegacyFirst(value) }
+    fun clearLegacyBinary() = viewModelScope.launch { binaryManager.clearBinary(CrocEngine.LEGACY) }
+    fun isLegacyBinaryCached(): Boolean = binaryManager.isBinaryCached(CrocEngine.LEGACY)
 }
