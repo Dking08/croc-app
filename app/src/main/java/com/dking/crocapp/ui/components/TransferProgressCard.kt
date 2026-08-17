@@ -20,7 +20,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Error
-import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,6 +28,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,9 +36,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.res.stringResource
 import com.dking.crocapp.R
 import com.dking.crocapp.croc.CrocEngine
 import com.dking.crocapp.croc.CrocTransferState
@@ -49,6 +50,7 @@ fun TransferProgressCard(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
     onRetryLegacy: (() -> Unit)? = null,
+    onSwitchToLegacy: (() -> Unit)? = null,
     activeEngine: CrocEngine = CrocEngine.CURRENT
 ) {
     val isLegacy = activeEngine == CrocEngine.LEGACY
@@ -192,32 +194,79 @@ fun TransferProgressCard(
 
                 is CrocTransferState.LegacyFallbackAvailable -> {
                     TransferHeader(
-                        icon = Icons.Rounded.Info,
+                        icon = Icons.Rounded.History,
                         iconTint = MaterialTheme.colorScheme.tertiary,
                         iconBackground = MaterialTheme.colorScheme.tertiaryContainer,
                         title = stringResource(R.string.transfer_legacy_fallback_title),
-                        subtitle = stringResource(R.string.transfer_legacy_fallback_desc),
+                        subtitle = if (isSending) {
+                            stringResource(R.string.transfer_legacy_fallback_send_desc)
+                        } else {
+                            stringResource(R.string.transfer_legacy_fallback_receive_desc)
+                        },
                         titleColor = MaterialTheme.colorScheme.onSurface
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (onRetryLegacy != null) {
-                            Button(
-                                onClick = onRetryLegacy,
-                                modifier = Modifier.weight(1f),
+
+                    if (isSending) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            if (onRetryLegacy != null) {
+                                Button(
+                                    onClick = onRetryLegacy,
+                                    modifier = Modifier.weight(1f),
+                                    shape = MaterialTheme.shapes.large
+                                ) {
+                                    Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(stringResource(R.string.action_send_legacy))
+                                }
+                            }
+                            FilledTonalButton(
+                                onClick = onCancel,
+                                modifier = if (onRetryLegacy != null) Modifier.weight(0.6f) else Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.large
                             ) {
-                                Text(stringResource(R.string.action_retry_legacy))
+                                Text(stringResource(R.string.action_cancel))
                             }
                         }
-                        FilledTonalButton(
-                            onClick = onCancel,
-                            modifier = if (onRetryLegacy != null) Modifier.weight(1f) else Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.large
+                    } else {
+                        // Receiving flow
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(stringResource(R.string.action_cancel))
+                            Button(
+                                onClick = { (onSwitchToLegacy ?: onRetryLegacy)?.invoke() },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.large
+                            ) {
+                                Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(stringResource(R.string.action_switch_legacy_receive))
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (onRetryLegacy != null) {
+                                    OutlinedButton(
+                                        onClick = onRetryLegacy,
+                                        modifier = Modifier.weight(1f),
+                                        shape = MaterialTheme.shapes.large
+                                    ) {
+                                        Text(stringResource(R.string.action_retry_same_code))
+                                    }
+                                }
+                                FilledTonalButton(
+                                    onClick = onCancel,
+                                    modifier = Modifier.weight(1f),
+                                    shape = MaterialTheme.shapes.large
+                                ) {
+                                    Text(stringResource(R.string.action_cancel))
+                                }
+                            }
                         }
                     }
                 }
@@ -261,7 +310,10 @@ private fun TransferHeader(
     titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
     showLegacyBadge: Boolean = false
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Box(
             modifier = Modifier
                 .size(44.dp)
@@ -278,39 +330,24 @@ private fun TransferHeader(
         }
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = titleColor
-                )
-                if (showLegacyBadge) {
-                    Box(
-                        modifier = Modifier
-                            .clip(MaterialTheme.shapes.extraSmall)
-                            .background(MaterialTheme.colorScheme.tertiaryContainer)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.badge_legacy_mode),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = titleColor
+            )
             if (subtitle != null) {
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+        if (showLegacyBadge) {
+            Spacer(modifier = Modifier.width(8.dp))
+            EngineBadge(engine = CrocEngine.LEGACY)
         }
     }
 }

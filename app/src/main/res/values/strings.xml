@@ -333,9 +333,16 @@
 
     <!-- ════ Dual Engine & Legacy Support ════ -->
     <string name="transfer_legacy_fallback_title">Older Croc Detected</string>
-    <string name="transfer_legacy_fallback_desc">The other device is using an older croc — retry with legacy mode?</string>
+    <string name="transfer_legacy_fallback_desc">The other device is using an older croc version.</string>
+    <string name="transfer_legacy_fallback_send_desc">The recipient is using an older croc version (v10.6 or earlier). Re-send in Legacy Mode to generate a compatible code.</string>
+    <string name="transfer_legacy_fallback_receive_desc">The sender is using an older croc version (v10.6 or earlier). Switch to Legacy Mode to receive with their new code.</string>
     <string name="action_retry_legacy">Retry in Legacy Mode</string>
-    <string name="badge_legacy_mode">Legacy mode</string>
+    <string name="action_send_legacy">Send in Legacy Mode</string>
+    <string name="action_receive_legacy">Receive in Legacy Mode</string>
+    <string name="action_switch_legacy_receive">Enter New Code (Legacy Mode)</string>
+    <string name="action_retry_same_code">Retry Same Code</string>
+    <string name="badge_legacy_mode">Legacy v10.6</string>
+    <string name="badge_current_mode">Croc v11</string>
     <string name="settings_try_legacy_first">Try legacy croc first</string>
     <string name="settings_try_legacy_first_desc">Attempt transfers using legacy croc (v10.6.0) first instead of waiting for version mismatch. Default is off.</string>
     <string name="settings_clear_legacy_binary">Clear cached legacy engine</string>

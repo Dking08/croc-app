@@ -100,6 +100,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dking.crocapp.R
 import com.dking.crocapp.croc.CrocTransferState
+import com.dking.crocapp.ui.components.EngineBadge
 import com.dking.crocapp.ui.components.QrCodeImage
 import com.dking.crocapp.util.QrCodeParser
 import com.dking.crocapp.ui.components.TransferProgressCard
@@ -583,18 +584,28 @@ fun SendScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = stringResource(R.string.send_secret_code),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        if (uiState.defaultCodePhrase.isNotBlank() && uiState.defaultCodePhrase == uiState.codePhrase) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Text(
-                                text = stringResource(R.string.label_default),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
+                                text = stringResource(R.string.send_secret_code),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
                             )
+                            if (uiState.defaultCodePhrase.isNotBlank() && uiState.defaultCodePhrase == uiState.codePhrase) {
+                                Text(
+                                    text = stringResource(R.string.label_default),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
+                        EngineBadge(
+                            engine = uiState.activeEngine,
+                            onClick = if (!isTransferActive) { { viewModel.toggleEngine() } } else null,
+                            showCurrentMode = true
+                        )
                     }
                     OutlinedTextField(
                         value = uiState.codePhrase,
