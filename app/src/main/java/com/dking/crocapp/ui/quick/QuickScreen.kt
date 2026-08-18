@@ -418,16 +418,6 @@ private fun TransferStatusSection(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(stringResource(R.string.action_switch_legacy_receive))
                 }
-
-                if (onRetryLegacy != null) {
-                    OutlinedButton(
-                        onClick = onRetryLegacy,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.large
-                    ) {
-                        Text(stringResource(R.string.action_retry_same_code))
-                    }
-                }
             }
         }
 

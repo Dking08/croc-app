@@ -340,7 +340,6 @@
     <string name="action_send_legacy">Send in Legacy Mode</string>
     <string name="action_receive_legacy">Receive in Legacy Mode</string>
     <string name="action_switch_legacy_receive">Enter New Code (Legacy Mode)</string>
-    <string name="action_retry_same_code">Retry Same Code</string>
     <string name="badge_legacy_mode">Legacy</string>
     <string name="badge_current_mode">Latest</string>
     <string name="settings_try_legacy_first">Try legacy croc first</string>

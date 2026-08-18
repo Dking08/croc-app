@@ -6,10 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -30,7 +28,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -210,96 +207,54 @@ fun TransferProgressCard(
                     )
 
                     if (isSending) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(IntrinsicSize.Min),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (onRetryLegacy != null) {
-                                Button(
-                                    onClick = onRetryLegacy,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight(),
-                                    shape = MaterialTheme.shapes.large
-                                ) {
-                                    Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = stringResource(R.string.action_send_legacy),
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                            FilledTonalButton(
-                                onClick = onCancel,
-                                modifier = if (onRetryLegacy != null) {
-                                    Modifier
-                                        .weight(0.6f)
-                                        .fillMaxHeight()
-                                } else {
-                                    Modifier.fillMaxWidth()
-                                },
-                                shape = MaterialTheme.shapes.large
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.action_cancel),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    } else {
-                        // Receiving flow
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                        if (onRetryLegacy != null) {
                             Button(
-                                onClick = { (onSwitchToLegacy ?: onRetryLegacy)?.invoke() },
+                                onClick = onRetryLegacy,
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.large
                             ) {
                                 Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(stringResource(R.string.action_switch_legacy_receive))
+                                Text(
+                                    text = stringResource(R.string.action_send_legacy),
+                                    textAlign = TextAlign.Center
+                                )
                             }
+                        }
+                        FilledTonalButton(
+                            onClick = onCancel,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Text(
+                                text = stringResource(R.string.action_cancel),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        // Receiving flow
+                        Button(
+                            onClick = { (onSwitchToLegacy ?: onRetryLegacy)?.invoke() },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(R.string.action_switch_legacy_receive),
+                                textAlign = TextAlign.Center
+                            )
+                        }
 
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(IntrinsicSize.Min),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (onRetryLegacy != null) {
-                                    OutlinedButton(
-                                        onClick = onRetryLegacy,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight(),
-                                        shape = MaterialTheme.shapes.large
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.action_retry_same_code),
-                                            textAlign = TextAlign.Center
-                                        )
-                                    }
-                                }
-                                FilledTonalButton(
-                                    onClick = onCancel,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight(),
-                                    shape = MaterialTheme.shapes.large
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.action_cancel),
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
+                        FilledTonalButton(
+                            onClick = onCancel,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Text(
+                                text = stringResource(R.string.action_cancel),
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
                 }
