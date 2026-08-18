@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.QrCode2
@@ -209,7 +210,10 @@ fun SendScreen(
                         }
                     },
                     icon = {
-                        Icon(Icons.Rounded.Upload, contentDescription = null)
+                        Icon(
+                            if (isLegacyFallback) Icons.Rounded.History else Icons.Rounded.Upload,
+                            contentDescription = null
+                        )
                     },
                     text = { Text(fabLabel, fontWeight = FontWeight.SemiBold) },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -217,7 +221,7 @@ fun SendScreen(
                     elevation = FloatingActionButtonDefaults.elevation(
                         defaultElevation = 3.dp
                     ),
-                    expanded = canSend
+                    expanded = canSend || isLegacyFallback
                 )
             }
         }

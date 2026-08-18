@@ -313,9 +313,8 @@
     <string name="transfer_legacy_fallback_desc">दूसरा डिवाइस croc का पुराना वर्ज़न इस्तेमाल कर रहा है।</string>
     <string name="transfer_legacy_fallback_send_desc">पाने वाला पुराना croc वर्ज़न (v10.6 या उससे पहले) इस्तेमाल कर रहा है। कम्पैटिबल कोड बनाने के लिए लीगेसी मोड में दोबारा भेजें।</string>
     <string name="transfer_legacy_fallback_receive_desc">भेजने वाला पुराना croc वर्ज़न (v10.6 या उससे पहले) इस्तेमाल कर रहा है। उनके नए कोड से पाने के लिए लीगेसी मोड पर स्विच करें।</string>
-    <string name="action_retry_legacy">लीगेसी मोड में दोबारा कोशिश करें</string>
+    <string name="action_retry_legacy">दोबारा (लीगेसी)</string>
     <string name="action_send_legacy">लीगेसी मोड में भेजें</string>
-    <string name="action_receive_legacy">लीगेसी मोड में पाएँ</string>
     <string name="action_switch_legacy_receive">नया कोड डालें (लीगेसी मोड)</string>
     <string name="badge_legacy_mode">लीगेसी</string>
     <string name="badge_current_mode">नवीनतम</string>
