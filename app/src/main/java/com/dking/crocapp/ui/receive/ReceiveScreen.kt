@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.RestartAlt
@@ -184,7 +185,10 @@ fun ReceiveScreen(
                         }
                     },
                     icon = {
-                        Icon(Icons.Rounded.Download, contentDescription = null)
+                        Icon(
+                            if (isLegacyFallback) Icons.Rounded.History else Icons.Rounded.Download,
+                            contentDescription = null
+                        )
                     },
                     text = { Text(fabLabel, fontWeight = FontWeight.SemiBold) },
                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
@@ -192,7 +196,7 @@ fun ReceiveScreen(
                     elevation = FloatingActionButtonDefaults.elevation(
                         defaultElevation = 3.dp
                     ),
-                    expanded = canReceive
+                    expanded = canReceive || isLegacyFallback
                 )
             }
         }

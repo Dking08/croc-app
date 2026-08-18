@@ -206,44 +206,39 @@ fun TransferProgressCard(
                         titleColor = MaterialTheme.colorScheme.onSurface
                     )
 
-                    if (isSending) {
-                        if (onRetryLegacy != null) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (isSending) {
+                            if (onRetryLegacy != null) {
+                                Button(
+                                    onClick = onRetryLegacy,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = MaterialTheme.shapes.large
+                                ) {
+                                    Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(R.string.action_send_legacy),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        } else {
+                            // Receiving flow
                             Button(
-                                onClick = onRetryLegacy,
+                                onClick = { (onSwitchToLegacy ?: onRetryLegacy)?.invoke() },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.large
                             ) {
                                 Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = stringResource(R.string.action_send_legacy),
+                                    text = stringResource(R.string.action_switch_legacy_receive),
                                     textAlign = TextAlign.Center
                                 )
                             }
-                        }
-                        FilledTonalButton(
-                            onClick = onCancel,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.large
-                        ) {
-                            Text(
-                                text = stringResource(R.string.action_cancel),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    } else {
-                        // Receiving flow
-                        Button(
-                            onClick = { (onSwitchToLegacy ?: onRetryLegacy)?.invoke() },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.large
-                        ) {
-                            Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = stringResource(R.string.action_switch_legacy_receive),
-                                textAlign = TextAlign.Center
-                            )
                         }
 
                         FilledTonalButton(
