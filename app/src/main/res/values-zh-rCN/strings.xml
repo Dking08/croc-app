@@ -307,4 +307,21 @@
     <string name="setup_guide2_bullet1">首次运行时会下载并准备 croc 引擎。</string>
     <string name="setup_guide2_bullet2">之后启动会复用同一引擎，发送和接收几乎即时完成。</string>
     <string name="setup_guide2_bullet3">保持应用在此页面打开即可，无需其他操作。</string>
+
+    <!-- ════ 双引擎与旧版支持 ════ -->
+    <string name="transfer_legacy_fallback_title">检测到旧版 Croc</string>
+    <string name="transfer_legacy_fallback_desc">对方设备使用的是较旧的 croc 版本。</string>
+    <string name="transfer_legacy_fallback_send_desc">接收方使用的是较旧的 croc 版本（v10.6 或更早）。请以旧版兼容模式重新发送以生成兼容密码。</string>
+    <string name="transfer_legacy_fallback_receive_desc">发送方使用的是较旧的 croc 版本（v10.6 或更早）。请切换到旧版兼容模式以使用新密码接收。</string>
+    <string name="action_retry_legacy">以旧版模式重试</string>
+    <string name="action_send_legacy">以旧版模式发送</string>
+    <string name="action_receive_legacy">以旧版模式接收</string>
+    <string name="action_switch_legacy_receive">输入新密码（旧版模式）</string>
+    <string name="badge_legacy_mode">旧版</string>
+    <string name="badge_current_mode">最新</string>
+    <string name="settings_try_legacy_first">优先尝试旧版 croc</string>
+    <string name="settings_try_legacy_first_desc">优先尝试使用旧版 croc (v10.6.0) 进行传输，而不是等待版本不兼容提示。默认关闭。</string>
+    <string name="settings_clear_legacy_binary">清除缓存的旧版引擎</string>
+    <string name="settings_clear_legacy_binary_desc">从设备存储中删除已下载的旧版 croc 引擎。</string>
+    <string name="settings_clear_legacy_button">清除</string>
 </resources>

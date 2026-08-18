@@ -307,4 +307,21 @@
     <string name="setup_guide2_bullet1">La primera ejecución descarga y prepara el motor de croc.</string>
     <string name="setup_guide2_bullet2">Ejecuciones posteriores reutilizan ese motor, así que enviar y recibir se sienten inmediatos.</string>
     <string name="setup_guide2_bullet3">Mantener la aplicación abierta en esta pantalla es suficiente. No se necesita acción extra.</string>
+
+    <!-- ════ Motor dual y compatibilidad heredada ════ -->
+    <string name="transfer_legacy_fallback_title">Croc antiguo detectado</string>
+    <string name="transfer_legacy_fallback_desc">El otro dispositivo usa una versión anterior de croc.</string>
+    <string name="transfer_legacy_fallback_send_desc">El destinatario usa una versión anterior de croc (v10.6 o anterior). Vuelve a enviar en modo heredado para generar un código compatible.</string>
+    <string name="transfer_legacy_fallback_receive_desc">El remitente usa una versión anterior de croc (v10.6 o anterior). Cambia al modo heredado para recibir con su nuevo código.</string>
+    <string name="action_retry_legacy">Reintentar en modo heredado</string>
+    <string name="action_send_legacy">Enviar en modo heredado</string>
+    <string name="action_receive_legacy">Recibir en modo heredado</string>
+    <string name="action_switch_legacy_receive">Introducir nuevo código (modo heredado)</string>
+    <string name="badge_legacy_mode">Heredado</string>
+    <string name="badge_current_mode">Actual</string>
+    <string name="settings_try_legacy_first">Probar croc heredado primero</string>
+    <string name="settings_try_legacy_first_desc">Intentar transferencias usando el croc heredado (v10.6.0) primero en lugar de esperar una incompatibilidad de versiones. Desactivado por defecto.</string>
+    <string name="settings_clear_legacy_binary">Borrar motor heredado en caché</string>
+    <string name="settings_clear_legacy_binary_desc">Elimina el binario de croc heredado descargado del almacenamiento del dispositivo.</string>
+    <string name="settings_clear_legacy_button">Borrar</string>
 </resources>
