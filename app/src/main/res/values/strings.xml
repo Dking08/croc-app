@@ -334,8 +334,8 @@
     <!-- ════ Dual Engine & Legacy Support ════ -->
     <string name="transfer_legacy_fallback_title">Older Croc Detected</string>
     <string name="transfer_legacy_fallback_desc">The other device is using an older croc version.</string>
-    <string name="transfer_legacy_fallback_send_desc">The recipient is using an older croc version (v10.6 or earlier). Re-send in Legacy Mode to generate a compatible code.</string>
-    <string name="transfer_legacy_fallback_receive_desc">The sender is using an older croc version (v10.6 or earlier). Switch to Legacy Mode to receive with their new code.</string>
+    <string name="transfer_legacy_fallback_send_desc">The recipient is using an older croc version (v10 or earlier). You can switch to Legacy Mode to send.</string>
+    <string name="transfer_legacy_fallback_receive_desc">The sender is using an older croc version (v10 or earlier). You can Switch to Legacy Mode to receive.</string>
     <string name="action_retry_legacy">Retry (Legacy)</string>
     <string name="action_send_legacy">Send in Legacy Mode</string>
     <string name="action_switch_legacy_receive">Enter New Code (Legacy Mode)</string>

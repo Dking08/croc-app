@@ -311,8 +311,8 @@
     <!-- ════ Motor dual y compatibilidad heredada ════ -->
     <string name="transfer_legacy_fallback_title">Croc antiguo detectado</string>
     <string name="transfer_legacy_fallback_desc">El otro dispositivo usa una versión anterior de croc.</string>
-    <string name="transfer_legacy_fallback_send_desc">El destinatario usa una versión anterior de croc (v10.6 o anterior). Vuelve a enviar en modo heredado para generar un código compatible.</string>
-    <string name="transfer_legacy_fallback_receive_desc">El remitente usa una versión anterior de croc (v10.6 o anterior). Cambia al modo heredado para recibir con su nuevo código.</string>
+    <string name="transfer_legacy_fallback_send_desc">El destinatario usa una versión anterior de croc (v10 o anterior). Puedes cambiar al modo heredado para enviar.</string>
+    <string name="transfer_legacy_fallback_receive_desc">El remitente usa una versión anterior de croc (v10 o anterior). Puedes cambiar al modo heredado para recibir.</string>
     <string name="action_retry_legacy">Reintentar (Heredado)</string>
     <string name="action_send_legacy">Enviar en modo heredado</string>
     <string name="action_switch_legacy_receive">Introducir nuevo código (modo heredado)</string>
