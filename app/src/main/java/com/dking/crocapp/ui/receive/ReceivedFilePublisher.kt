@@ -1,6 +1,8 @@
 package com.dking.crocapp.ui.receive
 
 import android.app.Application
+import android.content.ContentResolver
+import android.content.ContentUris
 import android.content.ContentValues
 import android.media.MediaScannerConnection
 import android.net.Uri
@@ -14,11 +16,12 @@ import java.net.URLConnection
 
 internal object ReceivedFilePublisher {
 
-    fun publish(application: Application, outputDir: File): List<ReceivedFile> {
-        return publish(application, outputDir, customTreeUri = null)
-    }
-
-    fun publish(application: Application, outputDir: File, customTreeUri: Uri?): List<ReceivedFile> {
+    fun publish(
+        application: Application,
+        outputDir: File,
+        customTreeUri: Uri? = null,
+        conflictStrategy: String = "rename"
+    ): List<ReceivedFile> {
         // Recursively collect ALL files, including those inside subdirectories
         // that croc creates when receiving folders.
         val files = collectAllFiles(outputDir)
@@ -31,11 +34,11 @@ internal object ReceivedFilePublisher {
             val relativePath = source.relativeTo(outputDir).path
 
             if (customTreeUri != null) {
-                publishToSafTree(application, source, customTreeUri, relativePath)
+                publishToSafTree(application, source, customTreeUri, relativePath, conflictStrategy)
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                publishToMediaStore(application, source, relativePath)
+                publishToMediaStore(application, source, relativePath, conflictStrategy)
             } else {
-                publishToPublicDownloads(application, source, relativePath)
+                publishToPublicDownloads(application, source, relativePath, conflictStrategy)
             }
         }
     }
@@ -66,7 +69,8 @@ internal object ReceivedFilePublisher {
         application: Application,
         source: File,
         treeUri: Uri,
-        relativePath: String
+        relativePath: String,
+        conflictStrategy: String
     ): ReceivedFile? {
         val resolver = application.contentResolver
         val treeDoc = DocumentFile.fromTreeUri(application, treeUri) ?: return null
@@ -86,32 +90,43 @@ internal object ReceivedFilePublisher {
             }
         }
 
-        // Delete existing file with same name to overwrite
-        targetDir.findFile(source.name)?.delete()
-
         val mimeType = URLConnection.guessContentTypeFromName(source.name) ?: "application/octet-stream"
-        val destDoc = targetDir.createFile(mimeType, source.name) ?: return null
+
+        val destDoc: DocumentFile = if (conflictStrategy == "overwrite") {
+            val existingDoc = targetDir.findFile(source.name)
+            if (existingDoc != null && existingDoc.isFile) {
+                existingDoc
+            } else {
+                targetDir.createFile(mimeType, source.name) ?: return null
+            }
+        } else {
+            // "rename": create a new file (SAF automatically appends (1), (2) on collision)
+            targetDir.createFile(mimeType, source.name) ?: return null
+        }
 
         return try {
-            resolver.openOutputStream(destDoc.uri)?.use { output ->
+            resolver.openOutputStream(destDoc.uri, "wt")?.use { output ->
                 source.inputStream().use { input -> input.copyTo(output) }
             } ?: return null
 
+            val actualName = destDoc.name ?: source.name
             val displayPath = buildString {
                 treeDoc.name?.let { append("$it/") }
                 append("croc-received/")
                 if (subdir.isNotEmpty()) append("$subdir/")
-                append(source.name)
+                append(actualName)
             }
 
             ReceivedFile(
-                name = if (subdir.isNotEmpty()) "$subdir/${source.name}" else source.name,
+                name = if (subdir.isNotEmpty()) "$subdir/$actualName" else actualName,
                 savedLocation = displayPath,
                 uri = destDoc.uri,
                 mimeType = mimeType
             )
         } catch (_: Exception) {
-            destDoc.delete()
+            if (conflictStrategy != "overwrite") {
+                destDoc.delete()
+            }
             null
         }
     }
@@ -119,7 +134,8 @@ internal object ReceivedFilePublisher {
     private fun publishToMediaStore(
         application: Application,
         source: File,
-        relativePath: String
+        relativePath: String,
+        conflictStrategy: String
     ): ReceivedFile? {
         val resolver = application.contentResolver
         // For folder transfers, preserve subdirectory structure under croc-received
@@ -129,79 +145,162 @@ internal object ReceivedFilePublisher {
         } else {
             "${Environment.DIRECTORY_DOWNLOADS}/croc-received"
         }
+        val formattedPath = if (mediaRelativePath.endsWith("/")) mediaRelativePath else "$mediaRelativePath/"
         val mimeType = URLConnection.guessContentTypeFromName(source.name) ?: "application/octet-stream"
 
-        val existingUri = findExistingDownloadUri(application, source.name, mediaRelativePath)
-        if (existingUri != null) {
-            resolver.delete(existingUri, null, null)
+        if (conflictStrategy == "overwrite") {
+            val existingUri = findExistingMediaUri(application, source.name, mediaRelativePath)
+            if (existingUri != null) {
+                val overwritten = try {
+                    resolver.openOutputStream(existingUri, "wt")?.use { output ->
+                        source.inputStream().use { input -> input.copyTo(output) }
+                    }
+                    true
+                } catch (_: Exception) {
+                    try {
+                        resolver.delete(existingUri, null, null)
+                    } catch (_: Exception) {}
+                    false
+                }
+
+                if (overwritten) {
+                    val displayLocation = if (subdir.isNotEmpty()) {
+                        "Downloads/croc-received/$subdir/${source.name}"
+                    } else {
+                        "Downloads/croc-received/${source.name}"
+                    }
+                    return ReceivedFile(
+                        name = if (subdir.isNotEmpty()) "$subdir/${source.name}" else source.name,
+                        savedLocation = displayLocation,
+                        uri = existingUri,
+                        mimeType = mimeType
+                    )
+                }
+            }
+
+            // Fallback for overwrite: ensure any existing physical file or MediaStore record is removed so (1) is not appended
+            try {
+                val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val targetPhysicalFile = File(publicDownloads, if (subdir.isNotEmpty()) "croc-received/$subdir/${source.name}" else "croc-received/${source.name}")
+                if (targetPhysicalFile.exists()) {
+                    targetPhysicalFile.delete()
+                }
+            } catch (_: Exception) {}
+
+            try {
+                val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+                } else {
+                    MediaStore.Files.getContentUri("external")
+                }
+                resolver.delete(
+                    collection,
+                    "${MediaStore.Files.FileColumns.DISPLAY_NAME} = ? COLLATE NOCASE AND ${MediaStore.Files.FileColumns.RELATIVE_PATH} LIKE ?",
+                    arrayOf(source.name, "%croc-received%")
+                )
+            } catch (_: Exception) {}
         }
 
+        // Insert into MediaStore Downloads collection
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, source.name)
             put(MediaStore.Downloads.MIME_TYPE, mimeType)
-            put(MediaStore.Downloads.RELATIVE_PATH, mediaRelativePath)
+            put(MediaStore.Downloads.RELATIVE_PATH, formattedPath)
             put(MediaStore.Downloads.IS_PENDING, 1)
         }
 
-        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
+        val insertUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
 
         return try {
-            resolver.openOutputStream(uri)?.use { output ->
+            resolver.openOutputStream(insertUri)?.use { output ->
                 source.inputStream().use { input -> input.copyTo(output) }
-            } ?: return null
+            } ?: run {
+                resolver.delete(insertUri, null, null)
+                return null
+            }
 
             val readyValues = ContentValues().apply {
                 put(MediaStore.Downloads.IS_PENDING, 0)
             }
-            resolver.update(uri, readyValues, null, null)
+            resolver.update(insertUri, readyValues, null, null)
 
+            val actualDisplayName = getDisplayNameFromUri(resolver, insertUri) ?: source.name
             val displayLocation = if (subdir.isNotEmpty()) {
-                "Downloads/croc-received/$subdir/${source.name}"
+                "Downloads/croc-received/$subdir/$actualDisplayName"
             } else {
-                "Downloads/croc-received/${source.name}"
+                "Downloads/croc-received/$actualDisplayName"
             }
 
             ReceivedFile(
-                name = if (subdir.isNotEmpty()) "$subdir/${source.name}" else source.name,
+                name = if (subdir.isNotEmpty()) "$subdir/$actualDisplayName" else actualDisplayName,
                 savedLocation = displayLocation,
-                uri = uri,
+                uri = insertUri,
                 mimeType = mimeType
             )
         } catch (_: Exception) {
-            resolver.delete(uri, null, null)
+            resolver.delete(insertUri, null, null)
             null
         }
     }
 
-    private fun findExistingDownloadUri(
+    private fun findExistingMediaUri(
         application: Application,
         displayName: String,
-        relativePath: String
+        mediaRelativePath: String
     ): Uri? {
         val resolver = application.contentResolver
-        val projection = arrayOf(MediaStore.Downloads._ID)
-        val selection = "${MediaStore.Downloads.DISPLAY_NAME}=? AND ${MediaStore.Downloads.RELATIVE_PATH}=?"
-        val selectionArgs = arrayOf(displayName, "$relativePath/")
-
-        resolver.query(
-            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-            projection,
-            selection,
-            selectionArgs,
-            null
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID))
-                return Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id.toString())
-            }
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Files.getContentUri("external")
         }
-        return null
+
+        val projection = arrayOf(
+            MediaStore.Files.FileColumns._ID,
+            MediaStore.Files.FileColumns.DISPLAY_NAME,
+            MediaStore.Files.FileColumns.RELATIVE_PATH
+        )
+
+        val selection = "${MediaStore.Files.FileColumns.DISPLAY_NAME} = ? COLLATE NOCASE AND (${MediaStore.Files.FileColumns.RELATIVE_PATH} LIKE ? OR ${MediaStore.Files.FileColumns.RELATIVE_PATH} LIKE ?)"
+        val pathPattern1 = "%${mediaRelativePath.trim('/')}%"
+        val pathPattern2 = "%croc-received%"
+        val selectionArgs = arrayOf(displayName, pathPattern1, pathPattern2)
+
+        return try {
+            resolver.query(
+                collection,
+                projection,
+                selection,
+                selectionArgs,
+                "${MediaStore.Files.FileColumns._ID} DESC"
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID))
+                    ContentUris.withAppendedId(collection, id)
+                } else null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun getDisplayNameFromUri(resolver: ContentResolver, uri: Uri): String? {
+        return try {
+            resolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME))
+                } else null
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun publishToPublicDownloads(
         application: Application,
         source: File,
-        relativePath: String
+        relativePath: String,
+        conflictStrategy: String
     ): ReceivedFile? {
         val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         // For folder transfers, preserve subdirectory structure
@@ -211,28 +310,48 @@ internal object ReceivedFilePublisher {
         } else {
             File(downloadsDir, "croc-received").apply { mkdirs() }
         }
-        val target = File(targetDir, source.name)
+        val targetFile = if (conflictStrategy == "overwrite") {
+            File(targetDir, source.name)
+        } else {
+            getUniqueFile(targetDir, source.name)
+        }
 
         return try {
-            source.copyTo(target, overwrite = true)
+            source.copyTo(targetFile, overwrite = true)
             MediaScannerConnection.scanFile(
                 application,
-                arrayOf(target.absolutePath),
+                arrayOf(targetFile.absolutePath),
                 null,
                 null
             )
             ReceivedFile(
-                name = if (subdir.isNotEmpty()) "$subdir/${source.name}" else source.name,
-                savedLocation = target.absolutePath,
+                name = if (subdir.isNotEmpty()) "$subdir/${targetFile.name}" else targetFile.name,
+                savedLocation = targetFile.absolutePath,
                 uri = FileProvider.getUriForFile(
                     application,
                     "${application.packageName}.fileprovider",
-                    target
+                    targetFile
                 ),
-                mimeType = URLConnection.guessContentTypeFromName(target.name) ?: "application/octet-stream"
+                mimeType = URLConnection.guessContentTypeFromName(targetFile.name) ?: "application/octet-stream"
             )
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun getUniqueFile(dir: File, fileName: String): File {
+        var file = File(dir, fileName)
+        if (!file.exists()) return file
+
+        val nameWithoutExt = file.nameWithoutExtension
+        val ext = file.extension
+        val extWithDot = if (ext.isNotEmpty()) ".$ext" else ""
+
+        var counter = 1
+        while (file.exists()) {
+            file = File(dir, "$nameWithoutExt ($counter)$extWithDot")
+            counter++
+        }
+        return file
     }
 }

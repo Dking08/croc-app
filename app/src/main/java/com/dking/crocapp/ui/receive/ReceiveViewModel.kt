@@ -61,7 +61,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     // Session override takes priority, then settings, then default
                     val customUri = _uiState.value.sessionOverrideUri
                         ?: prefs.receiveLocationUri.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
-                    val receivedFiles = publishReceivedFiles(customUri)
+                    val receivedFiles = publishReceivedFiles(customUri, prefs.receiveConflictStrategy)
                     _uiState.update { it.copy(receivedFiles = receivedFiles) }
                     // Use actual file names for history, not truncated parser names
                     val actualNames = receivedFiles.map { it.name }
@@ -264,9 +264,12 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
      * We don't rely on [fileNames] from the parser because croc truncates
      * long names in its progress output (e.g. "4200-funn...").
      */
-    private fun publishReceivedFiles(customTreeUri: Uri? = null): List<ReceivedFile> {
+    private fun publishReceivedFiles(
+        customTreeUri: Uri? = null,
+        conflictStrategy: String = "rename"
+    ): List<ReceivedFile> {
         val outputDir = currentOutputDir ?: return emptyList()
-        return ReceivedFilePublisher.publish(getApplication(), outputDir, customTreeUri)
+        return ReceivedFilePublisher.publish(getApplication(), outputDir, customTreeUri, conflictStrategy)
     }
 
     private fun normalizeCodePhrase(code: String): String {

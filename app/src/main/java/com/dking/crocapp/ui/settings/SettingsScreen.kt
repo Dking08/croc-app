@@ -392,7 +392,7 @@ fun SettingsScreen(
                 DropdownSetting(
                     label = stringResource(R.string.settings_receive_conflict_strategy),
                     value = prefs.receiveConflictStrategy,
-                    options = listOf("overwrite", "rename"),
+                    options = listOf("rename", "overwrite"),
                     displayTransform = { if (it == "rename") conflictRenameLabel else conflictOverwriteLabel },
                     onValueChange = { viewModel.updateReceiveConflictStrategy(it) }
                 )

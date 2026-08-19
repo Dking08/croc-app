@@ -115,7 +115,7 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
                         val receivedFiles = if (state.isTextTransfer) {
                             emptyList()
                         } else {
-                            publishReceivedFiles(customUri)
+                            publishReceivedFiles(customUri, prefs.receiveConflictStrategy)
                         }
                         val actualNames = if (receivedFiles.isNotEmpty()) {
                             receivedFiles.map { it.name }
@@ -466,9 +466,12 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun publishReceivedFiles(customTreeUri: android.net.Uri? = null): List<ReceivedFile> {
+    private fun publishReceivedFiles(
+        customTreeUri: android.net.Uri? = null,
+        conflictStrategy: String = "rename"
+    ): List<ReceivedFile> {
         val outputDir = currentOutputDir ?: return emptyList()
-        return ReceivedFilePublisher.publish(getApplication(), outputDir, customTreeUri)
+        return ReceivedFilePublisher.publish(getApplication(), outputDir, customTreeUri, conflictStrategy)
     }
 
     private suspend fun saveToHistory(
