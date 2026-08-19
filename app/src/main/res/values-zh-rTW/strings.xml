@@ -323,4 +323,36 @@
     <string name="settings_clear_legacy_binary">清除快取的舊版引擎</string>
     <string name="settings_clear_legacy_binary_desc">從裝置儲存空間刪除已下載的舊版 croc 引擎。</string>
     <string name="settings_clear_legacy_button">清除</string>
+
+    <!-- ════ 新增設定：代理、網路與傳輸選項 ════ -->
+    <string name="settings_proxy_privacy">代理與隱私</string>
+    <string name="settings_socks5_proxy">SOCKS5 代理</string>
+    <string name="settings_socks5_proxy_desc">透過 SOCKS5 代理路由傳輸（例如 Tor / Orbot 的 127.0.0.1:9050）</string>
+    <string name="settings_socks5_proxy_placeholder">例如 127.0.0.1:9050</string>
+    <string name="settings_http_proxy">HTTP 代理</string>
+    <string name="settings_http_proxy_desc">透過 HTTP/HTTPS 代理路由傳輸</string>
+    <string name="settings_http_proxy_placeholder">例如 http://10.0.0.1:8080</string>
+    <string name="settings_relay6_address">IPv6 中繼位址</string>
+    <string name="settings_relay6_address_desc">明確指定 IPv6 中繼伺服器位址（選用）</string>
+    <string name="settings_relay6_placeholder">例如 [::1]:9009</string>
+    <string name="settings_sender_ip">傳送端 IP 覆寫</string>
+    <string name="settings_sender_ip_desc">明確指定傳送端 IP:連接埠（例如處於複雜 NAT 或 VPN 環境）</string>
+    <string name="settings_sender_ip_placeholder">例如 192.168.1.50:9009</string>
+    <string name="settings_hash_algorithm">雜湊演算法</string>
+    <string name="settings_hash_algorithm_desc">總和檢查碼演算法（預設為 xxhash，imohash 為快速抽樣雜湊）</string>
+    <string name="settings_disable_multiplexing">停用多路復用</string>
+    <string name="settings_disable_multiplexing_desc">使用單一連線串流而非多通道傳輸</string>
+    <string name="settings_transfer_ports">傳輸串流 / 連接埠數</string>
+    <string name="settings_transfer_ports_desc">啟用多路復用時使用的並行連接埠數量</string>
+    <string name="settings_zip_folder">傳送前壓縮資料夾</string>
+    <string name="settings_zip_folder_desc">傳送前將資料夾封裝壓縮為單一 zip 檔案</string>
+    <string name="settings_receive_conflict_strategy">檔案衝突處理</string>
+    <string name="settings_receive_conflict_strategy_desc">目標資料夾中存在同名檔案時的處理方式</string>
+    <string name="settings_receive_conflict_overwrite">覆寫現有檔案</string>
+    <string name="settings_receive_conflict_rename">自動重新命名（保留兩者）</string>
+
+    <!-- ════ 進階設定折疊 / 開關 ════ -->
+    <string name="settings_advanced_title">進階設定</string>
+    <string name="settings_advanced_desc">中繼伺服器、代理、網路探索、加密及傳輸微調</string>
+    <string name="settings_advanced_customized_badge">已修改</string>
 </resources>

@@ -323,4 +323,36 @@
     <string name="settings_clear_legacy_binary">清除缓存的旧版引擎</string>
     <string name="settings_clear_legacy_binary_desc">从设备存储中删除已下载的旧版 croc 引擎。</string>
     <string name="settings_clear_legacy_button">清除</string>
+
+    <!-- ════ 新增设置：代理、网络与传输选项 ════ -->
+    <string name="settings_proxy_privacy">代理与隐私</string>
+    <string name="settings_socks5_proxy">SOCKS5 代理</string>
+    <string name="settings_socks5_proxy_desc">通过 SOCKS5 代理路由传输（例如 Tor / Orbot 的 127.0.0.1:9050）</string>
+    <string name="settings_socks5_proxy_placeholder">例如 127.0.0.1:9050</string>
+    <string name="settings_http_proxy">HTTP 代理</string>
+    <string name="settings_http_proxy_desc">通过 HTTP/HTTPS 代理路由传输</string>
+    <string name="settings_http_proxy_placeholder">例如 http://10.0.0.1:8080</string>
+    <string name="settings_relay6_address">IPv6 中继地址</string>
+    <string name="settings_relay6_address_desc">显式指定 IPv6 中继服务器地址（可选）</string>
+    <string name="settings_relay6_placeholder">例如 [::1]:9009</string>
+    <string name="settings_sender_ip">发送方 IP 覆盖</string>
+    <string name="settings_sender_ip_desc">显式设置发送方 IP:端口（如处于复杂 NAT 或 VPN 环境下）</string>
+    <string name="settings_sender_ip_placeholder">例如 192.168.1.50:9009</string>
+    <string name="settings_hash_algorithm">哈希算法</string>
+    <string name="settings_hash_algorithm_desc">校验和算法（默认为 xxhash，imohash 为快速抽样哈希）</string>
+    <string name="settings_disable_multiplexing">禁用多路复用</string>
+    <string name="settings_disable_multiplexing_desc">使用单连接流而非多通道传输</string>
+    <string name="settings_transfer_ports">传输流 / 端口数</string>
+    <string name="settings_transfer_ports_desc">启用多路复用时使用的并发端口数量</string>
+    <string name="settings_zip_folder">发送前压缩文件夹</string>
+    <string name="settings_zip_folder_desc">发送前将文件夹打包压缩为单个 zip 文件</string>
+    <string name="settings_receive_conflict_strategy">文件冲突处理</string>
+    <string name="settings_receive_conflict_strategy_desc">目标文件夹中存在同名文件时的处理方式</string>
+    <string name="settings_receive_conflict_overwrite">覆盖已有文件</string>
+    <string name="settings_receive_conflict_rename">自动重命名（保留两者）</string>
+
+    <!-- ════ 高级设置隐藏 / 折叠 ════ -->
+    <string name="settings_advanced_title">高级设置</string>
+    <string name="settings_advanced_desc">中继服务器、代理、网络发现、加密及传输调优</string>
+    <string name="settings_advanced_customized_badge">已修改</string>
 </resources>

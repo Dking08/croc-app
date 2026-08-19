@@ -505,46 +505,39 @@ fun SettingsScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
-                                if (prefs.hasCustomAdvancedSettings) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(MaterialTheme.colorScheme.tertiaryContainer)
-                                                .padding(horizontal = 6.dp, vertical = 1.5.dp)
-                                        ) {
-                                            Text(
-                                                text = stringResource(R.string.settings_advanced_customized_badge),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                        Text(
-                                            text = stringResource(R.string.settings_advanced_desc),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                } else {
-                                    Text(
-                                        text = stringResource(R.string.settings_advanced_desc),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                Text(
+                                    text = stringResource(R.string.settings_advanced_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Switch(
-                            checked = prefs.showAdvancedSettings,
-                            onCheckedChange = { viewModel.updateShowAdvancedSettings(it) }
-                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            if (prefs.hasCustomAdvancedSettings) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(MaterialTheme.colorScheme.tertiaryContainer)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.settings_advanced_customized_badge),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
+                            Switch(
+                                checked = prefs.showAdvancedSettings,
+                                onCheckedChange = { viewModel.updateShowAdvancedSettings(it) }
+                            )
+                        }
                     }
                 }
             }

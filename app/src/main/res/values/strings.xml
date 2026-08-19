@@ -377,5 +377,5 @@
     <!-- ════ Advanced Settings Masking / Toggle ════ -->
     <string name="settings_advanced_title">Advanced Settings</string>
     <string name="settings_advanced_desc">Relay server, proxy, network discovery, encryption, and transfer tuning</string>
-    <string name="settings_advanced_customized_badge">Customized</string>
+    <string name="settings_advanced_customized_badge">Modified</string>
 </resources>

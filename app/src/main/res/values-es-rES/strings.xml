@@ -323,4 +323,36 @@
     <string name="settings_clear_legacy_binary">Borrar motor heredado en caché</string>
     <string name="settings_clear_legacy_binary_desc">Elimina el binario de croc heredado descargado del almacenamiento del dispositivo.</string>
     <string name="settings_clear_legacy_button">Borrar</string>
+
+    <!-- ════ Nuevos ajustes: Proxy, red y opciones de transferencia ════ -->
+    <string name="settings_proxy_privacy">Proxy y privacidad</string>
+    <string name="settings_socks5_proxy">Proxy SOCKS5</string>
+    <string name="settings_socks5_proxy_desc">Enrutar transferencias a través de un proxy SOCKS5 (p. ej., 127.0.0.1:9050 para Tor / Orbot)</string>
+    <string name="settings_socks5_proxy_placeholder">p. ej., 127.0.0.1:9050</string>
+    <string name="settings_http_proxy">Proxy HTTP</string>
+    <string name="settings_http_proxy_desc">Enrutar transferencias a través de un proxy HTTP/HTTPS</string>
+    <string name="settings_http_proxy_placeholder">p. ej., http://10.0.0.1:8080</string>
+    <string name="settings_relay6_address">Dirección de repetidor IPv6</string>
+    <string name="settings_relay6_address_desc">Dirección explícita del servidor repetidor IPv6 (opcional)</string>
+    <string name="settings_relay6_placeholder">p. ej., [::1]:9009</string>
+    <string name="settings_sender_ip">Anulación de IP del remitente</string>
+    <string name="settings_sender_ip_desc">Establecer explícitamente IP:puerto del remitente si se conoce (detrás de NAT compleja o VPN)</string>
+    <string name="settings_sender_ip_placeholder">p. ej., 192.168.1.50:9009</string>
+    <string name="settings_hash_algorithm">Algoritmo hash</string>
+    <string name="settings_hash_algorithm_desc">Algoritmo de suma de comprobación (xxhash por defecto, imohash es muestreo rápido)</string>
+    <string name="settings_disable_multiplexing">Desactivar multiplexación</string>
+    <string name="settings_disable_multiplexing_desc">Usar un único flujo de conexión en lugar de transferencias multicanal</string>
+    <string name="settings_transfer_ports">Flujos / Puertos de transferencia</string>
+    <string name="settings_transfer_ports_desc">Número de puertos simultáneos utilizados cuando la multiplexación está activada</string>
+    <string name="settings_zip_folder">Comprimir carpeta antes de enviar</string>
+    <string name="settings_zip_folder_desc">Comprime carpetas en un único archivo zip antes de enviarlas</string>
+    <string name="settings_receive_conflict_strategy">Acción ante conflicto de archivos</string>
+    <string name="settings_receive_conflict_strategy_desc">Cómo manejar archivos entrantes que ya existen en la carpeta de destino</string>
+    <string name="settings_receive_conflict_overwrite">Sobrescribir existentes</string>
+    <string name="settings_receive_conflict_rename">Renombrar automáticamente (conservar ambos)</string>
+
+    <!-- ════ Enmascaramiento / Selector de ajustes avanzados ════ -->
+    <string name="settings_advanced_title">Ajustes avanzados</string>
+    <string name="settings_advanced_desc">Servidor repetidor, proxy, descubrimiento de red, cifrado y ajuste de transferencias</string>
+    <string name="settings_advanced_customized_badge">Modificado</string>
 </resources>

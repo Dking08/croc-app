@@ -323,4 +323,36 @@
     <string name="settings_clear_legacy_binary">कैश किया गया लीगेसी इंजन हटाएँ</string>
     <string name="settings_clear_legacy_binary_desc">डिवाइस स्टोरेज से डाउनलोड की गई लीगेसी croc बाइनरी हटाएँ।</string>
     <string name="settings_clear_legacy_button">हटाएँ</string>
+
+    <!-- ════ नए सेटिंग्स: प्रॉक्सी, नेटवर्क और ट्रांसफ़र विकल्प ════ -->
+    <string name="settings_proxy_privacy">प्रॉक्सी और गोपनीयता</string>
+    <string name="settings_socks5_proxy">SOCKS5 प्रॉक्सी</string>
+    <string name="settings_socks5_proxy_desc">ट्रांसफ़र को SOCKS5 प्रॉक्सी से रूट करें (जैसे Tor / Orbot के लिए 127.0.0.1:9050)</string>
+    <string name="settings_socks5_proxy_placeholder">उदा. 127.0.0.1:9050</string>
+    <string name="settings_http_proxy">HTTP प्रॉक्सी</string>
+    <string name="settings_http_proxy_desc">ट्रांसफ़र को HTTP/HTTPS प्रॉक्सी से रूट करें</string>
+    <string name="settings_http_proxy_placeholder">उदा. http://10.0.0.1:8080</string>
+    <string name="settings_relay6_address">IPv6 रिले पता</string>
+    <string name="settings_relay6_address_desc">स्पष्ट IPv6 रिले सर्वर पता (वैकल्पिक)</string>
+    <string name="settings_relay6_placeholder">उदा. [::1]:9009</string>
+    <string name="settings_sender_ip">सेंडर IP ओवरराइड</string>
+    <string name="settings_sender_ip_desc">यदि ज्ञात हो तो सेंडर IP:पोर्ट सीधे सेट करें (NAT या VPN के पीछे)</string>
+    <string name="settings_sender_ip_placeholder">उदा. 192.168.1.50:9009</string>
+    <string name="settings_hash_algorithm">हैश एल्गोरिथम</string>
+    <string name="settings_hash_algorithm_desc">चेकसम एल्गोरिथम (डिफ़ॉल्ट xxhash है, imohash तेज़ सैंपल्ड हैशिंग है)</string>
+    <string name="settings_disable_multiplexing">मल्टीप्लेक्सिंग बंद करें</string>
+    <string name="settings_disable_multiplexing_desc">मल्टी-चैनल के बजाय सिंगल कनेक्शन स्ट्रीम का उपयोग करें</string>
+    <string name="settings_transfer_ports">ट्रांसफ़र स्ट्रीम / पोर्ट्स</string>
+    <string name="settings_transfer_ports_desc">मल्टीप्लेक्सिंग चालू होने पर एक साथ उपयोग होने वाले पोर्ट्स की संख्या</string>
+    <string name="settings_zip_folder">भेजने से पहले फ़ोल्डर ज़िप करें</string>
+    <string name="settings_zip_folder_desc">भेजने से पहले फ़ोल्डर को एक एकल ज़िप फ़ाइल में संपीड़ित करें</string>
+    <string name="settings_receive_conflict_strategy">फ़ाइल टकराव कार्रवाई</string>
+    <string name="settings_receive_conflict_strategy_desc">गंतव्य फ़ोल्डर में पहले से मौजूद फ़ाइलों के आने पर क्या करें</string>
+    <string name="settings_receive_conflict_overwrite">मौजूदा फ़ाइल बदलें</string>
+    <string name="settings_receive_conflict_rename">स्वतः नया नाम दें (दोनों रखें)</string>
+
+    <!-- ════ उन्नत सेटिंग्स ════ -->
+    <string name="settings_advanced_title">उन्नत सेटिंग्स</string>
+    <string name="settings_advanced_desc">रिले सर्वर, प्रॉक्सी, नेटवर्क खोज, एन्क्रिप्शन और ट्रांसफ़र ट्यूनिंग</string>
+    <string name="settings_advanced_customized_badge">संशोधित</string>
 </resources>
