@@ -32,6 +32,15 @@ class UserPreferencesRepository(private val context: Context) {
         val QUICK_RECEIVE_CODE = stringPreferencesKey("quick_receive_code")
         val RECEIVE_LOCATION_URI = stringPreferencesKey("receive_location_uri")
         val TRY_LEGACY_FIRST = booleanPreferencesKey("try_legacy_first")
+        val SOCKS5_PROXY = stringPreferencesKey("socks5_proxy")
+        val HTTP_PROXY = stringPreferencesKey("http_proxy")
+        val RECEIVE_CONFLICT_STRATEGY = stringPreferencesKey("receive_conflict_strategy")
+        val RELAY6_ADDRESS = stringPreferencesKey("relay6_address")
+        val SENDER_IP = stringPreferencesKey("sender_ip")
+        val HASH_ALGORITHM = stringPreferencesKey("hash_algorithm")
+        val DISABLE_MULTIPLEXING = booleanPreferencesKey("disable_multiplexing")
+        val TRANSFER_PORTS = stringPreferencesKey("transfer_ports")
+        val ZIP_FOLDER_BEFORE_SEND = booleanPreferencesKey("zip_folder_before_send")
     }
 
     data class CrocPreferences(
@@ -50,7 +59,16 @@ class UserPreferencesRepository(private val context: Context) {
         val quickSendCode: String = "",
         val quickReceiveCode: String = "",
         val receiveLocationUri: String = "",
-        val tryLegacyFirst: Boolean = false
+        val tryLegacyFirst: Boolean = false,
+        val socks5Proxy: String = "",
+        val httpProxy: String = "",
+        val receiveConflictStrategy: String = "overwrite",
+        val relay6Address: String = "",
+        val senderIp: String = "",
+        val hashAlgorithm: String = "xxhash",
+        val disableMultiplexing: Boolean = true,
+        val transferPorts: String = "4",
+        val zipFolderBeforeSend: Boolean = false
     ) {
         /** Effective Quick Send code: explicit quick code → defaultCodePhrase → empty */
         val effectiveQuickSendCode: String
@@ -84,7 +102,16 @@ class UserPreferencesRepository(private val context: Context) {
             quickSendCode = normalizeCodePhrase(prefs[QUICK_SEND_CODE] ?: ""),
             quickReceiveCode = normalizeCodePhrase(prefs[QUICK_RECEIVE_CODE] ?: ""),
             receiveLocationUri = prefs[RECEIVE_LOCATION_URI] ?: "",
-            tryLegacyFirst = prefs[TRY_LEGACY_FIRST] ?: false
+            tryLegacyFirst = prefs[TRY_LEGACY_FIRST] ?: false,
+            socks5Proxy = prefs[SOCKS5_PROXY] ?: "",
+            httpProxy = prefs[HTTP_PROXY] ?: "",
+            receiveConflictStrategy = prefs[RECEIVE_CONFLICT_STRATEGY] ?: "overwrite",
+            relay6Address = prefs[RELAY6_ADDRESS] ?: "",
+            senderIp = prefs[SENDER_IP] ?: "",
+            hashAlgorithm = prefs[HASH_ALGORITHM] ?: "xxhash",
+            disableMultiplexing = prefs[DISABLE_MULTIPLEXING] ?: true,
+            transferPorts = prefs[TRANSFER_PORTS] ?: "4",
+            zipFolderBeforeSend = prefs[ZIP_FOLDER_BEFORE_SEND] ?: false
         )
     }
 
@@ -206,6 +233,42 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun updateTryLegacyFirst(value: Boolean) {
         context.dataStore.edit { it[TRY_LEGACY_FIRST] = value }
+    }
+
+    suspend fun updateSocks5Proxy(value: String) {
+        context.dataStore.edit { it[SOCKS5_PROXY] = value.trim() }
+    }
+
+    suspend fun updateHttpProxy(value: String) {
+        context.dataStore.edit { it[HTTP_PROXY] = value.trim() }
+    }
+
+    suspend fun updateReceiveConflictStrategy(value: String) {
+        context.dataStore.edit { it[RECEIVE_CONFLICT_STRATEGY] = value }
+    }
+
+    suspend fun updateRelay6Address(value: String) {
+        context.dataStore.edit { it[RELAY6_ADDRESS] = value.trim() }
+    }
+
+    suspend fun updateSenderIp(value: String) {
+        context.dataStore.edit { it[SENDER_IP] = value.trim() }
+    }
+
+    suspend fun updateHashAlgorithm(value: String) {
+        context.dataStore.edit { it[HASH_ALGORITHM] = value }
+    }
+
+    suspend fun updateDisableMultiplexing(value: Boolean) {
+        context.dataStore.edit { it[DISABLE_MULTIPLEXING] = value }
+    }
+
+    suspend fun updateTransferPorts(value: String) {
+        context.dataStore.edit { it[TRANSFER_PORTS] = value.trim() }
+    }
+
+    suspend fun updateZipFolderBeforeSend(value: Boolean) {
+        context.dataStore.edit { it[ZIP_FOLDER_BEFORE_SEND] = value }
     }
 
     suspend fun clearReceiveLocationUri() {

@@ -347,4 +347,31 @@
     <string name="settings_clear_legacy_binary_desc">Delete the downloaded legacy croc binary from device storage.</string>
     <string name="settings_clear_legacy_button">Clear</string>
 
+    <!-- ════ New Settings: Proxy, Network & Transfer Options ════ -->
+    <string name="settings_proxy_privacy">Proxy &amp; Privacy</string>
+    <string name="settings_socks5_proxy">SOCKS5 Proxy</string>
+    <string name="settings_socks5_proxy_desc">Route transfers through a SOCKS5 proxy (e.g. 127.0.0.1:9050 for Tor / Orbot)</string>
+    <string name="settings_socks5_proxy_placeholder">e.g. 127.0.0.1:9050</string>
+    <string name="settings_http_proxy">HTTP Proxy</string>
+    <string name="settings_http_proxy_desc">Route transfers through an HTTP/HTTPS proxy</string>
+    <string name="settings_http_proxy_placeholder">e.g. http://10.0.0.1:8080</string>
+    <string name="settings_relay6_address">IPv6 Relay Address</string>
+    <string name="settings_relay6_address_desc">Explicit IPv6 relay server address (optional)</string>
+    <string name="settings_relay6_placeholder">e.g. [::1]:9009</string>
+    <string name="settings_sender_ip">Sender IP Override</string>
+    <string name="settings_sender_ip_desc">Explicitly set sender IP:port if known (e.g. behind complex NAT or VPN)</string>
+    <string name="settings_sender_ip_placeholder">e.g. 192.168.1.50:9009</string>
+    <string name="settings_hash_algorithm">Hash Algorithm</string>
+    <string name="settings_hash_algorithm_desc">Checksum algorithm (xxhash is default, imohash is fast sampled hashing)</string>
+    <string name="settings_disable_multiplexing">Disable Multiplexing</string>
+    <string name="settings_disable_multiplexing_desc">Use a single connection stream instead of multi-channel transfers</string>
+    <string name="settings_transfer_ports">Transfer Streams / Ports</string>
+    <string name="settings_transfer_ports_desc">Number of concurrent ports used when multiplexing is enabled</string>
+    <string name="settings_zip_folder">Zip Folder Before Sending</string>
+    <string name="settings_zip_folder_desc">Compress folders into a single zip archive before sending</string>
+    <string name="settings_receive_conflict_strategy">File Conflict Action</string>
+    <string name="settings_receive_conflict_strategy_desc">How to handle incoming files that already exist in the destination folder</string>
+    <string name="settings_receive_conflict_overwrite">Overwrite existing</string>
+    <string name="settings_receive_conflict_rename">Auto-rename (keep both)</string>
+
 </resources>

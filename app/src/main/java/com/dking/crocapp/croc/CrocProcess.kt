@@ -81,6 +81,9 @@ class CrocProcess(
             if (relayAddress.isNotBlank()) {
                 add("--relay"); add(relayAddress)
             }
+            if (prefs.relay6Address.isNotBlank()) {
+                add("--relay6"); add(prefs.relay6Address)
+            }
             if (prefs.relayPassword.isNotBlank()) {
                 add("--pass"); add(prefs.relayPassword)
             }
@@ -94,6 +97,15 @@ class CrocProcess(
             }
             if (prefs.multicastAddress.isNotBlank() && prefs.multicastAddress != "239.255.255.250") {
                 add("--multicast"); add(prefs.multicastAddress)
+            }
+            if (prefs.socks5Proxy.isNotBlank()) {
+                add("--socks5"); add(prefs.socks5Proxy)
+            }
+            if (prefs.httpProxy.isNotBlank()) {
+                add("--connect"); add(prefs.httpProxy)
+            }
+            if (prefs.senderIp.isNotBlank()) {
+                add("--ip"); add(prefs.senderIp)
             }
         }
     }
@@ -148,8 +160,24 @@ class CrocProcess(
                     addAll(buildGlobalFlags(prefs))
                     add("--ignore-stdin")
                     add("send")
-                    add("--no-local")
-                    add("--no-multi")
+                    // Only disable local relay if not forcing LAN mode
+                    if (!prefs.forceLocal) {
+                        add("--no-local")
+                    }
+                    // Multiplexing & transfer streams
+                    if (prefs.disableMultiplexing) {
+                        add("--no-multi")
+                    } else if (prefs.transferPorts.isNotBlank() && prefs.transferPorts != "4") {
+                        add("--transfers"); add(prefs.transferPorts)
+                    }
+                    // Hash algorithm
+                    if (prefs.hashAlgorithm.isNotBlank() && prefs.hashAlgorithm != "xxhash") {
+                        add("--hash"); add(prefs.hashAlgorithm)
+                    }
+                    // Zip folder before sending
+                    if (prefs.zipFolderBeforeSend) {
+                        add("--zip")
+                    }
                     addAll(filePaths)
                 }
                 val workDir = File(filePaths.first()).parentFile ?: homeDir
@@ -182,8 +210,17 @@ class CrocProcess(
                     addAll(buildGlobalFlags(prefs))
                     add("--ignore-stdin")
                     add("send")
-                    add("--no-local")
-                    add("--no-multi")
+                    if (!prefs.forceLocal) {
+                        add("--no-local")
+                    }
+                    if (prefs.disableMultiplexing) {
+                        add("--no-multi")
+                    } else if (prefs.transferPorts.isNotBlank() && prefs.transferPorts != "4") {
+                        add("--transfers"); add(prefs.transferPorts)
+                    }
+                    if (prefs.hashAlgorithm.isNotBlank() && prefs.hashAlgorithm != "xxhash") {
+                        add("--hash"); add(prefs.hashAlgorithm)
+                    }
                     add("--text"); add(text)
                 }
 
@@ -212,7 +249,8 @@ class CrocProcess(
                 val binaryPath = binaryManager.getBinaryPath(engine)
                 outputDir.mkdirs()
 
-                val command = mutableListOf(binaryPath, "--yes", "--overwrite").apply {
+                val conflictFlag = if (prefs.receiveConflictStrategy == "rename") "--rename" else "--overwrite"
+                val command = mutableListOf(binaryPath, "--yes", conflictFlag).apply {
                     addAll(buildGlobalFlags(prefs))
                 }
 

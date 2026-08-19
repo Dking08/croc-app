@@ -40,6 +40,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updateReceiveLocation(uri: String) = viewModelScope.launch { prefsRepo.updateReceiveLocationUri(uri) }
     fun clearReceiveLocation() = viewModelScope.launch { prefsRepo.clearReceiveLocationUri() }
     fun updateTryLegacyFirst(value: Boolean) = viewModelScope.launch { prefsRepo.updateTryLegacyFirst(value) }
+    fun updateSocks5Proxy(value: String) = viewModelScope.launch { prefsRepo.updateSocks5Proxy(value) }
+    fun updateHttpProxy(value: String) = viewModelScope.launch { prefsRepo.updateHttpProxy(value) }
+    fun updateReceiveConflictStrategy(value: String) = viewModelScope.launch { prefsRepo.updateReceiveConflictStrategy(value) }
+    fun updateRelay6Address(value: String) = viewModelScope.launch { prefsRepo.updateRelay6Address(value) }
+    fun updateSenderIp(value: String) = viewModelScope.launch { prefsRepo.updateSenderIp(value) }
+    fun updateHashAlgorithm(value: String) = viewModelScope.launch { prefsRepo.updateHashAlgorithm(value) }
+    fun updateDisableMultiplexing(value: Boolean) = viewModelScope.launch { prefsRepo.updateDisableMultiplexing(value) }
+    fun updateTransferPorts(value: String) = viewModelScope.launch { prefsRepo.updateTransferPorts(value) }
+    fun updateZipFolderBeforeSend(value: Boolean) = viewModelScope.launch { prefsRepo.updateZipFolderBeforeSend(value) }
     fun clearLegacyBinary() = viewModelScope.launch { binaryManager.clearBinary(CrocEngine.LEGACY) }
     fun isLegacyBinaryCached(): Boolean = binaryManager.isBinaryCached(CrocEngine.LEGACY)
 }

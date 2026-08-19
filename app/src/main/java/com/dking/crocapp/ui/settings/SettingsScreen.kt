@@ -276,6 +276,16 @@ fun SettingsScreen(
                     modifier = Modifier.padding(vertical = 4.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                 )
+                TextFieldSetting(
+                    label = stringResource(R.string.settings_relay6_address),
+                    value = prefs.relay6Address,
+                    onValueChange = { viewModel.updateRelay6Address(it) },
+                    placeholder = stringResource(R.string.settings_relay6_placeholder)
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
                 PasswordTextFieldSetting(
                     label = stringResource(R.string.settings_relay_password_label),
                     value = prefs.relayPassword,
@@ -283,6 +293,38 @@ fun SettingsScreen(
                     placeholder = "pass123",
                     visible = relayPasswordVisible,
                     onToggleVisibility = { relayPasswordVisible = !relayPasswordVisible }
+                )
+            }
+
+            // Proxy & Privacy
+            SettingsSection(icon = Icons.Rounded.Security, title = stringResource(R.string.settings_proxy_privacy)) {
+                TextFieldSetting(
+                    label = stringResource(R.string.settings_socks5_proxy),
+                    value = prefs.socks5Proxy,
+                    onValueChange = { viewModel.updateSocks5Proxy(it) },
+                    placeholder = stringResource(R.string.settings_socks5_proxy_placeholder)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.settings_socks5_proxy_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+                TextFieldSetting(
+                    label = stringResource(R.string.settings_http_proxy),
+                    value = prefs.httpProxy,
+                    onValueChange = { viewModel.updateHttpProxy(it) },
+                    placeholder = stringResource(R.string.settings_http_proxy_placeholder)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.settings_http_proxy_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -411,6 +453,22 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                 )
                 TextFieldSetting(
+                    label = stringResource(R.string.settings_sender_ip),
+                    value = prefs.senderIp,
+                    onValueChange = { viewModel.updateSenderIp(it) },
+                    placeholder = stringResource(R.string.settings_sender_ip_placeholder)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.settings_sender_ip_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+                TextFieldSetting(
                     label = stringResource(R.string.settings_multicast_address_label),
                     value = prefs.multicastAddress,
                     onValueChange = { viewModel.updateMulticastAddress(it) },
@@ -430,12 +488,68 @@ fun SettingsScreen(
 
             // Transfer
             SettingsSection(icon = Icons.Rounded.Speed, title = stringResource(R.string.settings_transfer_options_label)) {
+                DropdownSetting(
+                    label = stringResource(R.string.settings_hash_algorithm),
+                    value = prefs.hashAlgorithm,
+                    options = listOf("xxhash", "imohash", "md5", "highway"),
+                    onValueChange = { viewModel.updateHashAlgorithm(it) }
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.settings_hash_algorithm_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+                SwitchSetting(
+                    icon = Icons.Rounded.Speed,
+                    label = stringResource(R.string.settings_disable_multiplexing),
+                    description = stringResource(R.string.settings_disable_multiplexing_desc),
+                    checked = prefs.disableMultiplexing,
+                    onCheckedChange = { viewModel.updateDisableMultiplexing(it) }
+                )
+                if (!prefs.disableMultiplexing) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
+                    DropdownSetting(
+                        label = stringResource(R.string.settings_transfer_ports),
+                        value = prefs.transferPorts,
+                        options = listOf("1", "2", "4", "6", "8"),
+                        onValueChange = { viewModel.updateTransferPorts(it) }
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(R.string.settings_transfer_ports_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
                 SwitchSetting(
                     icon = Icons.Rounded.Speed,
                     label = stringResource(R.string.settings_disable_compression_label),
                     description = stringResource(R.string.settings_disable_compression_full_desc),
                     checked = prefs.disableCompression,
                     onCheckedChange = { viewModel.updateDisableCompression(it) }
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+                SwitchSetting(
+                    icon = Icons.Rounded.FolderOpen,
+                    label = stringResource(R.string.settings_zip_folder),
+                    description = stringResource(R.string.settings_zip_folder_desc),
+                    checked = prefs.zipFolderBeforeSend,
+                    onCheckedChange = { viewModel.updateZipFolderBeforeSend(it) }
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 2.dp),
@@ -476,6 +590,26 @@ fun SettingsScreen(
             }
 
             SettingsSection(icon = Icons.Rounded.FolderOpen, title = stringResource(R.string.settings_storage)) {
+                val conflictOverwriteLabel = stringResource(R.string.settings_receive_conflict_overwrite)
+                val conflictRenameLabel = stringResource(R.string.settings_receive_conflict_rename)
+                DropdownSetting(
+                    label = stringResource(R.string.settings_receive_conflict_strategy),
+                    value = prefs.receiveConflictStrategy,
+                    options = listOf("overwrite", "rename"),
+                    displayTransform = { if (it == "rename") conflictRenameLabel else conflictOverwriteLabel },
+                    onValueChange = { viewModel.updateReceiveConflictStrategy(it) }
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.settings_receive_conflict_strategy_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+
                 val currentUri = prefs.receiveLocationUri
                 val customFolderLabel = stringResource(R.string.settings_receive_location_custom)
                 val defaultLabel = stringResource(R.string.settings_receive_location_default)
