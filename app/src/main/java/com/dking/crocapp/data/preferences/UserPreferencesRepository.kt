@@ -41,6 +41,7 @@ class UserPreferencesRepository(private val context: Context) {
         val DISABLE_MULTIPLEXING = booleanPreferencesKey("disable_multiplexing")
         val TRANSFER_PORTS = stringPreferencesKey("transfer_ports")
         val ZIP_FOLDER_BEFORE_SEND = booleanPreferencesKey("zip_folder_before_send")
+        val SHOW_ADVANCED_SETTINGS = booleanPreferencesKey("show_advanced_settings")
     }
 
     data class CrocPreferences(
@@ -68,7 +69,8 @@ class UserPreferencesRepository(private val context: Context) {
         val hashAlgorithm: String = "xxhash",
         val disableMultiplexing: Boolean = true,
         val transferPorts: String = "4",
-        val zipFolderBeforeSend: Boolean = false
+        val zipFolderBeforeSend: Boolean = false,
+        val showAdvancedSettings: Boolean = false
     ) {
         /** Effective Quick Send code: explicit quick code → defaultCodePhrase → empty */
         val effectiveQuickSendCode: String
@@ -76,6 +78,26 @@ class UserPreferencesRepository(private val context: Context) {
         /** Effective Quick Receive code: explicit quick code → defaultCodePhrase → empty */
         val effectiveQuickReceiveCode: String
             get() = quickReceiveCode.ifBlank { defaultCodePhrase }
+
+        /** True if any advanced/power-user setting has been changed from default */
+        val hasCustomAdvancedSettings: Boolean
+            get() = relayAddress != "croc.schollz.com:9009" ||
+                    relayPassword != "pass123" ||
+                    relay6Address.isNotBlank() ||
+                    socks5Proxy.isNotBlank() ||
+                    httpProxy.isNotBlank() ||
+                    senderIp.isNotBlank() ||
+                    forceLocal ||
+                    !useInternalDns ||
+                    multicastAddress != "239.255.255.250" ||
+                    pakeCurve != "p256" ||
+                    hashAlgorithm != "xxhash" ||
+                    !disableMultiplexing ||
+                    transferPorts != "4" ||
+                    disableCompression ||
+                    zipFolderBeforeSend ||
+                    uploadThrottle.isNotBlank() ||
+                    tryLegacyFirst
     }
 
     val preferencesFlow: Flow<CrocPreferences> = context.dataStore.data.map { prefs ->
@@ -111,7 +133,8 @@ class UserPreferencesRepository(private val context: Context) {
             hashAlgorithm = prefs[HASH_ALGORITHM] ?: "xxhash",
             disableMultiplexing = prefs[DISABLE_MULTIPLEXING] ?: true,
             transferPorts = prefs[TRANSFER_PORTS] ?: "4",
-            zipFolderBeforeSend = prefs[ZIP_FOLDER_BEFORE_SEND] ?: false
+            zipFolderBeforeSend = prefs[ZIP_FOLDER_BEFORE_SEND] ?: false,
+            showAdvancedSettings = prefs[SHOW_ADVANCED_SETTINGS] ?: false
         )
     }
 
@@ -269,6 +292,10 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun updateZipFolderBeforeSend(value: Boolean) {
         context.dataStore.edit { it[ZIP_FOLDER_BEFORE_SEND] = value }
+    }
+
+    suspend fun updateShowAdvancedSettings(value: Boolean) {
+        context.dataStore.edit { it[SHOW_ADVANCED_SETTINGS] = value }
     }
 
     suspend fun clearReceiveLocationUri() {

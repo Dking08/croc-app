@@ -17,8 +17,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -34,6 +40,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.Wifi
@@ -264,70 +271,6 @@ fun SettingsScreen(
                 }
             }
 
-            // Relay Settings
-            SettingsSection(icon = Icons.Rounded.Cloud, title = stringResource(R.string.settings_relay_server)) {
-                TextFieldSetting(
-                    label = stringResource(R.string.settings_relay_address_label),
-                    value = prefs.relayAddress,
-                    onValueChange = { viewModel.updateRelayAddress(it) },
-                    placeholder = "croc.schollz.com:9009"
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-                TextFieldSetting(
-                    label = stringResource(R.string.settings_relay6_address),
-                    value = prefs.relay6Address,
-                    onValueChange = { viewModel.updateRelay6Address(it) },
-                    placeholder = stringResource(R.string.settings_relay6_placeholder)
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-                PasswordTextFieldSetting(
-                    label = stringResource(R.string.settings_relay_password_label),
-                    value = prefs.relayPassword,
-                    onValueChange = { viewModel.updateRelayPassword(it) },
-                    placeholder = "pass123",
-                    visible = relayPasswordVisible,
-                    onToggleVisibility = { relayPasswordVisible = !relayPasswordVisible }
-                )
-            }
-
-            // Proxy & Privacy
-            SettingsSection(icon = Icons.Rounded.Security, title = stringResource(R.string.settings_proxy_privacy)) {
-                TextFieldSetting(
-                    label = stringResource(R.string.settings_socks5_proxy),
-                    value = prefs.socks5Proxy,
-                    onValueChange = { viewModel.updateSocks5Proxy(it) },
-                    placeholder = stringResource(R.string.settings_socks5_proxy_placeholder)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = stringResource(R.string.settings_socks5_proxy_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-                TextFieldSetting(
-                    label = stringResource(R.string.settings_http_proxy),
-                    value = prefs.httpProxy,
-                    onValueChange = { viewModel.updateHttpProxy(it) },
-                    placeholder = stringResource(R.string.settings_http_proxy_placeholder)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = stringResource(R.string.settings_http_proxy_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
             // Secret Codes
             SettingsSection(icon = Icons.Rounded.Security, title = stringResource(R.string.settings_secret_codes)) {
                 PasswordTextFieldSetting(
@@ -428,152 +371,6 @@ fun SettingsScreen(
                 )
             }
 
-            // Network
-            SettingsSection(icon = Icons.Rounded.Wifi, title = stringResource(R.string.settings_network)) {
-                SwitchSetting(
-                    icon = Icons.Rounded.Wifi,
-                    label = stringResource(R.string.settings_local_only),
-                    description = stringResource(R.string.settings_local_only_desc),
-                    checked = prefs.forceLocal,
-                    onCheckedChange = { viewModel.updateForceLocal(it) }
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 2.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-                SwitchSetting(
-                    icon = Icons.Rounded.Cloud,
-                    label = stringResource(R.string.settings_builtin_dns),
-                    description = stringResource(R.string.settings_builtin_dns_desc),
-                    checked = prefs.useInternalDns,
-                    onCheckedChange = { viewModel.updateUseInternalDns(it) }
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 2.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-                TextFieldSetting(
-                    label = stringResource(R.string.settings_sender_ip),
-                    value = prefs.senderIp,
-                    onValueChange = { viewModel.updateSenderIp(it) },
-                    placeholder = stringResource(R.string.settings_sender_ip_placeholder)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = stringResource(R.string.settings_sender_ip_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 2.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-                TextFieldSetting(
-                    label = stringResource(R.string.settings_multicast_address_label),
-                    value = prefs.multicastAddress,
-                    onValueChange = { viewModel.updateMulticastAddress(it) },
-                    placeholder = "239.255.255.250"
-                )
-            }
-
-            // Encryption
-            SettingsSection(icon = Icons.Rounded.Security, title = stringResource(R.string.settings_encryption)) {
-                DropdownSetting(
-                    label = stringResource(R.string.settings_pake_curve_label),
-                    value = prefs.pakeCurve,
-                    options = listOf("p256", "p384", "p521", "siec", "ed25519"),
-                    onValueChange = { viewModel.updatePakeCurve(it) }
-                )
-            }
-
-            // Transfer
-            SettingsSection(icon = Icons.Rounded.Speed, title = stringResource(R.string.settings_transfer_options_label)) {
-                DropdownSetting(
-                    label = stringResource(R.string.settings_hash_algorithm),
-                    value = prefs.hashAlgorithm,
-                    options = listOf("xxhash", "imohash", "md5", "highway"),
-                    onValueChange = { viewModel.updateHashAlgorithm(it) }
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = stringResource(R.string.settings_hash_algorithm_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 2.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-                SwitchSetting(
-                    icon = Icons.Rounded.Speed,
-                    label = stringResource(R.string.settings_disable_multiplexing),
-                    description = stringResource(R.string.settings_disable_multiplexing_desc),
-                    checked = prefs.disableMultiplexing,
-                    onCheckedChange = { viewModel.updateDisableMultiplexing(it) }
-                )
-                if (!prefs.disableMultiplexing) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 2.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                    )
-                    DropdownSetting(
-                        label = stringResource(R.string.settings_transfer_ports),
-                        value = prefs.transferPorts,
-                        options = listOf("1", "2", "4", "6", "8"),
-                        onValueChange = { viewModel.updateTransferPorts(it) }
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = stringResource(R.string.settings_transfer_ports_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 2.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-                SwitchSetting(
-                    icon = Icons.Rounded.Speed,
-                    label = stringResource(R.string.settings_disable_compression_label),
-                    description = stringResource(R.string.settings_disable_compression_full_desc),
-                    checked = prefs.disableCompression,
-                    onCheckedChange = { viewModel.updateDisableCompression(it) }
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 2.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-                SwitchSetting(
-                    icon = Icons.Rounded.FolderOpen,
-                    label = stringResource(R.string.settings_zip_folder),
-                    description = stringResource(R.string.settings_zip_folder_desc),
-                    checked = prefs.zipFolderBeforeSend,
-                    onCheckedChange = { viewModel.updateZipFolderBeforeSend(it) }
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 2.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-                SwitchSetting(
-                    icon = Icons.Rounded.History,
-                    label = stringResource(R.string.settings_try_legacy_first),
-                    description = stringResource(R.string.settings_try_legacy_first_desc),
-                    checked = prefs.tryLegacyFirst,
-                    onCheckedChange = { viewModel.updateTryLegacyFirst(it) }
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 2.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-                TextFieldSetting(
-                    label = stringResource(R.string.settings_upload_speed_limit),
-                    value = prefs.uploadThrottle,
-                    onValueChange = { viewModel.updateUploadThrottle(it) },
-                    placeholder = stringResource(R.string.settings_upload_speed_placeholder)
-                )
-            }
-
             // Storage / Receive Location
             val context = LocalContext.current
             val receiveLocationPicker = rememberLauncherForActivityResult(
@@ -666,37 +463,339 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
 
-                if (viewModel.isLegacyBinaryCached()) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                    )
+            // Advanced Settings Toggle Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                ),
+                shape = MaterialTheme.shapes.extraLarge
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.settings_clear_legacy_binary),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Tune,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.settings_advanced_title),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                if (prefs.hasCustomAdvancedSettings) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(MaterialTheme.colorScheme.tertiaryContainer)
+                                                .padding(horizontal = 6.dp, vertical = 1.5.dp)
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.settings_advanced_customized_badge),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        Text(
+                                            text = stringResource(R.string.settings_advanced_desc),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                } else {
+                                    Text(
+                                        text = stringResource(R.string.settings_advanced_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Switch(
+                            checked = prefs.showAdvancedSettings,
+                            onCheckedChange = { viewModel.updateShowAdvancedSettings(it) }
+                        )
+                    }
+                }
+            }
+
+            // Advanced Settings Sections (Collapsible)
+            AnimatedVisibility(
+                visible = prefs.showAdvancedSettings,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    // Relay Settings
+                    SettingsSection(icon = Icons.Rounded.Cloud, title = stringResource(R.string.settings_relay_server)) {
+                        TextFieldSetting(
+                            label = stringResource(R.string.settings_relay_address_label),
+                            value = prefs.relayAddress,
+                            onValueChange = { viewModel.updateRelayAddress(it) },
+                            placeholder = "croc.schollz.com:9009"
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                        TextFieldSetting(
+                            label = stringResource(R.string.settings_relay6_address),
+                            value = prefs.relay6Address,
+                            onValueChange = { viewModel.updateRelay6Address(it) },
+                            placeholder = stringResource(R.string.settings_relay6_placeholder)
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                        PasswordTextFieldSetting(
+                            label = stringResource(R.string.settings_relay_password_label),
+                            value = prefs.relayPassword,
+                            onValueChange = { viewModel.updateRelayPassword(it) },
+                            placeholder = "pass123",
+                            visible = relayPasswordVisible,
+                            onToggleVisibility = { relayPasswordVisible = !relayPasswordVisible }
+                        )
+                    }
+
+                    // Proxy & Privacy
+                    SettingsSection(icon = Icons.Rounded.Security, title = stringResource(R.string.settings_proxy_privacy)) {
+                        TextFieldSetting(
+                            label = stringResource(R.string.settings_socks5_proxy),
+                            value = prefs.socks5Proxy,
+                            onValueChange = { viewModel.updateSocks5Proxy(it) },
+                            placeholder = stringResource(R.string.settings_socks5_proxy_placeholder)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.settings_socks5_proxy_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                        TextFieldSetting(
+                            label = stringResource(R.string.settings_http_proxy),
+                            value = prefs.httpProxy,
+                            onValueChange = { viewModel.updateHttpProxy(it) },
+                            placeholder = stringResource(R.string.settings_http_proxy_placeholder)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.settings_http_proxy_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Network
+                    SettingsSection(icon = Icons.Rounded.Wifi, title = stringResource(R.string.settings_network)) {
+                        SwitchSetting(
+                            icon = Icons.Rounded.Wifi,
+                            label = stringResource(R.string.settings_local_only),
+                            description = stringResource(R.string.settings_local_only_desc),
+                            checked = prefs.forceLocal,
+                            onCheckedChange = { viewModel.updateForceLocal(it) }
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                        SwitchSetting(
+                            icon = Icons.Rounded.Cloud,
+                            label = stringResource(R.string.settings_builtin_dns),
+                            description = stringResource(R.string.settings_builtin_dns_desc),
+                            checked = prefs.useInternalDns,
+                            onCheckedChange = { viewModel.updateUseInternalDns(it) }
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                        TextFieldSetting(
+                            label = stringResource(R.string.settings_sender_ip),
+                            value = prefs.senderIp,
+                            onValueChange = { viewModel.updateSenderIp(it) },
+                            placeholder = stringResource(R.string.settings_sender_ip_placeholder)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.settings_sender_ip_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                        TextFieldSetting(
+                            label = stringResource(R.string.settings_multicast_address_label),
+                            value = prefs.multicastAddress,
+                            onValueChange = { viewModel.updateMulticastAddress(it) },
+                            placeholder = "239.255.255.250"
+                        )
+                    }
+
+                    // Encryption
+                    SettingsSection(icon = Icons.Rounded.Security, title = stringResource(R.string.settings_encryption)) {
+                        DropdownSetting(
+                            label = stringResource(R.string.settings_pake_curve_label),
+                            value = prefs.pakeCurve,
+                            options = listOf("p256", "p384", "p521", "siec", "ed25519"),
+                            onValueChange = { viewModel.updatePakeCurve(it) }
+                        )
+                    }
+
+                    // Transfer
+                    SettingsSection(icon = Icons.Rounded.Speed, title = stringResource(R.string.settings_transfer_options_label)) {
+                        DropdownSetting(
+                            label = stringResource(R.string.settings_hash_algorithm),
+                            value = prefs.hashAlgorithm,
+                            options = listOf("xxhash", "imohash", "md5", "highway"),
+                            onValueChange = { viewModel.updateHashAlgorithm(it) }
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.settings_hash_algorithm_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                        SwitchSetting(
+                            icon = Icons.Rounded.Speed,
+                            label = stringResource(R.string.settings_disable_multiplexing),
+                            description = stringResource(R.string.settings_disable_multiplexing_desc),
+                            checked = prefs.disableMultiplexing,
+                            onCheckedChange = { viewModel.updateDisableMultiplexing(it) }
+                        )
+                        if (!prefs.disableMultiplexing) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 2.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                             )
+                            DropdownSetting(
+                                label = stringResource(R.string.settings_transfer_ports),
+                                value = prefs.transferPorts,
+                                options = listOf("1", "2", "4", "6", "8"),
+                                onValueChange = { viewModel.updateTransferPorts(it) }
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = stringResource(R.string.settings_clear_legacy_binary_desc),
+                                text = stringResource(R.string.settings_transfer_ports_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        FilledTonalButton(
-                            onClick = { viewModel.clearLegacyBinary() },
-                            shape = MaterialTheme.shapes.large
-                        ) {
-                            Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.settings_clear_legacy_button))
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                        SwitchSetting(
+                            icon = Icons.Rounded.Speed,
+                            label = stringResource(R.string.settings_disable_compression_label),
+                            description = stringResource(R.string.settings_disable_compression_full_desc),
+                            checked = prefs.disableCompression,
+                            onCheckedChange = { viewModel.updateDisableCompression(it) }
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                        SwitchSetting(
+                            icon = Icons.Rounded.FolderOpen,
+                            label = stringResource(R.string.settings_zip_folder),
+                            description = stringResource(R.string.settings_zip_folder_desc),
+                            checked = prefs.zipFolderBeforeSend,
+                            onCheckedChange = { viewModel.updateZipFolderBeforeSend(it) }
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                            )
+                        SwitchSetting(
+                            icon = Icons.Rounded.History,
+                            label = stringResource(R.string.settings_try_legacy_first),
+                            description = stringResource(R.string.settings_try_legacy_first_desc),
+                            checked = prefs.tryLegacyFirst,
+                            onCheckedChange = { viewModel.updateTryLegacyFirst(it) }
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                        TextFieldSetting(
+                            label = stringResource(R.string.settings_upload_speed_limit),
+                            value = prefs.uploadThrottle,
+                            onValueChange = { viewModel.updateUploadThrottle(it) },
+                            placeholder = stringResource(R.string.settings_upload_speed_placeholder)
+                        )
+                        if (viewModel.isLegacyBinaryCached()) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.settings_clear_legacy_binary),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.settings_clear_legacy_binary_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                FilledTonalButton(
+                                    onClick = { viewModel.clearLegacyBinary() },
+                                    shape = MaterialTheme.shapes.large
+                                ) {
+                                    Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(stringResource(R.string.settings_clear_legacy_button))
+                                }
+                            }
                         }
                     }
                 }
