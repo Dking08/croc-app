@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/schollz/croc/v10/src/comm"
 	"github.com/schollz/croc/v10/src/storecrypto"
 )
 
@@ -116,7 +118,56 @@ func (c *Client) httpClient() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
+
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+		Resolver: &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{Timeout: 3 * time.Second}
+				// On Android and minimal Linux environments without /etc/resolv.conf, query public DNS servers
+				for _, dnsIP := range []string{"1.1.1.1:53", "8.8.8.8:53", "9.9.9.9:53", "1.0.0.1:53", "8.8.4.4:53"} {
+					conn, err := d.DialContext(ctx, "udp", dnsIP)
+					if err == nil {
+						return conn, nil
+					}
+				}
+				return d.DialContext(ctx, network, address)
+			},
+		},
+	}
+
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	if comm.HttpProxy != "" {
+		pStr := comm.HttpProxy
+		if !strings.Contains(pStr, "://") {
+			pStr = "http://" + pStr
+		}
+		if pURL, err := url.Parse(pStr); err == nil {
+			transport.Proxy = http.ProxyURL(pURL)
+		}
+	} else if comm.Socks5Proxy != "" {
+		pStr := comm.Socks5Proxy
+		if !strings.Contains(pStr, "://") {
+			pStr = "socks5://" + pStr
+		}
+		if pURL, err := url.Parse(pStr); err == nil {
+			transport.Proxy = http.ProxyURL(pURL)
+		}
+	}
+
 	return &http.Client{
+		Transport: transport,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return errors.New("stored-transfer redirects are not allowed")
 		},

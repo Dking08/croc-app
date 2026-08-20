@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/schollz/cli/v2"
+	"github.com/schollz/croc/v10/src/comm"
 	"github.com/schollz/croc/v10/src/croc"
 	"github.com/schollz/croc/v10/src/storeclient"
 	"github.com/schollz/croc/v10/src/storecrypto"
@@ -158,6 +159,9 @@ func sendStored(c *cli.Context) error {
 		return errors.New("must specify file: croc send --store [filename(s)]")
 	}
 
+	comm.Socks5Proxy = c.String("socks5")
+	comm.HttpProxy = c.String("connect")
+
 	client := new(storeclient.Client)
 	result, err := client.Upload(
 		context.Background(),
@@ -209,6 +213,9 @@ Revoke before download:
 }
 
 func receiveStored(c *cli.Context, value string) error {
+	comm.Socks5Proxy = c.String("socks5")
+	comm.HttpProxy = c.String("connect")
+
 	share, err := storecrypto.ParseShare(value)
 	if err != nil {
 		return err
@@ -274,6 +281,8 @@ func receiveStored(c *cli.Context, value string) error {
 
 func revokeStored(c *cli.Context, transferID string) error {
 	setDebugLevel(c)
+	comm.Socks5Proxy = c.String("socks5")
+	comm.HttpProxy = c.String("connect")
 	id := strings.TrimSpace(transferID)
 	if id == "" || c.Args().Present() {
 		return errors.New("usage: croc --revoke [transfer-id]")
