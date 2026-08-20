@@ -1,4 +1,3 @@
-# .github/workflows/croc-update.yml
 name: Check for croc updates
 
 on:
@@ -132,14 +131,35 @@ jobs:
           echo "Source code version bump complete. Changed files:"
           git status --short
 
-      - name: Verify no stale version strings remain
+          # Record which tracked files were actually touched, for the PR body
+          {
+            echo "changed_files<<EOF"
+            git status --porcelain --untracked-files=all | awk '{print $2}'
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check for stale version strings
+        id: stale_check
         if: steps.current.outputs.version != steps.latest.outputs.version
         run: |
           OLD_VER="${{ steps.current.outputs.version }}"
           OLD_VER="${OLD_VER#v}"
-          if [ -n "$OLD_VER" ] && grep -rl "$OLD_VER" --exclude-dir=third_party --exclude-dir=.git . ; then
-            echo "::error::Stale version references to $OLD_VER still present after bump — a sed pattern likely didn't match."
-            exit 1
+
+          STALE=""
+          if [ -n "$OLD_VER" ]; then
+            STALE=$(grep -rl "$OLD_VER" --exclude-dir=third_party --exclude-dir=.git . || true)
+          fi
+
+          if [ -n "$STALE" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "files<<EOF"
+              echo "$STALE"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "::warning::Stale version references to $OLD_VER still present after bump — these files need a manual look."
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Open PR
@@ -155,7 +175,16 @@ jobs:
             - Replaced `third_party/croc-src` with the tagged upstream source
             - Ran `go mod tidy && go mod vendor`
             - `go build ./...` passed
-            - Updated croc version references across source code and localized strings
+
+            **Files updated with the new version string:**
+            ```
+            ${{ steps.bump_version.outputs.changed_files }}
+            ```
+            ${{ steps.stale_check.outputs.found == 'true' && format('
+            ⚠️ **These files still contain the old version string and were NOT updated by this workflow — bump them manually:**
+            ```
+            {0}
+            ```', steps.stale_check.outputs.files) || '' }}
             ${{ steps.fdroid_scan.outputs.found == 'true' && format('
             ⚠️ **F-Droid disallowed file types detected — review before merging:**
             ```
@@ -179,8 +208,16 @@ jobs:
               echo "❌ New version \`${{ steps.latest.outputs.version }}\` found, but \`go mod vendor\` / \`go build\` failed — upstream may have broken something. Needs a manual look."
             elif [ "${{ steps.create_pr.outcome }}" != "success" ]; then
               echo "❌ New version \`${{ steps.latest.outputs.version }}\` found and validated, but PR creation failed — check the \"Open PR\" step logs."
+            elif [ "${{ steps.fdroid_scan.outputs.found }}" == "true" ] && [ "${{ steps.stale_check.outputs.found }}" == "true" ]; then
+              echo "⚠️ **Updated** croc \`${{ steps.current.outputs.version }}\` → \`${{ steps.latest.outputs.version }}\` — but F-Droid-disallowed files were found AND stale version strings remain in files not covered by the sed script."
+              echo ""
+              echo "PR: ${{ steps.create_pr.outputs.pull-request-url }}"
             elif [ "${{ steps.fdroid_scan.outputs.found }}" == "true" ]; then
               echo "⚠️ **Updated** croc \`${{ steps.current.outputs.version }}\` → \`${{ steps.latest.outputs.version }}\` — but F-Droid-disallowed files were found in the vendored source."
+              echo ""
+              echo "PR: ${{ steps.create_pr.outputs.pull-request-url }}"
+            elif [ "${{ steps.stale_check.outputs.found }}" == "true" ]; then
+              echo "⚠️ **Updated** croc \`${{ steps.current.outputs.version }}\` → \`${{ steps.latest.outputs.version }}\` — but stale version strings remain in files this workflow doesn't know how to bump. See the PR body for the list."
               echo ""
               echo "PR: ${{ steps.create_pr.outputs.pull-request-url }}"
             else
