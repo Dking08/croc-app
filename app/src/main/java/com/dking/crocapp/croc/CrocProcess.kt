@@ -470,7 +470,7 @@ class CrocProcess(
         var isLegacyFallback = false
         var announcedCode = ""
 
-        // Regex patterns for the v11.0.1 and v10.6.0 output format
+        // Regex patterns for the latest and v10.6.0 output format
         // Matches: "Sending (->1.2.3.4:9009)" or "Receiving (<-1.2.3.4:9009)"
         val peerIpRegex = Regex("""(?:->|<-)(\d+\.\d+\.\d+\.\d+)""")
         // Matches progress lines: "filename... 42% |...| (size) N/M" or "file.txt 42% |...| (size)"
