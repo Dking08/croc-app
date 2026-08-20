@@ -12,12 +12,6 @@ github.com/coder/websocket/internal/bpool
 github.com/coder/websocket/internal/errd
 github.com/coder/websocket/internal/util
 github.com/coder/websocket/internal/wsjs
-# github.com/cpuguy83/go-md2man/v2 v2.0.7
-## explicit; go 1.12
-github.com/cpuguy83/go-md2man/v2/md2man
-# github.com/davecgh/go-spew v1.1.1
-## explicit
-github.com/davecgh/go-spew/spew
 # github.com/denisbrodbeck/machineid v1.0.1
 ## explicit
 github.com/denisbrodbeck/machineid
@@ -39,21 +33,12 @@ github.com/minio/highwayhash
 # github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
 ## explicit
 github.com/mitchellh/colorstring
-# github.com/pmezard/go-difflib v1.0.0
-## explicit
-github.com/pmezard/go-difflib/difflib
 # github.com/rivo/uniseg v0.4.7
 ## explicit; go 1.18
 github.com/rivo/uniseg
-# github.com/russross/blackfriday/v2 v2.1.0
-## explicit
-github.com/russross/blackfriday/v2
 # github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 ## explicit; go 1.13
 github.com/sabhiram/go-gitignore
-# github.com/schollz/cli/v2 v2.2.1
-## explicit; go 1.11
-github.com/schollz/cli/v2
 # github.com/schollz/logger v1.2.0
 ## explicit; go 1.12
 github.com/schollz/logger
@@ -71,10 +56,12 @@ github.com/schollz/progressbar/v3
 github.com/skip2/go-qrcode
 github.com/skip2/go-qrcode/bitset
 github.com/skip2/go-qrcode/reedsolomon
-# github.com/stretchr/testify v1.11.1
+# github.com/stretchr/testify v1.12.1
 ## explicit; go 1.17
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
+github.com/stretchr/testify/internal/difflib
+github.com/stretchr/testify/internal/spew
 github.com/stretchr/testify/require
 # github.com/tscholl2/siec v0.0.0-20240310163802-c2c6f6198406
 ## explicit
@@ -82,7 +69,10 @@ github.com/tscholl2/siec
 # github.com/twmb/murmur3 v1.1.8
 ## explicit; go 1.11
 github.com/twmb/murmur3
-# golang.org/x/crypto v0.54.0
+# go.yaml.in/yaml/v3 v3.0.5
+## explicit; go 1.16
+go.yaml.in/yaml/v3
+# golang.org/x/crypto v0.55.0
 ## explicit; go 1.25.0
 golang.org/x/crypto/argon2
 golang.org/x/crypto/blake2b
@@ -92,7 +82,7 @@ golang.org/x/crypto/hkdf
 golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/pbkdf2
-# golang.org/x/net v0.57.0
+# golang.org/x/net v0.58.0
 ## explicit; go 1.25.0
 golang.org/x/net/bpf
 golang.org/x/net/internal/iana
@@ -114,6 +104,3 @@ golang.org/x/term
 # golang.org/x/time v0.15.0
 ## explicit; go 1.25.0
 golang.org/x/time/rate
-# gopkg.in/yaml.v3 v3.0.1
-## explicit
-gopkg.in/yaml.v3

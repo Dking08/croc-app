@@ -68,11 +68,15 @@ func TestPromptChoices(t *testing.T) {
 	}
 
 	got := PromptChoices(prompt, true)
-	if strings.Count(got, Bold) != 2 {
-		t.Fatalf("bold style count = %d; want 2", strings.Count(got, Bold))
+	if got != prompt {
+		t.Fatalf("styled prompt = %q; want plain %q", got, prompt)
 	}
-	if stripANSI(got) != prompt {
-		t.Fatalf("stripped prompt = %q; want %q", stripANSI(got), prompt)
+}
+
+func TestPlainRemovesTerminalStyles(t *testing.T) {
+	styled := Filename("croc.txt", true) + " " + Success("done", true)
+	if got := Plain(styled); got != "croc.txt done" {
+		t.Fatalf("plain text = %q; want %q", got, "croc.txt done")
 	}
 }
 

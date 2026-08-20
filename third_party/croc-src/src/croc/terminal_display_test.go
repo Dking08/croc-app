@@ -45,6 +45,82 @@ func TestQuotedFilename(t *testing.T) {
 	}
 }
 
+func TestPeerIP(t *testing.T) {
+	tests := map[string]string{
+		"71.212.143.50:43760":    "71.212.143.50",
+		"127.0.0.1:51324":        "127.0.0.1",
+		"[2001:db8::1]:43760":    "2001:db8::1",
+		"2001:db8::1":            "2001:db8::1",
+		"relay.example.com:9009": "relay.example.com",
+		" 71.212.143.50:43760 ":  "71.212.143.50",
+	}
+	for input, want := range tests {
+		if got := peerIP(input); got != want {
+			t.Errorf("peerIP(%q) = %q; want %q", input, got, want)
+		}
+	}
+}
+
+func TestPreferredPeerIP(t *testing.T) {
+	if got := preferredPeerIP("10.0.0.2:9009", "5.78.128.79:43760"); got != "5.78.128.79" {
+		t.Fatalf("public peer IP = %q; want 5.78.128.79", got)
+	}
+	if got := preferredPeerIP("5.78.128.79:9009", "10.0.0.2:43760"); got != "5.78.128.79" {
+		t.Fatalf("public route IP = %q; want 5.78.128.79", got)
+	}
+	if got := preferredPeerIP("10.0.0.2:9009", ""); got != "10.0.0.2" {
+		t.Fatalf("fallback peer IP = %q; want 10.0.0.2", got)
+	}
+}
+
+func TestPreferredPublicIP(t *testing.T) {
+	if got := preferredPublicIP("10.0.0.2:43760", []string{"172.17.0.1", "5.78.128.79"}); got != "5.78.128.79" {
+		t.Fatalf("public interface IP = %q; want 5.78.128.79", got)
+	}
+	if got := preferredPublicIP("71.212.143.50:43760", []string{"192.168.1.2"}); got != "71.212.143.50" {
+		t.Fatalf("public relay IP = %q; want 71.212.143.50", got)
+	}
+	if got := preferredPublicIP("10.0.0.2:43760", []string{"172.17.0.1"}); got != "10.0.0.2" {
+		t.Fatalf("private fallback IP = %q; want 10.0.0.2", got)
+	}
+}
+
+func TestFormatNoTransferSummary(t *testing.T) {
+	files := []FileInfo{{FolderRemote: ".", Name: "test"}}
+	if got := formatNoTransferSummary(files, 1, false); got != "\rAlready up to date: 'test'\n" {
+		t.Fatalf("unchanged summary = %q", got)
+	}
+	if got := formatNoTransferSummary(files, 0, false); got != "\rNo files transferred.\n" {
+		t.Fatalf("generic summary = %q", got)
+	}
+
+	colored := formatNoTransferSummary(files, 1, true)
+	if strings.Contains(colored, "\x1b[32m") {
+		t.Fatalf("summary status should be plain: %q", colored)
+	}
+	if !strings.Contains(colored, "'\x1b[1mtest\x1b[0m'") {
+		t.Fatalf("filename is not emphasized: %q", colored)
+	}
+}
+
+func TestReceiveStatusReplacesAndClearsTerminalLine(t *testing.T) {
+	var output strings.Builder
+	width := writeReceiveStatus(&output, 0, receiveStatusOpeningTransferChannels)
+	width = writeReceiveStatus(&output, width, receiveStatusWaitingForFileList)
+	clearReceiveStatus(&output, width)
+
+	padding := strings.Repeat(
+		" ",
+		len(receiveStatusOpeningTransferChannels)-len(receiveStatusWaitingForFileList),
+	)
+	want := receiveStatusOpeningTransferChannels +
+		"\r" + receiveStatusWaitingForFileList + padding +
+		"\r" + strings.Repeat(" ", len(receiveStatusWaitingForFileList)) + "\r"
+	if got := output.String(); got != want {
+		t.Fatalf("receive status output = %q; want %q", got, want)
+	}
+}
+
 func TestColoredProgressBarThemeRendersANSIWithoutMarkup(t *testing.T) {
 	var output strings.Builder
 	bar := progressbar.NewOptions64(2,

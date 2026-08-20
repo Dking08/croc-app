@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -20,14 +19,15 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/kalafut/imohash"
 	"github.com/minio/highwayhash"
-	"github.com/schollz/croc/v10/src/codephrase"
-	"github.com/schollz/croc/v10/src/termui"
+	"github.com/schollz/croc/v11/src/codephrase"
+	"github.com/schollz/croc/v11/src/termui"
 	log "github.com/schollz/logger"
 	"github.com/schollz/progressbar/v3"
 )
@@ -35,6 +35,11 @@ import (
 const NbPinNumbers = 4
 
 const maxProgressFilenameRunes = 20
+const minHashProgressSize int64 = 200 * 1024 * 1024
+
+func shouldShowHashProgress(requested bool, size int64) bool {
+	return requested && size >= minHashProgressSize
+}
 
 func shortenProgressFilename(fname string) string {
 	fnameRunes := []rune(path.Base(fname))
@@ -137,6 +142,7 @@ func HashFile(fname string, algorithm string, showProgress ...bool) (hash256 []b
 		}
 		return []byte(SHA256(target)), nil
 	}
+	doShowProgress = shouldShowHashProgress(doShowProgress, fstats.Size())
 	switch algorithm {
 	case "imohash":
 		return IMOHashFile(fname)
@@ -327,7 +333,7 @@ func GenerateRandomPin() string {
 	return s
 }
 
-// GetRandomName returns a random four-word croc code.
+// GetRandomName returns a random three-word croc code.
 //
 // It retains its historical signature for callers outside croc. New code that
 // needs to handle a random-source failure should call codephrase.Generate.
@@ -383,48 +389,133 @@ func MissingChunks(fname string, fsize int64, chunkSize int) (chunkRanges []int6
 		)
 	}
 
-	emptyBuffer := make([]byte, chunkSize)
-	chunkNum := 0
-	chunks := make([]int64, int64(math.Ceil(float64(fsize)/float64(chunkSize))))
+	buffer := make([]byte, chunkSize)
 	var currentLocation int64
-	for {
-		buffer := make([]byte, chunkSize)
-		bytesread, err := f.Read(buffer)
-		if err != nil {
+	var runStart, runCount int64
+	flushRun := func() {
+		if runCount == 0 {
+			return
+		}
+		if len(chunkRanges) == 0 {
+			chunkRanges = append(chunkRanges, int64(chunkSize))
+		}
+		chunkRanges = append(chunkRanges, runStart, runCount)
+		runCount = 0
+	}
+	for currentLocation < fsize {
+		bytesread, readErr := io.ReadFull(f, buffer)
+		if readErr != nil && readErr != io.ErrUnexpectedEOF && readErr != io.EOF {
+			return nil
+		}
+		if bytesread == 0 {
 			break
 		}
-		if bytes.Equal(buffer[:bytesread], emptyBuffer[:bytesread]) {
-			chunks[chunkNum] = currentLocation
-			chunkNum++
+		if allZero(buffer[:bytesread]) {
+			if runCount == 0 {
+				runStart = currentLocation
+			}
+			runCount++
+		} else {
+			flushRun()
 		}
 		currentLocation += int64(bytesread)
 		if showProgress && bar != nil {
 			bar.Add(bytesread)
 		}
+		if readErr != nil {
+			break
+		}
 	}
+	flushRun()
 	if showProgress && bar != nil {
 		bar.Finish()
 	}
-	if chunkNum == 0 {
-		chunkRanges = []int64{}
-	} else {
-		chunks = chunks[:chunkNum]
-		chunkRanges = []int64{int64(chunkSize), chunks[0]}
-		curCount := 0
-		for i, chunk := range chunks {
-			if i == 0 {
-				continue
-			}
-			curCount++
-			if chunk-chunks[i-1] > int64(chunkSize) {
-				chunkRanges = append(chunkRanges, int64(curCount))
-				chunkRanges = append(chunkRanges, chunk)
-				curCount = 0
-			}
-		}
-		chunkRanges = append(chunkRanges, int64(curCount+1))
-	}
 	return
+}
+
+func allZero(data []byte) bool {
+	for _, b := range data {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// ChunkRangesCount returns the number of chunks represented by ranges. An
+// empty range list means the whole file, matching the transfer protocol.
+func ChunkRangesCount(chunkRanges []int64, fileSize, defaultChunkSize int64) int {
+	if fileSize <= 0 || defaultChunkSize <= 0 {
+		return 0
+	}
+	if len(chunkRanges) == 0 {
+		return int((fileSize + defaultChunkSize - 1) / defaultChunkSize)
+	}
+	var count int64
+	for i := 2; i < len(chunkRanges); i += 2 {
+		if chunkRanges[i] > 0 {
+			count += chunkRanges[i]
+		}
+	}
+	return int(count)
+}
+
+// ChunkRangesBytes returns the exact number of file bytes represented by
+// ranges, including a possibly-short final chunk.
+func ChunkRangesBytes(chunkRanges []int64, fileSize, defaultChunkSize int64) int64 {
+	if fileSize <= 0 {
+		return 0
+	}
+	if len(chunkRanges) == 0 {
+		return fileSize
+	}
+	chunkSize := chunkRanges[0]
+	if chunkSize <= 0 {
+		chunkSize = defaultChunkSize
+	}
+	var total int64
+	for i := 1; i+1 < len(chunkRanges); i += 2 {
+		start, count := chunkRanges[i], chunkRanges[i+1]
+		if start < 0 || start >= fileSize || count <= 0 {
+			continue
+		}
+		end := start + count*chunkSize
+		if end > fileSize {
+			end = fileSize
+		}
+		if end > start {
+			total += end - start
+		}
+	}
+	return total
+}
+
+// ChunkRangesContain reports whether the chunk at position is requested.
+// An empty range list requests every chunk.
+func ChunkRangesContain(chunkRanges []int64, position int64) bool {
+	if len(chunkRanges) == 0 {
+		return true
+	}
+	chunkSize := chunkRanges[0]
+	if chunkSize <= 0 {
+		return false
+	}
+	pairs := (len(chunkRanges) - 1) / 2
+	low, high := 0, pairs
+	for low < high {
+		mid := low + (high-low)/2
+		if chunkRanges[1+mid*2] <= position {
+			low = mid + 1
+		} else {
+			high = mid
+		}
+	}
+	if low == 0 {
+		return false
+	}
+	index := 1 + (low-1)*2
+	start, count := chunkRanges[index], chunkRanges[index+1]
+	return count > 0 && position < start+count*chunkSize
 }
 
 // ChunkRangesToChunks converts chunk ranges to list
@@ -433,7 +524,13 @@ func ChunkRangesToChunks(chunkRanges []int64) (chunks []int64) {
 		return
 	}
 	chunkSize := chunkRanges[0]
-	chunks = []int64{}
+	count := 0
+	for i := 2; i < len(chunkRanges); i += 2 {
+		if chunkRanges[i] > 0 {
+			count += int(chunkRanges[i])
+		}
+	}
+	chunks = make([]int64, 0, count)
 	for i := 1; i < len(chunkRanges); i += 2 {
 		for j := int64(0); j < (chunkRanges[i+1]); j++ {
 			chunks = append(chunks, chunkRanges[i]+j*chunkSize)
@@ -1043,34 +1140,43 @@ func ValidFileName(fname string) (err error) {
 	return
 }
 
-const crocRemovalFile = "croc-marked-files.txt"
+var markedFiles = struct {
+	sync.Mutex
+	paths []string
+}{}
 
 func MarkFileForRemoval(fname string) {
-	// append the fname to the list of files to remove
-	f, err := os.OpenFile(crocRemovalFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	// Cleanup is only for temporary files croc creates in its working directory.
+	// Keep the list in memory so a received file cannot replace it and choose
+	// arbitrary paths for deletion.
+	if !filepath.IsLocal(fname) {
+		log.Debugf("refusing to mark non-local path for removal: %q", fname)
+		return
+	}
+	fname, err := filepath.Abs(fname)
 	if err != nil {
 		log.Debug(err)
 		return
 	}
-	defer f.Close()
-	_, err = f.WriteString(fname + "\n")
+
+	markedFiles.Lock()
+	markedFiles.paths = append(markedFiles.paths, fname)
+	markedFiles.Unlock()
 }
 
 func RemoveMarkedFiles() (err error) {
-	// read the file and remove all the files
-	f, err := os.Open(crocRemovalFile)
-	if err != nil {
-		return
-	}
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		fname := scanner.Text()
-		err = os.Remove(fname)
-		if err == nil {
+	markedFiles.Lock()
+	paths := markedFiles.paths
+	markedFiles.paths = nil
+	markedFiles.Unlock()
+
+	for _, fname := range paths {
+		removeErr := os.Remove(fname)
+		if removeErr == nil {
 			log.Tracef("Removed %s", fname)
+		} else if !os.IsNotExist(removeErr) {
+			err = errors.Join(err, removeErr)
 		}
 	}
-	f.Close()
-	os.Remove(crocRemovalFile)
 	return
 }
