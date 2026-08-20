@@ -77,6 +77,7 @@ import com.dking.crocapp.R
 import com.dking.crocapp.data.db.TransferHistory
 import com.dking.crocapp.data.db.TransferType
 import com.dking.crocapp.ui.components.EmptyState
+import com.dking.crocapp.ui.components.QrCodeExpandedDialog
 import com.dking.crocapp.ui.components.QrCodeImage
 import com.dking.crocapp.ui.components.formatBytes
 import com.dking.crocapp.ui.receive.openHistoryTransfer
@@ -251,33 +252,9 @@ private fun CompactHistoryCard(
     val isStoreActive = transfer.isStored && !transfer.isRevoked && !isExpired
 
     if (showQrDialog && !transfer.storeLink.isNullOrBlank()) {
-        AlertDialog(
-            onDismissRequest = { showQrDialog = false },
-            title = { Text(stringResource(R.string.store_qr_code), fontWeight = FontWeight.Bold) },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    QrCodeImage(
-                        data = transfer.storeLink,
-                        size = 220.dp
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = transfer.storeLink,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showQrDialog = false }) {
-                    Text(stringResource(R.string.action_dismiss))
-                }
-            }
+        QrCodeExpandedDialog(
+            data = transfer.storeLink,
+            onDismiss = { showQrDialog = false }
         )
     }
 
