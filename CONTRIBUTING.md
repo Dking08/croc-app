@@ -10,7 +10,7 @@ If you want to help:
 ## Vendoring Go Dependencies (F-Droid Compliance)
 
 croc-app includes dual croc engines built from vendored source:
-- **Current engine** (`v11.0.1+`): located in `third_party/croc-src`
+- **Current engine** (`v11+`): located in `third_party/croc-src`
 - **Legacy engine** (`v10.6.0` - frozen): located in `third_party/croc-src-legacy`
 
 Whenever dependencies are updated or re-vendored, you must commit the `vendor/` output for both trees:
