@@ -614,7 +614,13 @@ fun SendScreen(
 
             // ──── Delivery Options: Store Config OR Direct Code Phrase ────
             if (uiState.isStoreMode) {
-                StoreConfigurationCard()
+                StoreConfigurationCard(
+                    expiration = uiState.storeExpiration,
+                    downloads = uiState.storeDownloads,
+                    enabled = !isTransferActive,
+                    onExpirationChange = { viewModel.setStoreExpiration(it) },
+                    onDownloadsChange = { viewModel.setStoreDownloads(it) }
+                )
             } else {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -969,8 +975,15 @@ private fun SavedCodeChipWithActions(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StoreConfigurationCard() {
+private fun StoreConfigurationCard(
+    expiration: String,
+    downloads: Int,
+    enabled: Boolean,
+    onExpirationChange: (String) -> Unit,
+    onDownloadsChange: (Int) -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -1021,32 +1034,57 @@ private fun StoreConfigurationCard() {
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.store_expiration_title),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = stringResource(R.string.store_lifetime_info),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                AssistChip(
-                    onClick = {},
-                    label = { Text("24h / 1 download") },
-                    leadingIcon = {
-                        Icon(Icons.Rounded.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
-                    }
+            // Expiration Lifetime Chips
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = stringResource(R.string.store_expiration_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium
                 )
+                val expirationOptions = listOf(
+                    "1h" to "1h",
+                    "12h" to "12h",
+                    "1d" to "1d",
+                    "3d" to "3d",
+                    "1w" to "1w",
+                    "2w" to "2w"
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    expirationOptions.forEach { (key, label) ->
+                        FilterChip(
+                            selected = expiration == key,
+                            onClick = { if (enabled) onExpirationChange(key) },
+                            enabled = enabled,
+                            label = { Text(label) }
+                        )
+                    }
+                }
+            }
+
+            // Allowed Downloads Chips
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = stringResource(R.string.store_downloads_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                val downloadOptions = listOf(1, 2, 5, 10)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    downloadOptions.forEach { count ->
+                        FilterChip(
+                            selected = downloads == count,
+                            onClick = { if (enabled) onDownloadsChange(count) },
+                            enabled = enabled,
+                            label = { Text(if (count == 1) "1 download" else "$count downloads") }
+                        )
+                    }
+                }
             }
         }
     }

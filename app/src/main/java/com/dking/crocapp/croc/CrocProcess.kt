@@ -326,6 +326,8 @@ class CrocProcess(
 
     suspend fun sendStore(
         filePaths: List<String>,
+        expiration: String = "1d",
+        downloads: Int = 1,
         customStoreUrl: String? = null
     ) {
         withContext(Dispatchers.IO) {
@@ -348,6 +350,12 @@ class CrocProcess(
                     }
                     add("send")
                     add("--store")
+                    if (expiration.isNotBlank()) {
+                        add("--store-expiration"); add(expiration)
+                    }
+                    if (downloads > 0) {
+                        add("--store-downloads"); add(downloads.toString())
+                    }
                     if (!effectiveStoreUrl.isNullOrBlank()) {
                         add("--store-url"); add(effectiveStoreUrl)
                     }

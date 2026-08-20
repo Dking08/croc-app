@@ -323,7 +323,9 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 if (filePaths.isNotEmpty()) {
                     crocProcess.sendStore(
-                        filePaths = filePaths
+                        filePaths = filePaths,
+                        expiration = state.storeExpiration,
+                        downloads = state.storeDownloads
                     )
                 }
                 return@launch
