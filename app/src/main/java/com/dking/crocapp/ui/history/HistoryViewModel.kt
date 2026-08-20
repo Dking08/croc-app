@@ -20,7 +20,7 @@ data class HistoryUiState(
 )
 
 enum class HistoryFilter {
-    ALL, SENT, RECEIVED, FAVORITES
+    ALL, SENT, RECEIVED, STORED, FAVORITES
 }
 
 class HistoryViewModel(application: Application) : AndroidViewModel(application) {
@@ -59,6 +59,25 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun revokeStoredTransfer(transfer: TransferHistory, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        val storeId = transfer.storeId ?: return
+        viewModelScope.launch {
+            val app = getApplication<CrocApp>()
+            val crocProcess = com.dking.crocapp.croc.CrocProcess(
+                app,
+                com.dking.crocapp.croc.CrocBinaryManager(app),
+                com.dking.crocapp.data.preferences.UserPreferencesRepository(app)
+            )
+            val result = crocProcess.revokeStore(storeId)
+            result.onSuccess { msg ->
+                dao.markAsRevoked(transfer.id)
+                onResult(true, msg)
+            }.onFailure { err ->
+                onResult(false, err.message ?: "Revoke failed")
+            }
+        }
+    }
+
     private fun loadTransfers() {
         // Cancel previous collector to prevent leaks
         collectionJob?.cancel()
@@ -72,6 +91,8 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                     dao.getTransfersByType(TransferType.SEND)
                 _uiState.value.filter == HistoryFilter.RECEIVED ->
                     dao.getTransfersByType(TransferType.RECEIVE)
+                _uiState.value.filter == HistoryFilter.STORED ->
+                    dao.getStoredTransfers()
                 else -> dao.getAllTransfers()
             }
             flow.collect { transfers ->

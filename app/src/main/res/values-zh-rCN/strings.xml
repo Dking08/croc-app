@@ -355,4 +355,43 @@
     <string name="settings_advanced_title">高级设置</string>
     <string name="settings_advanced_desc">中继服务器、代理、网络发现、加密及传输调优</string>
     <string name="settings_advanced_customized_badge">已修改</string>
+
+    <!-- 存储中转 (croc v11) -->
+    <string name="delivery_mode_direct">直接传输</string>
+    <string name="delivery_mode_store">存储中转</string>
+    <string name="send_action_store">存储并分享</string>
+    <string name="store_configuration_title">加密存储选项</string>
+    <string name="store_expiration_title">有效期</string>
+    <string name="store_downloads_title">允许下载次数</string>
+    <string name="store_info_banner">文件在您的设备上本地加密后临时存储在云端。在过期前，拥有网页链接或 CLI Token 的任何人均可下载。</string>
+    <string name="store_lifetime_info">文件在 24 小时后或完成一次验证下载后自动删除。</string>
+    <string name="store_result_title">存储中转已就绪</string>
+    <string name="store_result_subtitle">文件已加密并上传</string>
+    <string name="store_browser_link">网页下载链接</string>
+    <string name="store_copy_link">复制链接</string>
+    <string name="store_share_link">分享链接</string>
+    <string name="store_cli_token">CLI Token</string>
+    <string name="store_copy_token">复制 Token</string>
+    <string name="store_qr_code">显示二维码</string>
+    <string name="store_revoke_action">撤销中转</string>
+    <string name="store_revoke_confirm_title">撤销该存储传输？</string>
+    <string name="store_revoke_confirm_message">这将立即从存储服务器永久删除加密文件。链接和 Token 将立即失效。</string>
+    <string name="store_revoke_confirm_button">立即撤销</string>
+    <string name="store_revoked_success">已成功撤销存储中转</string>
+    <string name="store_revoked_badge">已撤销</string>
+    <string name="store_expired_badge">已过期</string>
+    <string name="store_active_badge">有效</string>
+    <string name="store_filter_label">存储中转</string>
+    <string name="store_expires_in">过期时间：%s</string>
+    <string name="store_v11_required_notice">存储中转需要 Croc 引擎 v11 及以上版本</string>
+
+    <!-- 设置：存储中转 -->
+    <string name="settings_stored_transfers_title">存储中转设置</string>
+    <string name="settings_default_store_expiration">默认存储有效期</string>
+    <string name="settings_default_store_expiration_desc">新存储中转的默认保留时长</string>
+    <string name="settings_default_store_downloads">默认下载次数限制</string>
+    <string name="settings_default_store_downloads_desc">自动删除前允许的验证下载次数</string>
+    <string name="settings_custom_store_url">自定义存储服务器 URL</string>
+    <string name="settings_custom_store_url_desc">存储服务器源站（留空默认使用 https://getcroc.com）</string>
+    <string name="settings_custom_store_url_placeholder">https://getcroc.com</string>
 </resources>

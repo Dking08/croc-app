@@ -20,8 +20,14 @@ interface TransferHistoryDao {
     @Query("SELECT * FROM transfer_history WHERE type = :type ORDER BY timestamp DESC")
     fun getTransfersByType(type: TransferType): Flow<List<TransferHistory>>
 
+    @Query("SELECT * FROM transfer_history WHERE isStored = 1 ORDER BY timestamp DESC")
+    fun getStoredTransfers(): Flow<List<TransferHistory>>
+
     @Query("SELECT * FROM transfer_history WHERE code LIKE '%' || :query || '%' OR fileName LIKE '%' || :query || '%' ORDER BY timestamp DESC")
     fun searchTransfers(query: String): Flow<List<TransferHistory>>
+
+    @Query("SELECT * FROM transfer_history WHERE storeId = :storeId LIMIT 1")
+    suspend fun getTransferByStoreId(storeId: String): TransferHistory?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(transfer: TransferHistory): Long
@@ -37,4 +43,10 @@ interface TransferHistoryDao {
 
     @Query("UPDATE transfer_history SET isFavorite = :isFavorite WHERE id = :id")
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean)
+
+    @Query("UPDATE transfer_history SET isRevoked = 1, status = 'REVOKED' WHERE id = :id")
+    suspend fun markAsRevoked(id: Long)
+
+    @Query("UPDATE transfer_history SET isRevoked = 1, status = 'REVOKED' WHERE storeId = :storeId")
+    suspend fun markAsRevokedByStoreId(storeId: String)
 }

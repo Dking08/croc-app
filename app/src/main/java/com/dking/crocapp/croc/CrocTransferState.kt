@@ -56,6 +56,20 @@ sealed class CrocTransferState {
             get() = receivedText != null
     }
 
+    data class StoreCompleted(
+        val browserLink: String,
+        val cliToken: String,
+        val storeId: String,
+        val expiresAt: Long,
+        val fileNames: List<String>,
+        val totalBytes: Long,
+        val rawExpirationText: String = "",
+        val downloadsLimit: Int = 1
+    ) : CrocTransferState() {
+        val fileCount: Int
+            get() = fileNames.size.coerceAtLeast(1)
+    }
+
     data class Error(
         val message: String
     ) : CrocTransferState()

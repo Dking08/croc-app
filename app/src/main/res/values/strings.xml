@@ -378,4 +378,43 @@
     <string name="settings_advanced_title">Advanced Settings</string>
     <string name="settings_advanced_desc">Relay server, proxy, network discovery, encryption, and transfer tuning</string>
     <string name="settings_advanced_customized_badge">Modified</string>
+
+    <!-- Stored Transfers (croc v11) -->
+    <string name="delivery_mode_direct">Direct</string>
+    <string name="delivery_mode_store">Store</string>
+    <string name="send_action_store">Store &amp; Share</string>
+    <string name="store_configuration_title">Encrypted Storage Options</string>
+    <string name="store_expiration_title">Expiration Lifetime</string>
+    <string name="store_downloads_title">Allowed Downloads</string>
+    <string name="store_info_banner">Files are encrypted on your device and stored temporarily in the cloud. Anyone with the browser link or CLI token can download them before expiration.</string>
+    <string name="store_lifetime_info">Files automatically expire in 24 hours or after one verified download.</string>
+    <string name="store_result_title">Stored Transfer Ready</string>
+    <string name="store_result_subtitle">Files uploaded &amp; encrypted</string>
+    <string name="store_browser_link">Browser Link</string>
+    <string name="store_copy_link">Copy Link</string>
+    <string name="store_share_link">Share Link</string>
+    <string name="store_cli_token">CLI Token</string>
+    <string name="store_copy_token">Copy Token</string>
+    <string name="store_qr_code">Show QR</string>
+    <string name="store_revoke_action">Revoke</string>
+    <string name="store_revoke_confirm_title">Revoke Stored Transfer?</string>
+    <string name="store_revoke_confirm_message">This will permanently delete the encrypted files from the storage server immediately. The link and token will stop working.</string>
+    <string name="store_revoke_confirm_button">Revoke Now</string>
+    <string name="store_revoked_success">Stored transfer revoked successfully</string>
+    <string name="store_revoked_badge">Revoked</string>
+    <string name="store_expired_badge">Expired</string>
+    <string name="store_active_badge">Active</string>
+    <string name="store_filter_label">Stored</string>
+    <string name="store_expires_in">Expires %s</string>
+    <string name="store_v11_required_notice">Stored transfers require Croc Engine v11+</string>
+
+    <!-- Settings Stored Transfers -->
+    <string name="settings_stored_transfers_title">Stored Transfers</string>
+    <string name="settings_default_store_expiration">Default Storage Lifetime</string>
+    <string name="settings_default_store_expiration_desc">Default expiration duration for new stored transfers</string>
+    <string name="settings_default_store_downloads">Default Download Limit</string>
+    <string name="settings_default_store_downloads_desc">Number of verified downloads allowed before auto-deletion</string>
+    <string name="settings_custom_store_url">Custom Store URL</string>
+    <string name="settings_custom_store_url_desc">Stored-transfer origin (leave empty for https://getcroc.com)</string>
+    <string name="settings_custom_store_url_placeholder">https://getcroc.com</string>
 </resources>

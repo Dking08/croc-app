@@ -355,4 +355,43 @@
     <string name="settings_advanced_title">उन्नत सेटिंग्स</string>
     <string name="settings_advanced_desc">रिले सर्वर, प्रॉक्सी, नेटवर्क खोज, एन्क्रिप्शन और ट्रांसफ़र ट्यूनिंग</string>
     <string name="settings_advanced_customized_badge">संशोधित</string>
+
+    <!-- संग्रहीत ट्रांसफ़र (croc v11) -->
+    <string name="delivery_mode_direct">प्रत्यक्ष (Direct)</string>
+    <string name="delivery_mode_store">संग्रहीत (Store)</string>
+    <string name="send_action_store">संग्रहित करें और साझा करें</string>
+    <string name="store_configuration_title">एन्क्रिप्टेड स्टोरेज विकल्प</string>
+    <string name="store_expiration_title">समाप्ति अवधि</string>
+    <string name="store_downloads_title">अनुमत डाउनलोड</string>
+    <string name="store_info_banner">फ़ाइलें आपके डिवाइस पर एन्क्रिप्ट की जाती हैं और क्लाउड में अस्थायी रूप से संग्रहीत होती हैं। लिंक या टोकन वाला कोई भी व्यक्ति समाप्ति से पहले उन्हें डाउनलोड कर सकता है।</string>
+    <string name="store_lifetime_info">फ़ाइलें 24 घंटे में या एक सत्यापित डाउनलोड के बाद स्वतः समाप्त हो जाती हैं।</string>
+    <string name="store_result_title">संग्रहीत ट्रांसफ़र तैयार</string>
+    <string name="store_result_subtitle">फ़ाइलें अपलोड और एन्क्रिप्ट की गईं</string>
+    <string name="store_browser_link">ब्राउज़र लिंक</string>
+    <string name="store_copy_link">लिंक कॉपी करें</string>
+    <string name="store_share_link">लिंक साझा करें</string>
+    <string name="store_cli_token">CLI टोकन</string>
+    <string name="store_copy_token">टोकन कॉपी करें</string>
+    <string name="store_qr_code">QR कोड देखें</string>
+    <string name="store_revoke_action">रद्द करें</string>
+    <string name="store_revoke_confirm_title">क्या संग्रहित ट्रांसफ़र रद्द करें?</string>
+    <string name="store_revoke_confirm_message">यह तुरंत स्टोरेज सर्वर से एन्क्रिप्टेड फ़ाइलों को स्थायी रूप से हटा देगा। लिंक और टोकन काम करना बंद कर देंगे।</string>
+    <string name="store_revoke_confirm_button">अभी रद्द करें</string>
+    <string name="store_revoked_success">संग्रहीत ट्रांसफ़र सफलतापूर्वक रद्द किया गया</string>
+    <string name="store_revoked_badge">रद्द</string>
+    <string name="store_expired_badge">समाप्त</string>
+    <string name="store_active_badge">सक्रिय</string>
+    <string name="store_filter_label">संग्रहीत</string>
+    <string name="store_expires_in">समाप्त होगा: %s</string>
+    <string name="store_v11_required_notice">संग्रहीत ट्रांसफ़र के लिए Croc इंजन v11+ आवश्यक है</string>
+
+    <!-- सेटिंग्स: संग्रहीत ट्रांसफ़र -->
+    <string name="settings_stored_transfers_title">संग्रहीत ट्रांसफ़र</string>
+    <string name="settings_default_store_expiration">डिफ़ॉल्ट स्टोरेज अवधि</string>
+    <string name="settings_default_store_expiration_desc">नए संग्रहीत ट्रांसफ़र के लिए डिफ़ॉल्ट समाप्ति अवधि</string>
+    <string name="settings_default_store_downloads">डिफ़ॉल्ट डाउनलोड सीमा</string>
+    <string name="settings_default_store_downloads_desc">स्वतः हटाए जाने से पहले अनुमत सत्यापित डाउनलोड की संख्या</string>
+    <string name="settings_custom_store_url">कस्टम स्टोर URL</string>
+    <string name="settings_custom_store_url_desc">संग्रहीत ट्रांसफ़र मूल सर्वर (https://getcroc.com के लिए खाली छोड़ें)</string>
+    <string name="settings_custom_store_url_placeholder">https://getcroc.com</string>
 </resources>

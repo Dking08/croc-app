@@ -42,16 +42,19 @@ import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
@@ -61,7 +64,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -146,24 +151,26 @@ fun SendScreen(
     val isTransferActive = uiState.transferState is CrocTransferState.Preparing ||
             uiState.transferState is CrocTransferState.WaitingForPeer ||
             uiState.transferState is CrocTransferState.Transferring
+    val isStoreCompleted = uiState.transferState is CrocTransferState.StoreCompleted
     val isTransferFinished = uiState.transferState is CrocTransferState.Completed ||
+            isStoreCompleted ||
             uiState.transferState is CrocTransferState.Error ||
             uiState.transferState is CrocTransferState.Cancelled
     val isLegacyFallback = uiState.transferState is CrocTransferState.LegacyFallbackAvailable
     val showTransferSection = isTransferActive || isTransferFinished || isLegacyFallback
-    val canSend = uiState.codePhrase.isNotBlank() && uiState.hasContent
+    val canSend = (uiState.isStoreMode || uiState.codePhrase.isNotBlank()) && uiState.hasContent
 
     val fabLabel = when (uiState.transferState) {
-        is CrocTransferState.Completed -> stringResource(R.string.send_again)
+        is CrocTransferState.Completed, is CrocTransferState.StoreCompleted -> stringResource(R.string.send_again)
         is CrocTransferState.LegacyFallbackAvailable -> stringResource(R.string.action_retry_legacy)
         is CrocTransferState.Error, CrocTransferState.Cancelled -> stringResource(R.string.action_retry)
-        else -> stringResource(R.string.action_send)
+        else -> if (uiState.isStoreMode) stringResource(R.string.send_action_store) else stringResource(R.string.action_send)
     }
 
     // Animated progress for the file card border
     val transferProgress = when (val state = uiState.transferState) {
         is CrocTransferState.Transferring -> state.fileCountProgress
-        is CrocTransferState.Completed -> 1f
+        is CrocTransferState.Completed, is CrocTransferState.StoreCompleted -> 1f
         else -> 0f
     }
     val animatedBorderProgress by animateFloatAsState(
@@ -171,7 +178,7 @@ fun SendScreen(
         animationSpec = tween(400),
         label = "borderProgress"
     )
-    val showFileBorder = isTransferActive || uiState.transferState is CrocTransferState.Completed
+    val showFileBorder = isTransferActive || uiState.transferState is CrocTransferState.Completed || isStoreCompleted
     val borderColor = MaterialTheme.colorScheme.primary
 
     Scaffold(
@@ -211,7 +218,9 @@ fun SendScreen(
                     },
                     icon = {
                         Icon(
-                            if (isLegacyFallback) Icons.Rounded.History else Icons.Rounded.Upload,
+                            if (isLegacyFallback) Icons.Rounded.History
+                            else if (uiState.isStoreMode) Icons.Rounded.CloudUpload
+                            else Icons.Rounded.Upload,
                             contentDescription = null
                         )
                     },
@@ -235,6 +244,30 @@ fun SendScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Spacer(modifier = Modifier.height(2.dp))
+
+            // Delivery Mode: Direct vs Store
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                SegmentedButton(
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    onClick = { viewModel.setDeliveryMode(DeliveryMode.DIRECT) },
+                    selected = uiState.deliveryMode == DeliveryMode.DIRECT,
+                    icon = {
+                        Icon(Icons.Rounded.SwapHoriz, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                ) {
+                    Text(stringResource(R.string.delivery_mode_direct))
+                }
+                SegmentedButton(
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    onClick = { viewModel.setDeliveryMode(DeliveryMode.STORE) },
+                    selected = uiState.deliveryMode == DeliveryMode.STORE,
+                    icon = {
+                        Icon(Icons.Rounded.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                ) {
+                    Text(stringResource(R.string.delivery_mode_store))
+                }
+            }
 
             // Mode Toggle: Files / Folder / Text
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -545,72 +578,83 @@ fun SendScreen(
                 }
             }
 
-            // ──── Transfer Progress — between files and secret code ────
+            // ──── Transfer Progress / Result ────
             AnimatedVisibility(
                 visible = showTransferSection,
                 enter = fadeIn() + slideInVertically { it / 2 },
                 exit = fadeOut() + slideOutVertically { it / 2 }
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TransferProgressCard(
-                        state = uiState.transferState,
-                        isSending = true,
-                        onCancel = { viewModel.cancelTransfer() },
-                        onRetryLegacy = { viewModel.retryWithLegacy() },
-                        activeEngine = uiState.activeEngine
-                    )
-                    if (isTransferFinished) {
-                        OutlinedButton(
-                            onClick = { viewModel.dismissTransferResult() },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.large
-                        ) {
-                            Text(stringResource(R.string.action_dismiss))
+                    if (isStoreCompleted) {
+                        StoreCompletedCard(
+                            state = uiState.transferState as CrocTransferState.StoreCompleted,
+                            onDismiss = { viewModel.dismissTransferResult() },
+                            onRevoke = { id -> viewModel.revokeCurrentStore(id) }
+                        )
+                    } else {
+                        TransferProgressCard(
+                            state = uiState.transferState,
+                            isSending = true,
+                            onCancel = { viewModel.cancelTransfer() },
+                            onRetryLegacy = { viewModel.retryWithLegacy() },
+                            activeEngine = uiState.activeEngine
+                        )
+                        if (isTransferFinished) {
+                            OutlinedButton(
+                                onClick = { viewModel.dismissTransferResult() },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.large
+                            ) {
+                                Text(stringResource(R.string.action_dismiss))
+                            }
                         }
                     }
                 }
             }
 
-            // ──── Code Phrase Card ────
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                ),
-                shape = MaterialTheme.shapes.extraLarge
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+            // ──── Delivery Options: Store Config OR Direct Code Phrase ────
+            if (uiState.isStoreMode) {
+                StoreConfigurationCard()
+            } else {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    ),
+                    shape = MaterialTheme.shapes.extraLarge
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = stringResource(R.string.send_secret_code),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            if (uiState.defaultCodePhrase.isNotBlank() && uiState.defaultCodePhrase == uiState.codePhrase) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 Text(
-                                    text = stringResource(R.string.label_default),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary
+                                    text = stringResource(R.string.send_secret_code),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
                                 )
+                                if (uiState.defaultCodePhrase.isNotBlank() && uiState.defaultCodePhrase == uiState.codePhrase) {
+                                    Text(
+                                        text = stringResource(R.string.label_default),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
+                            EngineBadge(
+                                engine = uiState.activeEngine,
+                                onClick = if (!isTransferActive) { { viewModel.toggleEngine() } } else null,
+                                showCurrentMode = true
+                            )
                         }
-                        EngineBadge(
-                            engine = uiState.activeEngine,
-                            onClick = if (!isTransferActive) { { viewModel.toggleEngine() } } else null,
-                            showCurrentMode = true
-                        )
-                    }
                     OutlinedTextField(
                         value = uiState.codePhrase,
                         onValueChange = { viewModel.updateCodePhrase(it) },
@@ -746,11 +790,12 @@ fun SendScreen(
                     }
                 }
             }
-
-            // Bottom padding for FAB clearance
-            Spacer(modifier = Modifier.height(80.dp))
         }
+
+        // Bottom padding for FAB clearance
+        Spacer(modifier = Modifier.height(80.dp))
     }
+}
 }
 
 @Composable
@@ -920,6 +965,332 @@ private fun SavedCodeChipWithActions(
                     Icon(Icons.Rounded.QrCode2, contentDescription = null, modifier = Modifier.size(18.dp))
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun StoreConfigurationCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        shape = MaterialTheme.shapes.extraLarge
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.CloudUpload,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.store_configuration_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                EngineBadge(
+                    engine = com.dking.crocapp.croc.CrocEngine.CURRENT,
+                    onClick = null,
+                    showCurrentMode = true
+                )
+            }
+
+            Text(
+                text = stringResource(R.string.store_info_banner),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 2.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.store_expiration_title),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(R.string.store_lifetime_info),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                AssistChip(
+                    onClick = {},
+                    label = { Text("24h / 1 download") },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StoreCompletedCard(
+    state: CrocTransferState.StoreCompleted,
+    onDismiss: () -> Unit,
+    onRevoke: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    var showQrDialog by remember { mutableStateOf(false) }
+    var showRevokeDialog by remember { mutableStateOf(false) }
+
+    if (showQrDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showQrDialog = false },
+            title = { Text(stringResource(R.string.store_qr_code), fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    QrCodeImage(
+                        data = state.browserLink,
+                        size = 240.dp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = state.browserLink,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showQrDialog = false }) {
+                    Text(stringResource(R.string.action_dismiss))
+                }
+            }
+        )
+    }
+
+    if (showRevokeDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showRevokeDialog = false },
+            title = { Text(stringResource(R.string.store_revoke_confirm_title), fontWeight = FontWeight.Bold) },
+            text = { Text(stringResource(R.string.store_revoke_confirm_message)) },
+            confirmButton = {
+                androidx.compose.material3.Button(
+                    onClick = {
+                        showRevokeDialog = false
+                        onRevoke(state.storeId)
+                    },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(stringResource(R.string.store_revoke_confirm_button))
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showRevokeDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+        ),
+        shape = MaterialTheme.shapes.extraLarge
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.CloudUpload,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = stringResource(R.string.store_result_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${state.fileCount} files • ${formatBytes(state.totalBytes)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                AssistChip(
+                    onClick = {},
+                    label = {
+                        Text(
+                            if (state.rawExpirationText.isNotBlank()) "Expires ${state.rawExpirationText}"
+                            else "Active"
+                        )
+                    }
+                )
+            }
+
+            // Browser Link Container
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(R.string.store_browser_link),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = state.browserLink,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Row {
+                        IconButton(onClick = {
+                            clipboardManager.setText(AnnotatedString(state.browserLink))
+                        }) {
+                            Icon(Icons.Rounded.ContentCopy, contentDescription = stringResource(R.string.store_copy_link), modifier = Modifier.size(18.dp))
+                        }
+                        IconButton(onClick = {
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, state.browserLink)
+                                type = "text/plain"
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, null))
+                        }) {
+                            Icon(Icons.Rounded.Share, contentDescription = stringResource(R.string.store_share_link), modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+            }
+
+            // CLI Token Container (if available)
+            if (state.cliToken.isNotBlank()) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = stringResource(R.string.store_cli_token),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(MaterialTheme.colorScheme.surface)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = state.cliToken,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        IconButton(onClick = {
+                            clipboardManager.setText(AnnotatedString(state.cliToken))
+                        }) {
+                            Icon(Icons.Rounded.ContentCopy, contentDescription = stringResource(R.string.store_copy_token), modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+            }
+
+            // Action Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { showQrDialog = true },
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Icon(Icons.Rounded.QrCode2, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(stringResource(R.string.store_qr_code))
+                }
+                if (state.storeId.isNotBlank()) {
+                    OutlinedButton(
+                        onClick = { showRevokeDialog = true },
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.large,
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.store_revoke_action))
+                    }
+                }
+            }
+
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large
+            ) {
+                Text(stringResource(R.string.action_dismiss))
+            }
         }
     }
 }
