@@ -221,7 +221,7 @@
     <string name="settings_about">關於</string>
     <string name="settings_app_version">應用程式版本</string>
     <string name="settings_croc_version">Croc 版本</string>
-    <string name="settings_croc_version_value">v11.0.1</string>
+    <string name="settings_croc_version_value">v11.2.4</string>
     <string name="settings_developer">開發者</string>
     <string name="settings_developer_value">Dking</string>
     <!-- ════ Setup / Binary ════ -->
@@ -263,7 +263,7 @@
     <string name="settings_about_label">關於</string>
     <string name="settings_app_version_label">應用程式版本</string>
     <string name="settings_croc_version_label">croc 版本</string>
-    <string name="settings_croc_version_val">v11.0.1</string>
+    <string name="settings_croc_version_val">v11.2.4</string>
     <string name="settings_built_with">由 Dastageer 用 ❤️ 打造</string>
     <string name="settings_croc_github">github.com/schollz/croc</string>
     <string name="settings_language">語言</string>

@@ -1,7 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { trackTransferEvent, transferEvents } from "./analytics";
 
 describe("transfer analytics", () => {
+  beforeEach(() => {
+    window.history.replaceState({}, "", "/");
+  });
+
   afterEach(() => {
     delete window.umami;
   });
@@ -17,7 +21,15 @@ describe("transfer analytics", () => {
     trackTransferEvent(event);
 
     expect(track).toHaveBeenCalledOnce();
-    expect(track).toHaveBeenCalledWith(event);
+    const transform = track.mock.calls[0][0] as (
+      properties: Record<string, unknown>,
+    ) => Record<string, unknown>;
+    expect(typeof transform).toBe("function");
+    expect(transform({ url: "/?code=secret#key", website: "site-id" })).toEqual({
+      name: event,
+      url: "/",
+      website: "site-id",
+    });
   });
 
   it("does nothing when Umami is disabled", () => {

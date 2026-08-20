@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
-	"net/netip"
 	"os"
 	"path"
 	"path/filepath"
@@ -16,22 +14,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/schollz/cli/v2"
-	"github.com/schollz/croc/v10/src/codephrase"
-	"github.com/schollz/croc/v10/src/comm"
-	"github.com/schollz/croc/v10/src/croc"
-	"github.com/schollz/croc/v10/src/models"
-	storeapi "github.com/schollz/croc/v10/src/store"
-	"github.com/schollz/croc/v10/src/storeclient"
-	"github.com/schollz/croc/v10/src/tcp"
-	"github.com/schollz/croc/v10/src/utils"
-	"github.com/schollz/croc/v10/src/webrelay"
+	"github.com/schollz/croc/v11/internal/cli"
+	"github.com/schollz/croc/v11/src/codephrase"
+	"github.com/schollz/croc/v11/src/comm"
+	"github.com/schollz/croc/v11/src/croc"
+	"github.com/schollz/croc/v11/src/models"
+	"github.com/schollz/croc/v11/src/publicrelay"
+	"github.com/schollz/croc/v11/src/storeclient"
+	"github.com/schollz/croc/v11/src/tcp"
+	"github.com/schollz/croc/v11/src/termui"
+	"github.com/schollz/croc/v11/src/utils"
+	buildversion "github.com/schollz/croc/v11/src/version"
 	log "github.com/schollz/logger"
 	"github.com/schollz/pake/v3"
 )
 
 // Version specifies the version
-var Version string
+var Version = buildversion.Value
 
 // Run will run the command line program
 func Run() (err error) {
@@ -44,9 +43,6 @@ func Run() (err error) {
 func newApp() *cli.App {
 	app := cli.NewApp()
 	app.Name = "croc"
-	if Version == "" {
-		Version = "11.0.1"
-	}
 	app.Version = Version
 	app.Compiled = time.Now()
 	app.Usage = "easily and securely transfer stuff from one computer to another"
@@ -91,7 +87,9 @@ func newApp() *cli.App {
 				&cli.StringFlag{Name: "exclude-file", Value: "", Usage: "exclude files matching any of the comma separated relative paths exactly"},
 				&cli.StringFlag{Name: "socks5", Value: "", Usage: "add a socks5 proxy", EnvVars: []string{"SOCKS5_PROXY"}},
 				&cli.StringFlag{Name: "connect", Value: "", Usage: "add a http proxy", EnvVars: []string{"HTTP_PROXY"}},
-				&cli.BoolFlag{Name: "store", Usage: "upload encrypted files for 24 hours or one verified download"},
+				&cli.BoolFlag{Name: "store", Usage: "upload encrypted files for a finite lifetime or a limited number of verified downloads"},
+				&cli.IntFlag{Name: "store-downloads", Value: 1, Usage: "number of verified downloads allowed in stored mode"},
+				&cli.StringFlag{Name: "store-expiration", Value: "1d", Usage: "stored lifetime after upload (for example 90m, 12h, 3d, or 2w)"},
 				&cli.StringFlag{Name: "store-url", Value: "https://getcroc.com", Usage: "stored-transfer service origin", EnvVars: []string{"CROC_STORE_URL"}},
 			},
 			HelpName: "croc send",
@@ -111,27 +109,6 @@ func newApp() *cli.App {
 				&cli.IntFlag{Name: "max-rooms-open", Value: tcp.DEFAULT_MAX_ROOMS_OPEN, Usage: "maximum waiting rooms per relay port", EnvVars: []string{"CROC_MAX_ROOMS_OPEN"}},
 				&cli.IntFlag{Name: "max-pending-handshakes", Value: tcp.DEFAULT_MAX_PENDING_HANDSHAKES, Usage: "maximum incomplete handshakes per relay port", EnvVars: []string{"CROC_MAX_PENDING_HANDSHAKES"}},
 				&cli.DurationFlag{Name: "handshake-timeout", Value: tcp.DEFAULT_HANDSHAKE_TIMEOUT, Usage: "maximum time for an initial relay handshake", EnvVars: []string{"CROC_HANDSHAKE_TIMEOUT"}},
-			},
-		},
-		{
-			Name:        "serve",
-			Usage:       "serve the embedded web client and browser relay",
-			Description: "serve the croc website and its fixed-upstream WebSocket relay from one HTTP server",
-			HelpName:    "croc serve",
-			ArgsUsage:   "[public-host[:port]]",
-			Action:      runServe,
-			Flags: []cli.Flag{
-				&cli.StringFlag{Name: "bind", Value: "127.0.0.1:9014", Usage: "local HTTP bind address"},
-				&cli.StringFlag{Name: "relay", Value: "ipv4.getcroc.com", Usage: "fixed upstream croc relay host"},
-				&cli.StringFlag{Name: "ports", Value: "9009,9010,9011,9012,9013,9014,9015,9016,9017", Usage: "allowed upstream relay ports"},
-				&cli.StringFlag{Name: "store-dir", Usage: "enable encrypted temporary storage in this directory"},
-				&cli.StringFlag{Name: "store-max-transfer", Value: "1GiB", Usage: "maximum plaintext bytes per stored transfer"},
-				&cli.StringFlag{Name: "store-quota", Value: "5GiB", Usage: "maximum managed stored-transfer bytes"},
-				&cli.StringFlag{Name: "store-min-free", Value: "512MiB", Usage: "disk space to keep free"},
-				&cli.IntFlag{Name: "store-max-files", Value: 100, Usage: "maximum files per stored transfer"},
-				&cli.IntFlag{Name: "store-create-rate", Value: 5, Usage: "stored transfers created per client IP per hour"},
-				&cli.IntFlag{Name: "store-active-uploads", Value: 2, Usage: "concurrent uploads per client IP"},
-				&cli.StringSliceFlag{Name: "store-trusted-proxy", Usage: "trusted reverse-proxy CIDR for client IP forwarding"},
 			},
 		},
 		{
@@ -181,6 +158,9 @@ func newApp() *cli.App {
 	app.HideHelp = false
 	app.HideVersion = false
 	app.Action = func(c *cli.Context) error {
+		if c.Args().First() == "serve" {
+			return errors.New("the web server has moved to the standalone croc-web binary")
+		}
 		if c.IsSet("revoke") {
 			return revokeStored(c, c.String("revoke"))
 		}
@@ -200,7 +180,8 @@ func newApp() *cli.App {
 		if c.Bool("classic") {
 			if classicInsecureMode {
 				// classic mode not enabled
-				fmt.Print(`Classic mode is currently ENABLED.
+				output, colorEnabled := termui.Output(os.Stdout)
+				fmt.Fprint(output, termui.PromptChoices(`Classic mode is currently ENABLED.
 
 Disabling this mode will prevent the shared secret from being visible
 on the host's process list when passed via the command line. On a
@@ -208,7 +189,7 @@ multi-user system, this will help ensure that other local users cannot
 access the shared secret and receive the files instead of the intended
 recipient.
 
-Do you wish to continue to DISABLE the classic mode? (y/N) `)
+Do you wish to continue to DISABLE the classic mode? (y/N) `, colorEnabled))
 				choice, _ := utils.GetInput("")
 				choice = strings.ToLower(choice)
 				if choice == "y" || choice == "yes" {
@@ -226,14 +207,15 @@ Do you wish to continue to DISABLE the classic mode? (y/N) `)
 			} else {
 				// enable classic mode
 				// touch the file
-				fmt.Print(`Classic mode is currently DISABLED.
+				output, colorEnabled := termui.Output(os.Stdout)
+				fmt.Fprint(output, termui.PromptChoices(`Classic mode is currently DISABLED.
 
 Please note that enabling this mode will make the shared secret visible
 on the host's process list when passed via the command line. On a
 multi-user system, this could allow other local users to access the
 shared secret and receive the files instead of the intended recipient.
 
-Do you wish to continue to enable the classic mode? (y/N) `)
+Do you wish to continue to enable the classic mode? (y/N) `, colorEnabled))
 				choice, _ := utils.GetInput("")
 				choice = strings.ToLower(choice)
 				if choice == "y" || choice == "yes" {
@@ -312,6 +294,14 @@ func getClassicConfigFile(requireValidPath bool) string {
 	return path.Join(configFile, "classic_enabled")
 }
 
+func getBestRelayCacheFile(requireValidPath bool) (string, error) {
+	configDir, err := utils.GetConfigDir(requireValidPath)
+	if err != nil {
+		return "", err
+	}
+	return path.Join(configDir, "best-relay"), nil
+}
+
 func getReceiveConfigFile(requireValidPath bool) (string, error) {
 	configFile, err := utils.GetConfigDir(requireValidPath)
 	if err != nil {
@@ -338,8 +328,166 @@ func resolveSendSharedSecret(sharedSecret, envSecret string) string {
 	return sharedSecret
 }
 
+func usesPublicRelay(c *cli.Context, options croc.Options) bool {
+	return !c.IsSet("relay") &&
+		!c.IsSet("relay6") &&
+		!options.OnlyLocal &&
+		options.IP == "" &&
+		options.RelayAddress == models.DEFAULT_RELAY &&
+		options.RelayAddress6 == models.DEFAULT_RELAY6
+}
+
+func assignPublicRelay(options *croc.Options, relayIndex int) error {
+	relays := publicrelay.Relays()
+	if relayIndex < 0 || relayIndex >= len(relays) {
+		return codephrase.ErrInvalidRelayIndex
+	}
+	options.RelayAddress = relays[relayIndex]
+	options.RelayAddress6 = ""
+	options.PublicRelay = true
+	log.Debugf("public relay index %d selected: %s", relayIndex, options.RelayAddress)
+	return nil
+}
+
+func assignPublicRelayForCode(options *croc.Options) error {
+	relays := publicrelay.Relays()
+	relayIndex, err := codephrase.RelayIndex(options.SharedSecret, len(relays))
+	if err != nil {
+		return err
+	}
+	log.Debugf("code maps to public relay index %d", relayIndex)
+	return assignPublicRelay(options, relayIndex)
+}
+
+func selectBestPublicRelay(probe publicrelay.Probe) (int, error) {
+	relays := publicrelay.Relays()
+	best, duration, err := publicrelay.SelectFirst(
+		context.Background(),
+		relays,
+		publicrelay.ProbeTimeout,
+		probe,
+	)
+	if err == nil {
+		log.Debugf("public relay %d (%s) won probe race in %s", best, relays[best], duration)
+	}
+	return best, err
+}
+
+func loadBestPublicRelay(relays []string) (int, error) {
+	cacheFile, err := getBestRelayCacheFile(false)
+	if err != nil {
+		return 0, err
+	}
+	contents, err := os.ReadFile(cacheFile)
+	if err != nil {
+		return 0, err
+	}
+	address := string(contents)
+	for index, relay := range relays {
+		if address == relay {
+			log.Debugf("using cached public relay %d (%s) from %s", index, address, cacheFile)
+			return index, nil
+		}
+	}
+	return 0, fmt.Errorf("cached public relay %q is not in the configured pool", address)
+}
+
+func saveBestPublicRelay(address string) error {
+	cacheFile, err := getBestRelayCacheFile(true)
+	if err != nil {
+		return err
+	}
+	if err = writePrivateConfigFile(cacheFile, []byte(address)); err != nil {
+		return err
+	}
+	log.Debugf("cached public relay %s in %s", address, cacheFile)
+	return nil
+}
+
+func clearBestPublicRelay() {
+	cacheFile, err := getBestRelayCacheFile(false)
+	if err != nil {
+		log.Debugf("could not locate public relay cache: %v", err)
+		return
+	}
+	if err = os.Remove(cacheFile); err != nil && !os.IsNotExist(err) {
+		log.Warnf("could not clear public relay cache %s: %v", cacheFile, err)
+		return
+	}
+	log.Debugf("cleared public relay cache %s", cacheFile)
+}
+
+func clearBestPublicRelayOnSendError(generatedPublicCode bool, err error) {
+	if generatedPublicCode && errors.Is(err, croc.ErrRelayConnection) {
+		clearBestPublicRelay()
+	}
+}
+
+func selectPublicRelay(probe publicrelay.Probe) (int, error) {
+	relays := publicrelay.Relays()
+	if relayIndex, err := loadBestPublicRelay(relays); err == nil {
+		return relayIndex, nil
+	} else if !os.IsNotExist(err) {
+		log.Debugf("ignoring invalid public relay cache: %v", err)
+	}
+
+	relayIndex, err := selectBestPublicRelay(probe)
+	if err != nil {
+		return 0, err
+	}
+	if err = saveBestPublicRelay(relays[relayIndex]); err != nil {
+		log.Warnf("could not cache public relay selection: %v", err)
+	}
+	return relayIndex, nil
+}
+
 func shouldExitForUnixSendCode(goos string, codeFlagSet, classicInsecureMode bool, envSecret string) bool {
 	return goos != "windows" && codeFlagSet && !classicInsecureMode && envSecret == ""
+}
+
+func applyRememberedSendOptions(c *cli.Context, options *croc.Options, remembered croc.Options) {
+	// Update anything that isn't explicitly set.
+	if !c.IsSet("no-local") {
+		options.DisableLocal = remembered.DisableLocal
+	}
+	if !c.IsSet("ports") && len(remembered.RelayPorts) > 0 {
+		options.RelayPorts = remembered.RelayPorts
+	}
+	if !c.IsSet("code") {
+		options.SharedSecret = remembered.SharedSecret
+	}
+	if !c.IsSet("pass") && remembered.RelayPassword != "" {
+		options.RelayPassword = remembered.RelayPassword
+	}
+	if !c.IsSet("overwrite") {
+		options.Overwrite = remembered.Overwrite
+	}
+	if !c.IsSet("rename") {
+		options.Rename = remembered.Rename
+	}
+	if !c.IsSet("curve") && remembered.Curve != "" {
+		options.Curve = remembered.Curve
+	}
+	if !c.IsSet("local") {
+		options.OnlyLocal = remembered.OnlyLocal
+	}
+	if !c.IsSet("hash") {
+		options.HashAlgorithm = remembered.HashAlgorithm
+	}
+	if !c.IsSet("git") {
+		options.GitIgnore = remembered.GitIgnore
+	}
+	if !c.IsSet("disable-clipboard") {
+		options.DisableClipboard = remembered.DisableClipboard
+	}
+	if !c.IsSet("relay") && strings.HasPrefix(remembered.RelayAddress, "non-default:") {
+		rememberedAddr := strings.TrimPrefix(remembered.RelayAddress, "non-default:")
+		options.RelayAddress = strings.TrimSpace(rememberedAddr)
+	}
+	if !c.IsSet("relay6") && strings.HasPrefix(remembered.RelayAddress6, "non-default:") {
+		rememberedAddr := strings.TrimPrefix(remembered.RelayAddress6, "non-default:")
+		options.RelayAddress6 = strings.TrimSpace(rememberedAddr)
+	}
 }
 
 // parseRelayPorts splits a comma-separated --ports value, trimming whitespace
@@ -356,6 +504,9 @@ func parseRelayPorts(portsFlag string) []string {
 }
 
 func send(c *cli.Context) (err error) {
+	finishVersionCheck := startTransferVersionCheck(c)
+	defer finishVersionCheck()
+
 	setDebugLevel(c)
 	comm.Socks5Proxy = c.String("socks5")
 	comm.HttpProxy = c.String("connect")
@@ -436,48 +587,9 @@ func send(c *cli.Context) (err error) {
 			log.Error(err)
 			return
 		}
-		// update anything that isn't explicitly set
-		if !c.IsSet("no-local") {
-			crocOptions.DisableLocal = rememberedOptions.DisableLocal
-		}
-		if !c.IsSet("ports") && len(rememberedOptions.RelayPorts) > 0 {
-			crocOptions.RelayPorts = rememberedOptions.RelayPorts
-		}
-		if !c.IsSet("code") {
-			crocOptions.SharedSecret = rememberedOptions.SharedSecret
-		}
-		if !c.IsSet("pass") && rememberedOptions.RelayPassword != "" {
-			crocOptions.RelayPassword = rememberedOptions.RelayPassword
-		}
-		if !c.IsSet("overwrite") {
-			crocOptions.Overwrite = rememberedOptions.Overwrite
-		}
-		if !c.IsSet("rename") {
-			crocOptions.Rename = rememberedOptions.Rename
-		}
-		if !c.IsSet("curve") && rememberedOptions.Curve != "" {
-			crocOptions.Curve = rememberedOptions.Curve
-		}
-		if !c.IsSet("local") {
-			crocOptions.OnlyLocal = rememberedOptions.OnlyLocal
-		}
-		if !c.IsSet("hash") {
-			crocOptions.HashAlgorithm = rememberedOptions.HashAlgorithm
-		}
-		if !c.IsSet("git") {
-			crocOptions.GitIgnore = rememberedOptions.GitIgnore
-		}
-		if !c.IsSet("relay") && strings.HasPrefix(rememberedOptions.RelayAddress, "non-default:") {
-			var rememberedAddr = strings.TrimPrefix(rememberedOptions.RelayAddress, "non-default:")
-			rememberedAddr = strings.TrimSpace(rememberedAddr)
-			crocOptions.RelayAddress = rememberedAddr
-		}
-		if !c.IsSet("relay6") && strings.HasPrefix(rememberedOptions.RelayAddress6, "non-default:") {
-			var rememberedAddr = strings.TrimPrefix(rememberedOptions.RelayAddress6, "non-default:")
-			rememberedAddr = strings.TrimSpace(rememberedAddr)
-			crocOptions.RelayAddress6 = rememberedAddr
-		}
+		applyRememberedSendOptions(c, &crocOptions, rememberedOptions)
 	}
+	publicRelayMode := usesPublicRelay(c, crocOptions)
 
 	var fnames []string
 	stat, _ := os.Stdin.Stat()
@@ -534,11 +646,27 @@ Or you can go back to the classic croc behavior by enabling classic mode:
 		os.Exit(0)
 	}
 
+	generatedPublicCode := len(crocOptions.SharedSecret) == 0 && publicRelayMode
 	if len(crocOptions.SharedSecret) == 0 {
-		// generate code phrase
-		crocOptions.SharedSecret, err = codephrase.Generate()
+		if publicRelayMode {
+			var relayIndex int
+			relayIndex, err = selectPublicRelay(tcp.MeasureServerLatencyContext)
+			if err != nil {
+				return err
+			}
+			crocOptions.SharedSecret, err = codephrase.GenerateForRelay(relayIndex, len(publicrelay.Relays()))
+			if err == nil {
+				err = assignPublicRelay(&crocOptions, relayIndex)
+			}
+		} else {
+			crocOptions.SharedSecret, err = codephrase.Generate()
+		}
 		if err != nil {
 			return fmt.Errorf("could not generate code phrase: %w", err)
+		}
+	} else if publicRelayMode {
+		if err = assignPublicRelayForCode(&crocOptions); err != nil {
+			return fmt.Errorf("could not select public relay: %w", err)
 		}
 	}
 	minimalFileInfos, emptyFoldersToTransfer, totalNumberFolders, err := croc.GetFilesInfoWithExactExclusions(fnames, crocOptions.ZipFolder, crocOptions.GitIgnore, crocOptions.Exclude, crocOptions.ExcludeFile)
@@ -593,6 +721,7 @@ Or you can go back to the classic croc behavior by enabling classic mode:
 	// save the config
 	saveConfig(c, crocOptions)
 	err = cr.Send(minimalFileInfos, emptyFoldersToTransfer, totalNumberFolders)
+	clearBestPublicRelayOnSendError(generatedPublicCode, err)
 	return
 }
 
@@ -690,6 +819,9 @@ func saveConfig(c *cli.Context, crocOptions croc.Options) {
 }
 
 func receive(c *cli.Context) (err error) {
+	finishVersionCheck := startTransferVersionCheck(c)
+	defer finishVersionCheck()
+
 	comm.Socks5Proxy = c.String("socks5")
 	comm.HttpProxy = c.String("connect")
 	if storedToken := strings.TrimSpace(os.Getenv("CROC_STORE_TOKEN")); storedToken != "" {
@@ -800,30 +932,18 @@ Run croc with no argument and paste the link at the prompt, or use:
 			crocOptions.RelayAddress6 = rememberedAddr
 		}
 	}
+	publicRelayMode := usesPublicRelay(c, crocOptions)
 
 	classicInsecureMode := utils.Exists(getClassicConfigFile(true))
 	if crocOptions.SharedSecret == "" && os.Getenv("CROC_SECRET") != "" {
 		crocOptions.SharedSecret = os.Getenv("CROC_SECRET")
 	} else if !(runtime.GOOS == "windows") && crocOptions.SharedSecret != "" && !classicInsecureMode {
+		commandLineSecret := crocOptions.SharedSecret
 		crocOptions.SharedSecret = os.Getenv("CROC_SECRET")
 		if crocOptions.SharedSecret == "" {
-			fmt.Printf(`On UNIX systems, to receive with croc you either need
-to set a code phrase using your environmental variables:
-
-  CROC_SECRET=**** croc
-
-Or you can specify the code phrase when you run croc without
-declaring the secret on the command line:
-
-  croc
-  Enter receive code: ****
-
-Or you can go back to the classic croc behavior by enabling classic mode:
-
-  croc --classic
-
-`)
-			os.Exit(0)
+			output, colorEnabled := termui.Output(os.Stdout)
+			fmt.Fprint(output, formatUnixReceiveCodeMessage(commandLineSecret, colorEnabled))
+			return nil
 		}
 	}
 	if crocOptions.SharedSecret == "" {
@@ -834,6 +954,11 @@ Or you can go back to the classic croc behavior by enabling classic mode:
 	}
 	if storeclient.IsStoredValue(crocOptions.SharedSecret) {
 		return receiveStored(c, crocOptions.SharedSecret)
+	}
+	if publicRelayMode {
+		if err = assignPublicRelayForCode(&crocOptions); err != nil {
+			return fmt.Errorf("could not select public relay: %w", err)
+		}
 	}
 	if c.String("out") != "" {
 		if err = os.Chdir(c.String("out")); err != nil {
@@ -918,6 +1043,27 @@ func relay(c *cli.Context) (err error) {
 		return fmt.Errorf("relay requires at least two ports; specify --ports with two or more ports or set --transfers to 2+")
 	}
 
+	var roomPaired func()
+	umamiURL := strings.TrimSpace(os.Getenv("UMAMI_URL"))
+	umamiWebsiteID := strings.TrimSpace(os.Getenv("UMAMI_WEBSITE_ID"))
+	umamiSrc := strings.TrimSpace(os.Getenv("UMAMI_SRC"))
+	siteURL := strings.TrimSpace(os.Getenv("SITE_URL"))
+	if umamiURL != "" && umamiWebsiteID != "" && siteURL != "" {
+		reporter, reporterErr := publicrelay.NewUmamiReporter(umamiURL, umamiWebsiteID, siteURL, Version)
+		if reporterErr != nil {
+			log.Warnf("relay analytics disabled: %v", reporterErr)
+		} else {
+			defer reporter.Close()
+			roomPaired = func() {
+				event := "relay-session"
+				if umamiSrc != "" {
+					event += "-" + umamiSrc
+				}
+				reporter.Track(event)
+			}
+		}
+	}
+
 	tcpPorts := strings.Join(ports[1:], ",")
 	for i, port := range ports {
 		if i == 0 {
@@ -947,152 +1093,6 @@ func relay(c *cli.Context) (err error) {
 		tcp.WithMaxRoomsOpen(maxRoomsOpen),
 		tcp.WithMaxPendingHandshakes(maxPendingHandshakes),
 		tcp.WithHandshakeTimeout(handshakeTimeout),
+		tcp.WithRoomPairedCallback(roomPaired),
 	)
-}
-
-func runServe(c *cli.Context) error {
-	if c.Args().Len() > 1 {
-		return errors.New("serve accepts one public website address")
-	}
-	publicAddress := c.Args().First()
-	bindAddress, origin, err := resolveServeAddress(
-		publicAddress,
-		c.String("bind"),
-		c.IsSet("bind"),
-	)
-	if err != nil {
-		return err
-	}
-	var storeService *storeapi.Service
-	storeDirectory := strings.TrimSpace(c.String("store-dir"))
-	if storeDirectory != "" {
-		maxTransfer, parseErr := parseByteSize(c.String("store-max-transfer"))
-		if parseErr != nil {
-			return fmt.Errorf("invalid --store-max-transfer: %w", parseErr)
-		}
-		maxTotal, parseErr := parseByteSize(c.String("store-quota"))
-		if parseErr != nil {
-			return fmt.Errorf("invalid --store-quota: %w", parseErr)
-		}
-		minFree, parseErr := parseByteSize(c.String("store-min-free"))
-		if parseErr != nil {
-			return fmt.Errorf("invalid --store-min-free: %w", parseErr)
-		}
-		var trusted []netip.Prefix
-		for _, value := range c.StringSlice("store-trusted-proxy") {
-			prefix, prefixErr := netip.ParsePrefix(strings.TrimSpace(value))
-			if prefixErr != nil {
-				return fmt.Errorf("invalid --store-trusted-proxy %q: %w", value, prefixErr)
-			}
-			trusted = append(trusted, prefix)
-		}
-		storeService, err = storeapi.New(storeapi.Config{
-			Root:             storeDirectory,
-			MaxTransferBytes: maxTransfer,
-			MaxTotalBytes:    maxTotal,
-			MinFreeBytes:     minFree,
-			MaxFiles:         c.Int("store-max-files"),
-			CreatePerHour:    c.Int("store-create-rate"),
-			MaxActiveUploads: c.Int("store-active-uploads"),
-			TrustedProxies:   trusted,
-		})
-		if err != nil {
-			return err
-		}
-		defer storeService.Close()
-	}
-	return webrelay.Run(context.Background(), webrelay.Config{
-		ListenAddress:  bindAddress,
-		PublicAddress:  origin,
-		RelayHost:      c.String("relay"),
-		RelayPassword:  determinePass(c),
-		AllowedPorts:   parseRelayPorts(c.String("ports")),
-		OriginPatterns: []string{origin},
-		StoreService:   storeService,
-		UmamiURL:       os.Getenv("UMAMI_URL"),
-		UmamiWebsiteID: os.Getenv("UMAMI_WEBSITE_ID"),
-	})
-}
-
-func parseByteSize(value string) (int64, error) {
-	normalized := strings.TrimSpace(strings.ToUpper(value))
-	if normalized == "" {
-		return 0, errors.New("size cannot be empty")
-	}
-	multipliers := []struct {
-		suffix     string
-		multiplier int64
-	}{
-		{"TIB", 1 << 40},
-		{"GIB", 1 << 30},
-		{"MIB", 1 << 20},
-		{"KIB", 1 << 10},
-		{"TB", 1_000_000_000_000},
-		{"GB", 1_000_000_000},
-		{"MB", 1_000_000},
-		{"KB", 1_000},
-		{"B", 1},
-	}
-	multiplier := int64(1)
-	number := normalized
-	for _, candidate := range multipliers {
-		if strings.HasSuffix(normalized, candidate.suffix) {
-			multiplier = candidate.multiplier
-			number = strings.TrimSpace(strings.TrimSuffix(normalized, candidate.suffix))
-			break
-		}
-	}
-	parsed, err := strconv.ParseInt(number, 10, 64)
-	if err != nil || parsed < 0 || (parsed > 0 && parsed > (1<<63-1)/multiplier) {
-		return 0, fmt.Errorf("invalid byte size %q", value)
-	}
-	return parsed * multiplier, nil
-}
-
-func resolveServeAddress(publicAddress, bindAddress string, bindExplicit bool) (string, string, error) {
-	publicAddress = strings.TrimSpace(publicAddress)
-	publicExplicit := publicAddress != ""
-	if publicAddress == "" {
-		publicAddress = "localhost:5173"
-	}
-	if strings.Contains(publicAddress, "://") || strings.ContainsAny(publicAddress, "/?#") {
-		return "", "", fmt.Errorf("website address must be a host or host:port: %q", publicAddress)
-	}
-
-	host, port, err := net.SplitHostPort(publicAddress)
-	if err != nil {
-		if strings.Contains(publicAddress, ":") {
-			return "", "", fmt.Errorf("invalid website address %q: %w", publicAddress, err)
-		}
-		host = publicAddress
-		port = ""
-	}
-	host = strings.Trim(host, "[]")
-	if host == "" || strings.ContainsAny(host, " \t\r\n") {
-		return "", "", fmt.Errorf("invalid website host %q", host)
-	}
-	if port != "" {
-		portNumber, parseErr := strconv.ParseUint(port, 10, 16)
-		if parseErr != nil || portNumber == 0 {
-			return "", "", fmt.Errorf("invalid website port %q", port)
-		}
-	}
-
-	bindAddress = strings.TrimSpace(bindAddress)
-	if bindAddress == "" {
-		bindAddress = "127.0.0.1:9014"
-	}
-	if publicExplicit && !bindExplicit && port != "" {
-		ip := net.ParseIP(host)
-		if strings.EqualFold(host, "localhost") || (ip != nil && ip.IsLoopback()) {
-			bindAddress = publicAddress
-		}
-	}
-	if _, bindPort, splitErr := net.SplitHostPort(bindAddress); splitErr != nil {
-		return "", "", fmt.Errorf("invalid bind address %q: %w", bindAddress, splitErr)
-	} else if portNumber, parseErr := strconv.ParseUint(bindPort, 10, 16); parseErr != nil || portNumber == 0 {
-		return "", "", fmt.Errorf("invalid bind port %q", bindPort)
-	}
-
-	return bindAddress, publicAddress, nil
 }

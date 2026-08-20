@@ -19,7 +19,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/schollz/croc/v10/src/codephrase"
+	"github.com/schollz/croc/v11/src/codephrase"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -74,6 +74,26 @@ func TestShortenProgressFilename(t *testing.T) {
 			got := shortenProgressFilename(tt.input)
 			assert.Equal(t, tt.want, got)
 			assert.True(t, utf8.ValidString(got))
+		})
+	}
+}
+
+func TestShouldShowHashProgress(t *testing.T) {
+	tests := []struct {
+		name      string
+		requested bool
+		size      int64
+		want      bool
+	}{
+		{name: "not requested", requested: false, size: minHashProgressSize, want: false},
+		{name: "below threshold", requested: true, size: minHashProgressSize - 1, want: false},
+		{name: "at threshold", requested: true, size: minHashProgressSize, want: true},
+		{name: "above threshold", requested: true, size: minHashProgressSize + 1, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, shouldShowHashProgress(tt.requested, tt.size))
 		})
 	}
 }
@@ -152,6 +172,62 @@ func TestUnusedFilename(t *testing.T) {
 	assert.Equal(t, "noext (1)", UnusedFilename(folder, "noext"))
 }
 
+func TestRemoveMarkedFilesIgnoresTransferredCleanupFile(t *testing.T) {
+	// Ensure this test starts with an empty process-local cleanup list.
+	assert.NoError(t, RemoveMarkedFiles())
+
+	root := t.TempDir()
+	receiverDir := filepath.Join(root, "receiver")
+	assert.NoError(t, os.Mkdir(receiverDir, 0o755))
+	t.Chdir(receiverDir)
+
+	relativeTarget := filepath.Join(receiverDir, "secret.txt")
+	parentTarget := filepath.Join(root, "victim-sibling.txt")
+	absoluteTarget := filepath.Join(root, "absolute-target.txt")
+	for _, target := range []string{relativeTarget, parentTarget, absoluteTarget} {
+		assert.NoError(t, os.WriteFile(target, []byte("keep"), 0o600))
+	}
+
+	transferredCleanupFile := filepath.Join(receiverDir, "croc-marked-files.txt")
+	contents := fmt.Sprintf("secret.txt\n../victim-sibling.txt\n%s\n", absoluteTarget)
+	assert.NoError(t, os.WriteFile(transferredCleanupFile, []byte(contents), 0o600))
+
+	assert.NoError(t, RemoveMarkedFiles())
+	for _, target := range []string{
+		relativeTarget,
+		parentTarget,
+		absoluteTarget,
+		transferredCleanupFile,
+	} {
+		_, err := os.Stat(target)
+		assert.NoError(t, err, "%s should not be removed", target)
+	}
+}
+
+func TestRemoveMarkedFilesRemovesOnlyLocalMarkedFiles(t *testing.T) {
+	assert.NoError(t, RemoveMarkedFiles())
+
+	root := t.TempDir()
+	workingDir := filepath.Join(root, "working")
+	assert.NoError(t, os.Mkdir(workingDir, 0o755))
+	t.Chdir(workingDir)
+
+	localTarget := filepath.Join(workingDir, "croc-temp-file")
+	parentTarget := filepath.Join(root, "parent-file")
+	assert.NoError(t, os.WriteFile(localTarget, []byte("remove"), 0o600))
+	assert.NoError(t, os.WriteFile(parentTarget, []byte("keep"), 0o600))
+
+	MarkFileForRemoval(filepath.Base(localTarget))
+	MarkFileForRemoval(filepath.Join("..", filepath.Base(parentTarget)))
+	MarkFileForRemoval(parentTarget)
+	assert.NoError(t, RemoveMarkedFiles())
+
+	_, err := os.Stat(localTarget)
+	assert.True(t, os.IsNotExist(err), "explicitly marked local file should be removed")
+	_, err = os.Stat(parentTarget)
+	assert.NoError(t, err, "non-local file should not be removed")
+}
+
 func TestMD5HashFile(t *testing.T) {
 	bigFile()
 	defer os.Remove("bigfile.test")
@@ -222,6 +298,13 @@ func TestMissingChunks(t *testing.T) {
 
 	chunks := ChunkRangesToChunks(chunkRanges)
 	assert.Equal(t, []int64{0, 40, 50, 70, 80, 90}, chunks)
+	assert.Equal(t, 6, ChunkRangesCount(chunkRanges, int64(fileSize), int64(chunkSize)))
+	assert.Equal(t, int64(60), ChunkRangesBytes(chunkRanges, int64(fileSize), int64(chunkSize)))
+	assert.True(t, ChunkRangesContain(chunkRanges, 50))
+	assert.False(t, ChunkRangesContain(chunkRanges, 60))
+	assert.Equal(t, 10, ChunkRangesCount(nil, int64(fileSize), int64(chunkSize)))
+	assert.Equal(t, int64(fileSize), ChunkRangesBytes(nil, int64(fileSize), int64(chunkSize)))
+	assert.True(t, ChunkRangesContain(nil, 60))
 
 	os.Remove("missing.test")
 
@@ -304,10 +387,9 @@ func TestLocalIPsFromAddrsIncludesRoutableIPv4AndIPv6(t *testing.T) {
 
 func TestGetRandomName(t *testing.T) {
 	name := GetRandomName()
-	assert.Regexp(t, `^[a-z]+-[a-z]+-[a-z]+-[a-z]+$`, name)
 	components, err := codephrase.Parse(name)
 	assert.NoError(t, err)
-	assert.Equal(t, codephrase.FormatFourWord, components.Format)
+	assert.Equal(t, codephrase.FormatThreeWord, components.Format)
 }
 
 func intSliceSame(a, b []int) bool {

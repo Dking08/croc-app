@@ -3,7 +3,9 @@ package tcp
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -12,9 +14,8 @@ import (
 	log "github.com/schollz/logger"
 	"github.com/schollz/pake/v3"
 
-	"github.com/schollz/croc/v10/src/comm"
-	"github.com/schollz/croc/v10/src/crypt"
-	"github.com/schollz/croc/v10/src/models"
+	"github.com/schollz/croc/v11/src/comm"
+	"github.com/schollz/croc/v11/src/crypt"
 )
 
 type server struct {
@@ -23,6 +24,7 @@ type server struct {
 	debugLevel string
 	banner     string
 	password   string
+	roomPaired func()
 	rooms      roomMap
 	started    chan struct{}
 
@@ -554,6 +556,9 @@ func (s *server) clientCommunication(c *comm.Comm, handshake handshakeResult) (r
 		s.deleteRoom(room)
 		return
 	}
+	if s.roomPaired != nil {
+		s.roomPaired()
+	}
 	wg.Wait()
 
 	// delete room
@@ -578,85 +583,97 @@ func (s *server) deleteRoom(room string) {
 	delete(s.rooms.rooms, room)
 }
 
-// chanFromConn creates a channel from a Conn object, and sends everything it
-//
-//	Read()s from the socket to the channel.
-func chanFromConn(conn net.Conn) chan []byte {
-	c := make(chan []byte, 1)
-	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Hour)); err != nil {
-		log.Warnf("can't set read deadline: %v", err)
-	}
-
-	go func() {
-		b := make([]byte, models.TCP_BUFFER_SIZE)
-		for {
-			n, err := conn.Read(b)
-			if n > 0 {
-				res := make([]byte, n)
-				// Copy the buffer so it doesn't get changed while read by the recipient.
-				copy(res, b[:n])
-				c <- res
-			}
-			if err != nil {
-				log.Debug(err)
-				c <- nil
-				break
-			}
-		}
-		log.Debug("exiting")
-	}()
-
-	return c
-}
-
 // pipe creates a full-duplex pipe between the two sockets and
 // transfers data from one to the other.
 func pipe(conn1 net.Conn, conn2 net.Conn) {
-	chan1 := chanFromConn(conn1)
-	chan2 := chanFromConn(conn2)
-
-	for {
-		select {
-		case b1 := <-chan1:
-			if b1 == nil {
-				return
-			}
-			if _, err := conn2.Write(b1); err != nil {
-				log.Errorf("write error on channel 1: %v", err)
-			}
-
-		case b2 := <-chan2:
-			if b2 == nil {
-				return
-			}
-			if _, err := conn1.Write(b2); err != nil {
-				log.Errorf("write error on channel 2: %v", err)
-			}
-		}
+	copyDone := make(chan error, 2)
+	copyDirection := func(dst, src net.Conn) {
+		_, err := io.Copy(dst, src)
+		copyDone <- err
+	}
+	go copyDirection(conn2, conn1)
+	go copyDirection(conn1, conn2)
+	if err := <-copyDone; err != nil && !errors.Is(err, net.ErrClosed) {
+		log.Debugf("relay pipe closed: %v", err)
 	}
 }
 
 func PingServer(address string) (err error) {
+	_, err = MeasureServerLatency(address, 300*time.Millisecond)
+	return err
+}
+
+// MeasureServerLatency performs a complete croc ping/pong exchange within one
+// overall deadline and returns its elapsed duration.
+func MeasureServerLatency(address string, timeout time.Duration) (duration time.Duration, err error) {
+	return MeasureServerLatencyContext(context.Background(), address, timeout)
+}
+
+// MeasureServerLatencyContext performs one relay probe and closes its
+// connection promptly when the caller cancels the probe race.
+func MeasureServerLatencyContext(ctx context.Context, address string, timeout time.Duration) (duration time.Duration, err error) {
 	log.Debugf("pinging %s", address)
-	c, err := comm.NewConnection(address, 300*time.Millisecond)
-	if err != nil {
-		log.Debug(err)
-		return
+	started := time.Now()
+	type connectionResult struct {
+		connection *comm.Comm
+		err        error
+	}
+	connected := make(chan connectionResult, 1)
+	go func() {
+		c, connectErr := comm.NewConnection(address, timeout)
+		connected <- connectionResult{connection: c, err: connectErr}
+	}()
+
+	var c *comm.Comm
+	select {
+	case <-ctx.Done():
+		// The dial may finish at the same instant as cancellation. Drain its
+		// result asynchronously so a successfully opened connection is still
+		// closed even when cancellation wins this select.
+		go func() {
+			result := <-connected
+			if result.connection != nil {
+				result.connection.Close()
+			}
+		}()
+		return 0, ctx.Err()
+	case result := <-connected:
+		if result.err != nil {
+			log.Debug(result.err)
+			return 0, result.err
+		}
+		c = result.connection
+	}
+	defer c.Close()
+	stopCancel := context.AfterFunc(ctx, func() { c.Close() })
+	defer stopCancel()
+	deadline := started.Add(timeout)
+	if err = c.Connection().SetDeadline(deadline); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return 0, ctxErr
+		}
+		return 0, err
 	}
 	err = c.Send([]byte("ping"))
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return 0, ctxErr
+		}
 		log.Debug(err)
 		return
 	}
-	b, err := c.Receive()
+	b, err := c.ReceiveWithDeadline(deadline)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return 0, ctxErr
+		}
 		log.Debug(err)
 		return
 	}
 	if bytes.Equal(b, []byte("pong")) {
-		return nil
+		return time.Since(started), nil
 	}
-	return fmt.Errorf("no pong")
+	return 0, fmt.Errorf("no pong")
 }
 
 // ConnectToTCPServer will initiate a new connection

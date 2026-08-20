@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/schollz/croc/v10/src/store"
+	"github.com/schollz/croc/v11/src/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,8 +21,10 @@ const testInstaller = "#!/bin/bash\nset -o nounset\n"
 
 func testSite() fstest.MapFS {
 	return fstest.MapFS{
-		"index.html":  {Data: []byte("<!doctype html><body><div id=\"root\"></div></body>")},
-		"default.txt": {Data: []byte(testInstaller)},
+		"index.html":                        {Data: []byte("<!doctype html><html><head></head><body><div id=\"root\"></div></body></html>")},
+		"blog/index.html":                   {Data: []byte("<!doctype html><html><head><title>field notes</title></head><body><div id=\"root\"></div></body></html>")},
+		"blog/pake-step-by-step/index.html": {Data: []byte("<!doctype html><html><head><title>PAKE, step by step</title></head><body><div id=\"root\"></div></body></html>")},
+		"default.txt":                       {Data: []byte(testInstaller)},
 		"croc-download-sw.js": {
 			Data: []byte("self.addEventListener('fetch', () => {})"),
 		},
@@ -58,6 +60,7 @@ func startEchoServer(t *testing.T) (host, port string) {
 func TestNormalizeConfigAllowsPublicRelayPortPools(t *testing.T) {
 	config, err := normalizeConfig(Config{})
 	require.NoError(t, err)
+	assert.Equal(t, []string{"1.getcroc.com", "2.getcroc.com", "3.getcroc.com", "4.getcroc.com"}, config.RelayHosts)
 	assert.Equal(
 		t,
 		[]string{"9009", "9010", "9011", "9012", "9013", "9014", "9015", "9016", "9017"},
@@ -102,6 +105,22 @@ func TestServesSiteAndRuntimeConfig(t *testing.T) {
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/send/files", nil))
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.Contains(t, recorder.Body.String(), `id="root"`)
+	assert.NotContains(t, recorder.Body.String(), "field notes")
+
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/blog", nil))
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "<title>field notes</title>")
+	assert.Equal(t, "no-cache", recorder.Header().Get("Cache-Control"))
+
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(
+		recorder,
+		httptest.NewRequest(http.MethodGet, "/blog/pake-step-by-step", nil),
+	)
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "<title>PAKE, step by step</title>")
+	assert.Equal(t, "no-cache", recorder.Header().Get("Cache-Control"))
 
 	recorder = httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/assets/app.js", nil))
@@ -126,7 +145,7 @@ func TestServesSiteAndRuntimeConfig(t *testing.T) {
 	assert.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
 	assert.JSONEq(
 		t,
-		`{"gatewayURL":"/ws","relayAddress":"relay.example.test:9109","relayPassword":"relay-secret","store":{"enabled":false,"maxTransferBytes":0,"maxFiles":0,"expiresSeconds":0}}`,
+		`{"gatewayURL":"/ws","relayAddresses":["relay.example.test:9109"],"relayPassword":"relay-secret","store":{"enabled":false,"maxTransferBytes":0,"maxFiles":0,"maxDownloads":0,"expiresSeconds":0,"maxExpiresSeconds":0}}`,
 		strings.TrimSuffix(
 			strings.TrimPrefix(recorder.Body.String(), "window.__CROC_RUNTIME_CONFIG__ = "),
 			";\n",
@@ -134,21 +153,21 @@ func TestServesSiteAndRuntimeConfig(t *testing.T) {
 	)
 }
 
-func TestUmamiTrackerRequiresBothEnvironmentValues(t *testing.T) {
+func TestUmamiScriptRequiresBothEnvironmentValues(t *testing.T) {
 	for _, testCase := range []struct {
-		name      string
-		url       string
-		websiteID string
-		tracked   bool
+		name       string
+		url        string
+		websiteID  string
+		configured bool
 	}{
 		{name: "unset"},
 		{name: "URL only", url: "https://umami.schollz.com"},
 		{name: "website ID only", websiteID: "website-uuid"},
 		{
-			name:      "both values",
-			url:       "https://umami.schollz.com/",
-			websiteID: "website-uuid",
-			tracked:   true,
+			name:       "both values",
+			url:        "https://umami.schollz.com/",
+			websiteID:  "website-uuid",
+			configured: true,
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -161,20 +180,140 @@ func TestUmamiTrackerRequiresBothEnvironmentValues(t *testing.T) {
 			})
 			require.NoError(t, err)
 
+			script := `<script defer src="https://umami.schollz.com/script.js" data-website-id="website-uuid" data-performance="true"></script>`
+			for _, requestPath := range []string{"/", "/blog"} {
+				recorder := httptest.NewRecorder()
+				handler.ServeHTTP(
+					recorder,
+					httptest.NewRequest(http.MethodGet, requestPath, nil),
+				)
+
+				assert.Equal(
+					t,
+					testCase.configured,
+					strings.Contains(recorder.Body.String(), script),
+				)
+			}
+		})
+	}
+}
+
+func TestParseWebUmamiConfig(t *testing.T) {
+	for _, testCase := range []struct {
+		name      string
+		url       string
+		websiteID string
+		wantNil   bool
+		wantError bool
+	}{
+		{name: "unset", wantNil: true},
+		{name: "URL only", url: "https://umami.schollz.com", wantNil: true},
+		{name: "website ID only", websiteID: "website-uuid", wantNil: true},
+		{name: "HTTP URL", url: "http://umami.schollz.com", websiteID: "website-uuid", wantError: true},
+		{name: "invalid URL", url: "://invalid", websiteID: "website-uuid", wantError: true},
+		{name: "configured", url: " https://umami.schollz.com/ ", websiteID: " website-uuid "},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			settings, err := parseWebUmamiConfig(testCase.url, testCase.websiteID)
+			if testCase.wantError {
+				assert.Error(t, err)
+				assert.Nil(t, settings)
+				return
+			}
+			require.NoError(t, err)
+			if testCase.wantNil {
+				assert.Nil(t, settings)
+				return
+			}
+			require.NotNil(t, settings)
+			assert.Equal(t, "https://umami.schollz.com", settings.baseURL)
+			assert.Equal(t, "https://umami.schollz.com/script.js", settings.scriptURL)
+			assert.Equal(t, "website-uuid", settings.websiteID)
+		})
+	}
+}
+
+func TestGoogleAdSenseConfig(t *testing.T) {
+	for _, testCase := range []struct {
+		name        string
+		publisherID string
+		wantScript  string
+	}{
+		{name: "unset"},
+		{
+			name:        "configured",
+			publisherID: "ca-pub-4947875154879707",
+			wantScript:  `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4947875154879707" crossorigin="anonymous"></script>`,
+		},
+		{
+			name:        "escapes publisher ID",
+			publisherID: `publisher&amp;client`,
+			wantScript:  `client=publisher%26amp%3Bclient`,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			handler, err := Handler(Config{
+				RelayHost:     "127.0.0.1",
+				AllowedPorts:  []string{"9009"},
+				StaticFiles:   testSite(),
+				GoogleAdSense: testCase.publisherID,
+			})
+			require.NoError(t, err)
+
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(
 				recorder,
 				httptest.NewRequest(http.MethodGet, "/", nil),
 			)
 
-			script := `<script defer data-website-id="website-uuid" src="https://umami.schollz.com/script.js"></script>`
-			assert.Equal(
-				t,
-				testCase.tracked,
-				strings.Contains(recorder.Body.String(), script),
-			)
+			if testCase.wantScript == "" {
+				assert.NotContains(t, recorder.Body.String(), "pagead2.googlesyndication.com")
+			} else {
+				assert.Contains(t, recorder.Body.String(), testCase.wantScript)
+			}
 		})
 	}
+}
+
+func TestGoogleAdsTXT(t *testing.T) {
+	const contents = "google.com, pub-4947875154879707, DIRECT, f08c47fec0942fa0\n"
+	handler, err := Handler(Config{
+		RelayHost:    "127.0.0.1",
+		AllowedPorts: []string{"9009"},
+		StaticFiles:  testSite(),
+		GoogleAdsTXT: contents,
+	})
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/ads.txt", nil))
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, contents, recorder.Body.String())
+	assert.Equal(t, "text/plain; charset=utf-8", recorder.Header().Get("Content-Type"))
+	assert.Equal(t, "no-cache", recorder.Header().Get("Cache-Control"))
+
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodHead, "/ads.txt", nil))
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Empty(t, recorder.Body.String())
+	assert.Equal(t, int64(len(contents)), recorder.Result().ContentLength)
+
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/ads.txt", nil))
+	assert.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestGoogleAdsTXTIsAbsentWhenUnconfigured(t *testing.T) {
+	handler, err := Handler(Config{
+		RelayHost:    "127.0.0.1",
+		AllowedPorts: []string{"9009"},
+		StaticFiles:  testSite(),
+	})
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/ads.txt", nil))
+	assert.Equal(t, http.StatusNotFound, recorder.Code)
 }
 
 func TestEnablesStoredTransferRuntimeAndAPI(t *testing.T) {
@@ -184,6 +323,8 @@ func TestEnablesStoredTransferRuntimeAndAPI(t *testing.T) {
 		MaxTotalBytes:    32 << 20,
 		MinFreeBytes:     1,
 		MaxFiles:         7,
+		MaxDownloads:     9,
+		MaxExpiration:    3 * 24 * time.Hour,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, storage.Close()) })
@@ -201,6 +342,9 @@ func TestEnablesStoredTransferRuntimeAndAPI(t *testing.T) {
 	assert.Contains(t, recorder.Body.String(), `"enabled":true`)
 	assert.Contains(t, recorder.Body.String(), `"maxTransferBytes":8388608`)
 	assert.Contains(t, recorder.Body.String(), `"maxFiles":7`)
+	assert.Contains(t, recorder.Body.String(), `"maxDownloads":9`)
+	assert.Contains(t, recorder.Body.String(), `"expiresSeconds":86400`)
+	assert.Contains(t, recorder.Body.String(), `"maxExpiresSeconds":259200`)
 
 	recorder = httptest.NewRecorder()
 	handler.ServeHTTP(
@@ -246,6 +390,57 @@ func TestRootNegotiatesInstallerForCommandLineClients(t *testing.T) {
 	assert.Equal(t, int64(len(testInstaller)), recorder.Result().ContentLength)
 }
 
+type failingResponseWriter struct {
+	header http.Header
+}
+
+func (w *failingResponseWriter) Header() http.Header {
+	return w.header
+}
+
+func (w *failingResponseWriter) Write([]byte) (int, error) {
+	return 0, io.ErrClosedPipe
+}
+
+func (*failingResponseWriter) WriteHeader(int) {}
+
+func TestTracksOnlySuccessfulCurlInstallerGETs(t *testing.T) {
+	tracked := 0
+	handler, err := Handler(Config{
+		RelayHost:          "127.0.0.1",
+		AllowedPorts:       []string{"9009"},
+		StaticFiles:        testSite(),
+		trackCurlInstaller: func() { tracked++ },
+	})
+	require.NoError(t, err)
+
+	for _, testCase := range []struct {
+		name       string
+		method     string
+		path       string
+		userAgent  string
+		wantEvents int
+	}{
+		{name: "curl GET", method: http.MethodGet, path: "/", userAgent: "curl/8.10.1", wantEvents: 1},
+		{name: "curl HEAD", method: http.MethodHead, path: "/", userAgent: "curl/8.10.1", wantEvents: 1},
+		{name: "wget GET", method: http.MethodGet, path: "/", userAgent: "Wget/1.24.5", wantEvents: 1},
+		{name: "browser GET", method: http.MethodGet, path: "/", userAgent: "Mozilla/5.0", wantEvents: 1},
+		{name: "non-root curl GET", method: http.MethodGet, path: "/send/files", userAgent: "curl/8.10.1", wantEvents: 1},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			request := httptest.NewRequest(testCase.method, testCase.path, nil)
+			request.Header.Set("User-Agent", testCase.userAgent)
+			handler.ServeHTTP(httptest.NewRecorder(), request)
+			assert.Equal(t, testCase.wantEvents, tracked)
+		})
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("User-Agent", "curl/8.10.1")
+	handler.ServeHTTP(&failingResponseWriter{header: make(http.Header)}, request)
+	assert.Equal(t, 1, tracked)
+}
+
 func TestRootContinuesServingSiteToBrowsers(t *testing.T) {
 	handler, err := Handler(Config{
 		RelayHost:    "127.0.0.1",
@@ -278,8 +473,78 @@ func TestRejectsPortOutsideAllowlist(t *testing.T) {
 	})
 	require.NoError(t, err)
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/ws?port=22", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/ws?relay=0&port=22", nil))
 	assert.Equal(t, http.StatusForbidden, recorder.Code)
+}
+
+func TestRejectsMissingAndOutOfRangeRelayIndex(t *testing.T) {
+	handler, err := Handler(Config{
+		RelayHosts:   []string{"127.0.0.1", "127.0.0.2"},
+		AllowedPorts: []string{"9009"},
+		StaticFiles:  testSite(),
+	})
+	require.NoError(t, err)
+	for _, target := range []string{"/ws?port=9009", "/ws?relay=2&port=9009", "/ws?relay=nope&port=9009"} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
+		assert.Equal(t, http.StatusForbidden, recorder.Code)
+	}
+}
+
+func TestWebSocketRoutesByRelayIndex(t *testing.T) {
+	first, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = first.Close() })
+	_, port, err := net.SplitHostPort(first.Addr().String())
+	require.NoError(t, err)
+	second, err := net.Listen("tcp6", net.JoinHostPort("::1", port))
+	if err != nil {
+		t.Skipf("IPv6 loopback is unavailable: %v", err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+
+	serveMarker := func(listener net.Listener, marker string) {
+		go func() {
+			for {
+				connection, acceptErr := listener.Accept()
+				if acceptErr != nil {
+					return
+				}
+				go func() {
+					defer connection.Close()
+					buffer := make([]byte, 64)
+					if _, readErr := connection.Read(buffer); readErr == nil {
+						_, _ = connection.Write([]byte(marker))
+					}
+				}()
+			}
+		}()
+	}
+	serveMarker(first, "first")
+	serveMarker(second, "second")
+
+	handler, err := Handler(Config{
+		RelayHosts:     []string{"127.0.0.1", "::1"},
+		AllowedPorts:   []string{port},
+		OriginPatterns: []string{"example.test"},
+		StaticFiles:    testSite(),
+	})
+	require.NoError(t, err)
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?relay=1&port=" + port
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	connection, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": []string{"https://example.test"}},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = connection.CloseNow() })
+	require.NoError(t, connection.Write(ctx, websocket.MessageBinary, []byte("request")))
+	_, response, err := connection.Read(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "second", string(response))
 }
 
 func TestWebSocketForwardsBinaryStream(t *testing.T) {
@@ -294,7 +559,7 @@ func TestWebSocketForwardsBinaryStream(t *testing.T) {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
-	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?port=" + port
+	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?relay=0&port=" + port
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	connection, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
@@ -323,7 +588,7 @@ func TestRejectsUnexpectedOrigin(t *testing.T) {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
-	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?port=" + port
+	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?relay=0&port=" + port
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	connection, response, err := websocket.Dial(ctx, url, &websocket.DialOptions{

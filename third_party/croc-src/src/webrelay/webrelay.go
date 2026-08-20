@@ -22,19 +22,24 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/schollz/croc/v10/src/store"
-	"github.com/schollz/croc/v10/src/webassets"
+	"github.com/schollz/croc/v11/src/publicrelay"
+	"github.com/schollz/croc/v11/src/store"
+	buildversion "github.com/schollz/croc/v11/src/version"
 	log "github.com/schollz/logger"
 )
 
 const (
-	defaultDialTimeout  = 10 * time.Second
-	maxWebSocketMessage = 65 * 1024 * 1024
+	defaultDialTimeout     = 10 * time.Second
+	maxWebSocketMessage    = 65 * 1024 * 1024
+	curlInstallerEvent     = "installer-curl"
+	curlInstallerEventPath = "/"
 )
 
 // Config configures the unified croc web server.
 type Config struct {
-	ListenAddress  string
+	ListenAddress string
+	RelayHosts    []string
+	// RelayHost is retained as a single-host configuration shorthand.
 	RelayHost      string
 	AllowedPorts   []string
 	OriginPatterns []string
@@ -45,10 +50,14 @@ type Config struct {
 	StoreService   *store.Service
 	UmamiURL       string
 	UmamiWebsiteID string
+	GoogleAdSense  string
+	GoogleAdsTXT   string
+
+	trackCurlInstaller func()
 }
 
 type handler struct {
-	relayHost      string
+	relayHosts     []string
 	allowedPorts   map[string]struct{}
 	originPatterns []string
 	dialTimeout    time.Duration
@@ -57,14 +66,14 @@ type handler struct {
 }
 
 type runtimeConfig struct {
-	GatewayURL    string             `json:"gatewayURL"`
-	RelayAddress  string             `json:"relayAddress"`
-	RelayPassword string             `json:"relayPassword"`
-	Store         store.PublicConfig `json:"store"`
+	GatewayURL     string             `json:"gatewayURL"`
+	RelayAddresses []string           `json:"relayAddresses"`
+	RelayPassword  string             `json:"relayPassword"`
+	Store          store.PublicConfig `json:"store"`
 }
 
 // Handler returns the unified croc web handler. It serves the embedded client,
-// /config.js, /healthz, and /ws?port=<allowlisted relay port>.
+// /config.js, /healthz, and /ws?relay=<index>&port=<allowlisted relay port>.
 func Handler(config Config) (http.Handler, error) {
 	normalized, err := normalizeConfig(config)
 	if err != nil {
@@ -74,19 +83,27 @@ func Handler(config Config) (http.Handler, error) {
 		normalized.StaticFiles,
 		normalized.UmamiURL,
 		normalized.UmamiWebsiteID,
+		normalized.GoogleAdSense,
+		normalized.trackCurlInstaller,
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	h := &handler{
-		relayHost:      normalized.RelayHost,
+		relayHosts:     normalized.RelayHosts,
 		allowedPorts:   make(map[string]struct{}, len(normalized.AllowedPorts)),
 		originPatterns: normalized.OriginPatterns,
 		dialTimeout:    normalized.DialTimeout,
 		runtimeConfig: runtimeConfig{
-			GatewayURL:    "/ws",
-			RelayAddress:  net.JoinHostPort(normalized.RelayHost, normalized.AllowedPorts[0]),
+			GatewayURL: "/ws",
+			RelayAddresses: func() []string {
+				addresses := make([]string, len(normalized.RelayHosts))
+				for index, host := range normalized.RelayHosts {
+					addresses[index] = net.JoinHostPort(host, normalized.AllowedPorts[0])
+				}
+				return addresses
+			}(),
 			RelayPassword: normalized.RelayPassword,
 			Store: func() store.PublicConfig {
 				if normalized.StoreService == nil {
@@ -105,6 +122,9 @@ func Handler(config Config) (http.Handler, error) {
 	mux.HandleFunc("/healthz", h.health)
 	mux.HandleFunc("/ws", h.websocket)
 	mux.HandleFunc("/config.js", h.config)
+	if normalized.GoogleAdsTXT != "" {
+		mux.HandleFunc("/ads.txt", adsTXT(normalized.GoogleAdsTXT))
+	}
 	if normalized.StoreService != nil {
 		mux.Handle("/api/v1/store/transfers", normalized.StoreService)
 		mux.Handle("/api/v1/store/transfers/", normalized.StoreService)
@@ -122,6 +142,28 @@ func Run(ctx context.Context, config Config) error {
 	normalized, err := normalizeConfig(config)
 	if err != nil {
 		return err
+	}
+	settings, settingsErr := parseWebUmamiConfig(
+		normalized.UmamiURL,
+		normalized.UmamiWebsiteID,
+	)
+	if settingsErr != nil {
+		log.Warnf("web analytics disabled: %v", settingsErr)
+	} else if settings != nil {
+		reporter, reporterErr := publicrelay.NewUmamiReporter(
+			settings.baseURL,
+			settings.websiteID,
+			normalized.PublicAddress,
+			buildversion.Value,
+		)
+		if reporterErr != nil {
+			log.Warnf("web server analytics reporting disabled: %v", reporterErr)
+		} else {
+			defer reporter.Close()
+			normalized.trackCurlInstaller = func() {
+				reporter.TrackPath(curlInstallerEvent, curlInstallerEventPath)
+			}
+		}
 	}
 	httpHandler, err := Handler(normalized)
 	if err != nil {
@@ -143,7 +185,7 @@ func Run(ctx context.Context, config Config) error {
 			"starting croc web server on %s for %s via %s (%s)",
 			normalized.ListenAddress,
 			normalized.PublicAddress,
-			normalized.RelayHost,
+			strings.Join(normalized.RelayHosts, ","),
 			strings.Join(normalized.AllowedPorts, ","),
 		)
 		errc <- server.ListenAndServe()
@@ -173,22 +215,41 @@ func normalizeConfig(config Config) (Config, error) {
 	if config.PublicAddress == "" {
 		config.PublicAddress = config.ListenAddress
 	}
-	if config.RelayHost == "" {
-		config.RelayHost = "ipv4.getcroc.com"
+	if len(config.RelayHosts) == 0 {
+		if config.RelayHost != "" {
+			config.RelayHosts = []string{config.RelayHost}
+		} else {
+			config.RelayHosts = publicrelay.Relays()
+		}
 	}
 	if config.RelayPassword == "" {
 		config.RelayPassword = "pass123"
 	}
-	if strings.Contains(config.RelayHost, "://") || strings.ContainsAny(config.RelayHost, "/?#") {
-		return Config{}, fmt.Errorf("relay must be a host, not a URL: %q", config.RelayHost)
+	hosts := make([]string, 0, len(config.RelayHosts))
+	seenHosts := make(map[string]struct{}, len(config.RelayHosts))
+	for _, rawHost := range config.RelayHosts {
+		host := strings.TrimSpace(rawHost)
+		if strings.Contains(host, "://") || strings.ContainsAny(host, "/?#") {
+			return Config{}, fmt.Errorf("relay must be a host, not a URL: %q", rawHost)
+		}
+		if splitHost, _, splitErr := net.SplitHostPort(host); splitErr == nil {
+			host = splitHost
+		}
+		host = strings.Trim(host, "[]")
+		if host == "" {
+			return Config{}, errors.New("relay host cannot be empty")
+		}
+		if _, exists := seenHosts[host]; exists {
+			continue
+		}
+		seenHosts[host] = struct{}{}
+		hosts = append(hosts, host)
 	}
-	if host, _, splitErr := net.SplitHostPort(config.RelayHost); splitErr == nil {
-		config.RelayHost = host
+	if len(hosts) == 0 {
+		return Config{}, errors.New("relay host list cannot be empty")
 	}
-	config.RelayHost = strings.Trim(config.RelayHost, "[]")
-	if config.RelayHost == "" {
-		return Config{}, errors.New("relay host cannot be empty")
-	}
+	config.RelayHosts = hosts
+	config.RelayHost = hosts[0]
 
 	if len(config.AllowedPorts) == 0 {
 		config.AllowedPorts = []string{
@@ -215,9 +276,6 @@ func normalizeConfig(config Config) (Config, error) {
 	config.AllowedPorts = ports
 	if config.DialTimeout <= 0 {
 		config.DialTimeout = defaultDialTimeout
-	}
-	if config.StaticFiles == nil {
-		config.StaticFiles = webassets.Files()
 	}
 	return config, nil
 }
@@ -252,9 +310,30 @@ func (h *handler) config(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "window.__CROC_RUNTIME_CONFIG__ = %s;\n", payload)
 }
 
+func adsTXT(contents string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Content-Length", strconv.Itoa(len(contents)))
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, contents)
+		}
+	}
+}
+
 func (h *handler) websocket(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	relayIndex, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("relay")))
+	if err != nil || relayIndex < 0 || relayIndex >= len(h.relayHosts) {
+		http.Error(w, "relay index is not allowed", http.StatusForbidden)
 		return
 	}
 	port := strings.TrimSpace(r.URL.Query().Get("port"))
@@ -268,7 +347,7 @@ func (h *handler) websocket(w http.ResponseWriter, r *http.Request) {
 	upstream, err := (&net.Dialer{}).DialContext(
 		dialCtx,
 		"tcp",
-		net.JoinHostPort(h.relayHost, port),
+		net.JoinHostPort(h.relayHosts[relayIndex], port),
 	)
 	if err != nil {
 		http.Error(w, "relay is unavailable", http.StatusBadGateway)
@@ -315,63 +394,119 @@ func (h *handler) websocket(w http.ResponseWriter, r *http.Request) {
 }
 
 type staticHandler struct {
-	files      fs.FS
-	fileServer http.Handler
-	index      []byte
-	installer  []byte
+	files              fs.FS
+	fileServer         http.Handler
+	index              []byte
+	htmlPages          map[string][]byte
+	installer          []byte
+	trackCurlInstaller func()
 }
 
 func newStaticHandler(
 	files fs.FS,
 	umamiURL string,
 	umamiWebsiteID string,
+	googleAdSense string,
+	trackCurlInstaller func(),
 ) (http.Handler, error) {
 	if files == nil {
 		return nil, errors.New("static file system cannot be empty")
 	}
-	index, err := fs.ReadFile(files, "index.html")
+	htmlPages := make(map[string][]byte)
+	err := fs.WalkDir(files, ".", func(filePath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || path.Base(filePath) != "index.html" {
+			return nil
+		}
+		page, readErr := fs.ReadFile(files, filePath)
+		if readErr != nil {
+			return readErr
+		}
+		page = injectUmamiScript(page, umamiURL, umamiWebsiteID)
+		page = injectGoogleAdSense(page, googleAdSense)
+		htmlPages[filePath] = page
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("embedded web client is missing index.html: %w", err)
+		return nil, fmt.Errorf("read embedded HTML pages: %w", err)
 	}
-	index = injectUmamiTracker(index, umamiURL, umamiWebsiteID)
+	index, exists := htmlPages["index.html"]
+	if !exists {
+		return nil, fmt.Errorf("embedded web client is missing index.html")
+	}
 	installer, err := fs.ReadFile(files, "default.txt")
 	if err != nil {
 		return nil, fmt.Errorf("embedded web client is missing default.txt: %w", err)
 	}
 	return &staticHandler{
-		files:      files,
-		fileServer: http.FileServer(http.FS(files)),
-		index:      index,
-		installer:  installer,
+		files:              files,
+		fileServer:         http.FileServer(http.FS(files)),
+		index:              index,
+		htmlPages:          htmlPages,
+		installer:          installer,
+		trackCurlInstaller: trackCurlInstaller,
 	}, nil
 }
 
-func injectUmamiTracker(index []byte, baseURL, websiteID string) []byte {
+func injectGoogleAdSense(index []byte, publisherID string) []byte {
+	publisherID = strings.TrimSpace(publisherID)
+	if publisherID == "" {
+		return index
+	}
+
+	const closingHead = "</head>"
+	if !strings.Contains(string(index), closingHead) {
+		return index
+	}
+	scriptURL := "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=" +
+		url.QueryEscape(publisherID)
+	script := `<script async src="` + scriptURL + `" crossorigin="anonymous"></script>`
+	return []byte(strings.Replace(string(index), closingHead, script+closingHead, 1))
+}
+
+type webUmamiConfig struct {
+	baseURL   string
+	scriptURL string
+	websiteID string
+}
+
+func parseWebUmamiConfig(baseURL, websiteID string) (*webUmamiConfig, error) {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	websiteID = strings.TrimSpace(websiteID)
 	if baseURL == "" || websiteID == "" {
-		return index
+		return nil, nil
 	}
 
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil || parsedURL.Scheme != "https" || parsedURL.Host == "" {
-		return index
+		return nil, errors.New("Umami URL must be an absolute HTTPS URL")
 	}
 	scriptURL, err := url.JoinPath(baseURL, "script.js")
 	if err != nil {
+		return nil, fmt.Errorf("construct Umami script URL: %w", err)
+	}
+	return &webUmamiConfig{
+		baseURL:   baseURL,
+		scriptURL: scriptURL,
+		websiteID: websiteID,
+	}, nil
+}
+
+func injectUmamiScript(index []byte, baseURL, websiteID string) []byte {
+	settings, err := parseWebUmamiConfig(baseURL, websiteID)
+	if err != nil || settings == nil {
 		return index
 	}
 
-	const closingBody = "</body>"
-	if !strings.Contains(string(index), closingBody) {
+	const closingHead = "</head>"
+	if !strings.Contains(string(index), closingHead) {
 		return index
 	}
-	script := `<script defer data-website-id="` +
-		html.EscapeString(websiteID) +
-		`" src="` +
-		html.EscapeString(scriptURL) +
-		`"></script>`
-	return []byte(strings.Replace(string(index), closingBody, script+closingBody, 1))
+	script := `<script defer src="` + html.EscapeString(settings.scriptURL) +
+		`" data-website-id="` + html.EscapeString(settings.websiteID) + `" data-performance="true"></script>`
+	return []byte(strings.Replace(string(index), closingHead, script+closingHead, 1))
 }
 
 func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -389,7 +524,11 @@ func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if r.Method == http.MethodGet {
-			_, _ = w.Write(h.installer)
+			written, writeErr := w.Write(h.installer)
+			if writeErr == nil && written == len(h.installer) &&
+				requestsCurlInstaller(r.UserAgent()) && h.trackCurlInstaller != nil {
+				h.trackCurlInstaller()
+			}
 		}
 		return
 	}
@@ -399,20 +538,32 @@ func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		requested = "index.html"
 	}
 	info, err := fs.Stat(h.files, requested)
-	if err != nil || info.IsDir() {
+	if err == nil && info.IsDir() {
+		routeIndex := path.Join(requested, "index.html")
+		if _, exists := h.htmlPages[routeIndex]; exists {
+			requested = routeIndex
+		} else {
+			requested = "index.html"
+		}
+	} else if err != nil {
 		if path.Ext(requested) != "" {
 			http.NotFound(w, r)
 			return
 		}
-		requested = "index.html"
+		routeIndex := path.Join(requested, "index.html")
+		if _, exists := h.htmlPages[routeIndex]; exists {
+			requested = routeIndex
+		} else {
+			requested = "index.html"
+		}
 	}
 
-	if requested == "index.html" {
+	if page, exists := h.htmlPages[requested]; exists {
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Content-Length", strconv.Itoa(len(h.index)))
+		w.Header().Set("Content-Length", strconv.Itoa(len(page)))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if r.Method == http.MethodGet {
-			_, _ = w.Write(h.index)
+			_, _ = w.Write(page)
 		}
 		return
 	} else if requested == "croc-download-sw.js" || requested == "croc-worker.js" {
@@ -426,7 +577,15 @@ func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func requestsInstaller(userAgent string) bool {
+	return requestsCurlInstaller(userAgent) || requestsWgetInstaller(userAgent)
+}
+
+func requestsCurlInstaller(userAgent string) bool {
 	userAgent = strings.ToLower(strings.TrimSpace(userAgent))
-	return strings.HasPrefix(userAgent, "curl/") ||
-		strings.HasPrefix(userAgent, "wget/")
+	return strings.HasPrefix(userAgent, "curl/")
+}
+
+func requestsWgetInstaller(userAgent string) bool {
+	userAgent = strings.ToLower(strings.TrimSpace(userAgent))
+	return strings.HasPrefix(userAgent, "wget/")
 }

@@ -11,6 +11,7 @@ import {
 import { CrocSocket } from "./transport";
 import { normalizeOutgoingFileName, validateSenderInfo } from "./metadata";
 import { verifySink } from "./storage";
+import { hashFileContents, waitForHash, type FileHashProvider } from "./hash";
 import type {
   CrocMessage,
   FileProgress,
@@ -24,12 +25,16 @@ import type {
   TransferSettings,
   WireFileInfo,
 } from "./types";
+import { maxTextTransferBytes } from "./types";
 import { wasm } from "../wasm/client";
 
 const CONTROL_PORT = "9009";
 const CHUNK_SIZE = 32 * 1024;
 const MAX_DECOMPRESSED_CHUNK_SIZE = CHUNK_SIZE + 8;
+const PER_FILE_COMPRESSION_FEATURE = "per-file-compression-v1";
 const HANDSHAKE = textEncoder.encode("handshake");
+const RELAY_PING = textEncoder.encode("ping");
+const RELAY_PONG = textEncoder.encode("pong");
 const IP_REQUEST = textEncoder.encode("ips?");
 const WEAK_RELAY_KEY = new Uint8Array([1, 2, 3]);
 const PAKE_PROTOCOL_VERSION = 2;
@@ -77,12 +82,19 @@ function controlPort(relayAddress: string) {
   }
 }
 
+function relayAddress(settings: TransferSettings, relayIndex: number) {
+  const address = settings.relayAddresses[relayIndex];
+  if (!address) throw new Error(`Relay index ${relayIndex} is not configured`);
+  return address;
+}
+
 function dataPorts(banner: string) {
   const ports = banner
     .split(",")
     .map((port) => port.trim())
     .filter((port) => /^\d{1,5}$/.test(port));
-  if (ports.length === 0) throw new Error(`Relay returned an invalid port list: ${banner}`);
+  if (ports.length === 0)
+    throw new Error(`Relay returned an invalid port list: ${banner}`);
   return ports;
 }
 
@@ -99,15 +111,33 @@ function machineID() {
   }
 }
 
+export class RelayConnectionError extends Error {
+  constructor(message: string, cause: unknown) {
+    super(message, { cause });
+    this.name = "RelayConnectionError";
+  }
+}
+
+export function isRelayConnectionError(error: unknown) {
+  return error instanceof RelayConnectionError;
+}
+
 async function connectRelay(
   settings: TransferSettings,
   room: string,
   port: string,
+  relayIndex: number,
   signal?: AbortSignal,
 ) {
   const engine = wasm();
-  const socket = await CrocSocket.connect(settings.gatewayURL, port, signal);
+  let socket: CrocSocket | undefined;
   try {
+    socket = await CrocSocket.connect(
+      settings.gatewayURL,
+      relayIndex,
+      port,
+      signal,
+    );
     const pake = await engine.pakeInit(WEAK_RELAY_KEY, 0, "siec");
     await socket.send(pake.bytes);
     const peer = await socket.receive();
@@ -115,12 +145,15 @@ async function connectRelay(
     const salt = randomBytes(8);
     const key = await engine.deriveKey(finished.key, salt);
     await socket.send(salt);
-    await socket.send(await engine.encrypt(textEncoder.encode(settings.relayPassword), key));
+    await socket.send(
+      await engine.encrypt(textEncoder.encode(settings.relayPassword), key),
+    );
     const response = textDecoder.decode(
       await engine.decrypt(await socket.receive(), key),
     );
     const separator = response.indexOf("|||");
-    if (separator < 0) throw new Error(`Relay rejected the connection: ${response}`);
+    if (separator < 0)
+      throw new Error(`Relay rejected the connection: ${response}`);
     const banner = response.slice(0, separator);
     const externalIP = response.slice(separator + 3);
     await socket.send(await engine.encrypt(textEncoder.encode(room), key));
@@ -132,8 +165,47 @@ async function connectRelay(
     }
     return { socket, banner, externalIP } satisfies RelayConnection;
   } catch (error) {
-    socket.close();
-    throw error;
+    socket?.close();
+    if (signal?.aborted) throw error;
+    if (error instanceof RelayConnectionError) throw error;
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new RelayConnectionError(
+      `Could not establish the croc relay connection: ${detail}`,
+      error,
+    );
+  }
+}
+
+export async function measureRelayLatency(
+  settings: TransferSettings,
+  relayIndex: number,
+  timeoutMs = 1_000,
+  signal?: AbortSignal,
+) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = window.setTimeout(abort, timeoutMs);
+  const started = performance.now();
+  let socket: CrocSocket | undefined;
+  try {
+    const address = relayAddress(settings, relayIndex);
+    socket = await CrocSocket.connect(
+      settings.gatewayURL,
+      relayIndex,
+      controlPort(address),
+      controller.signal,
+    );
+    await socket.send(RELAY_PING);
+    const response = await socket.receive();
+    if (!bytesEqual(response, RELAY_PONG)) {
+      throw new Error("Relay did not return pong");
+    }
+    return performance.now() - started;
+  } finally {
+    window.clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+    socket?.close();
   }
 }
 
@@ -231,11 +303,12 @@ async function openDataConnections(
   settings: TransferSettings,
   room: string,
   ports: string[],
+  relayIndex: number,
   signal?: AbortSignal,
 ) {
   const connected = await Promise.all(
     ports.map((port, index) =>
-      connectRelay(settings, `${room}-${index}`, port, signal),
+      connectRelay(settings, `${room}-${index}`, port, relayIndex, signal),
     ),
   );
   return connected.map(({ socket }) => socket);
@@ -253,10 +326,14 @@ async function reportPeerError(
 ) {
   if (!control || !key) return;
   try {
-    await sendControl(control, {
-      t: "error",
-      m: errorMessage(error).slice(0, 500),
-    }, key);
+    await sendControl(
+      control,
+      {
+        t: "error",
+        m: errorMessage(error).slice(0, 500),
+      },
+      key,
+    );
   } catch {
     // The connection may already be gone.
   }
@@ -266,48 +343,74 @@ export async function prepareFiles(
   selected: File[],
   callbacks: TransferCallbacks = {},
   signal?: AbortSignal,
+  hashProvider?: FileHashProvider,
 ) {
   if (selected.length === 0) throw new Error("Choose at least one file");
   const names = new Set<string>();
-  const outgoingNames = selected.map((file) => normalizeOutgoingFileName(file.name));
+  const outgoingNames = selected.map((file) =>
+    normalizeOutgoingFileName(file.name),
+  );
   for (let index = 0; index < selected.length; index += 1) {
     const file = selected[index];
     const outgoingName = outgoingNames[index];
-    if (names.has(outgoingName)) throw new Error(`Duplicate filename: ${outgoingName}`);
-    if (!Number.isSafeInteger(file.size)) throw new Error(`File is too large: ${file.name}`);
+    if (names.has(outgoingName))
+      throw new Error(`Duplicate filename: ${outgoingName}`);
+    if (!Number.isSafeInteger(file.size))
+      throw new Error(`File is too large: ${file.name}`);
     names.add(outgoingName);
   }
 
   const prepared: PreparedFile[] = [];
-  const engine = wasm();
   for (let index = 0; index < selected.length; index += 1) {
     checkAbort(signal);
     const file = selected[index];
-    callbacks.onStatus?.(`Hashing ${index + 1}/${selected.length}: ${file.name}`);
-    const hashHandle = await engine.hashInit();
-    const reader = file.stream().getReader();
-    try {
-      for (;;) {
-        checkAbort(signal);
-        const { done, value } = await reader.read();
-        if (done) break;
-        await engine.hashUpdate(hashHandle, value);
-      }
-    } finally {
-      reader.releaseLock();
+    callbacks.onStatus?.(
+      `Hashing ${index + 1}/${selected.length}: ${file.name}`,
+    );
+    const hash = hashProvider
+      ? await waitForHash(hashProvider(file), signal)
+      : await hashFileContents(file, "xxhash", signal);
+    let compressed = false;
+    if (file.size > 0) {
+      const sample = new Uint8Array(
+        await file.slice(0, Math.min(file.size, 256 << 10)).arrayBuffer(),
+      );
+      const compressedSample = await wasm().compress(sample);
+      compressed = compressedSample.byteLength * 100 < sample.byteLength * 98;
     }
     prepared.push({
       file,
       name: outgoingNames[index],
       size: file.size,
-      hash: await engine.hashFinal(hashHandle),
+      hash,
       modified: new Date(file.lastModified).toISOString(),
+      compressed,
     });
   }
   return prepared;
 }
 
-function senderInfo(files: PreparedFile[]): SenderInfoWire {
+export async function prepareText(
+  text: string,
+  callbacks: TransferCallbacks = {},
+  signal?: AbortSignal,
+  hashProvider?: FileHashProvider,
+) {
+  const payload = new File([text], "croc-stdin-web", {
+    type: "text/plain;charset=utf-8",
+    lastModified: Date.now(),
+  });
+  if (payload.size === 0) throw new Error("Enter some text to send");
+  if (payload.size > maxTextTransferBytes) {
+    throw new Error("Text must be 1 MiB or smaller");
+  }
+  return prepareFiles([payload], callbacks, signal, hashProvider);
+}
+
+function senderInfo(
+  files: PreparedFile[],
+  sendingText: boolean,
+): SenderInfoWire {
   const wireFiles: WireFileInfo[] = files.map((file) => ({
     n: file.name,
     fr: "./",
@@ -315,6 +418,7 @@ function senderInfo(files: PreparedFile[]): SenderInfoWire {
     s: file.size,
     m: file.modified,
     md: 0o644,
+    c: file.compressed ?? true,
   }));
   return {
     FilesToTransfer: wireFiles,
@@ -322,11 +426,12 @@ function senderInfo(files: PreparedFile[]): SenderInfoWire {
     TotalNumberFolders: 0,
     MachineID: machineID(),
     Ask: false,
-    SendingText: false,
+    SendingText: sendingText,
     NoCompress: false,
     HashAlgorithm: "xxhash",
     ReconnectVersion: 0,
     NextReconnectRoom: "",
+    Features: [PER_FILE_COMPRESSION_FEATURE],
   };
 }
 
@@ -345,7 +450,8 @@ async function sendFileData(
   prepared: PreparedFile,
   ranges: number[] | null,
   sockets: CrocSocket[],
-  key: Uint8Array,
+  cipherHandle: number,
+  compressed: boolean,
   progress: (bytes: number) => void,
   signal?: AbortSignal,
 ) {
@@ -364,13 +470,20 @@ async function sendFileData(
         const position = chunkIndex * CHUNK_SIZE;
         if (!requestedOffset(position, ranges)) continue;
         const data = new Uint8Array(
-          await prepared.file.slice(position, position + CHUNK_SIZE).arrayBuffer(),
+          await prepared.file
+            .slice(position, position + CHUNK_SIZE)
+            .arrayBuffer(),
         );
         const plain = new Uint8Array(8 + data.byteLength);
         new DataView(plain.buffer).setBigUint64(0, BigInt(position), true);
         plain.set(data, 8);
-        const compressed = await engine.compress(plain);
-        await socket.send(await engine.encrypt(compressed, key));
+        await socket.send(
+          await engine.encodeChunk(
+            cipherHandle,
+            plain,
+            compressed,
+          ),
+        );
         sent += data.byteLength;
         progress(sent);
       }
@@ -380,25 +493,39 @@ async function sendFileData(
 
 export async function sendFiles(options: {
   files: PreparedFile[];
+  sendingText?: boolean;
   secret: string;
   settings: TransferSettings;
   callbacks?: TransferCallbacks;
   signal?: AbortSignal;
 }) {
-  const { files, secret, settings, callbacks = {}, signal } = options;
+  const {
+    files,
+    sendingText = false,
+    secret,
+    settings,
+    callbacks = {},
+    signal,
+  } = options;
   validateSecret(secret);
   if (files.length === 0) throw new Error("Choose at least one file");
+  if (sendingText && files.length !== 1) {
+    throw new Error("A text transfer must contain exactly one text payload");
+  }
   const totalSize = files.reduce((total, file) => total + file.size, 0);
   const { room, passphrase } = await wasm().codeComponents(secret);
+  const relayIndex = await wasm().relayIndex(secret, settings.relayAddresses.length);
   let control: CrocSocket | undefined;
   let data: CrocSocket[] = [];
   let key: Uint8Array | undefined;
+  let cipherHandle: number | undefined;
   try {
     callbacks.onStatus?.("Connecting to relay…");
     const relay = await connectRelay(
       settings,
       room,
-      controlPort(settings.relayAddress),
+      controlPort(relayAddress(settings, relayIndex)),
+      relayIndex,
       signal,
     );
     control = relay.socket;
@@ -440,7 +567,9 @@ export async function sendFiles(options: {
       throw new Error("Recipient did not confirm the croc PAKE handshake");
     }
     requirePakeVersion(confirmationA.v);
-    if (!(await wasm().confirmPeerKey(peerKeys.confirmationA, confirmationA.b))) {
+    if (
+      !(await wasm().confirmPeerKey(peerKeys.confirmationA, confirmationA.b))
+    ) {
       throw new Error("Recipient PAKE confirmation failed");
     }
     await sendControl(control, {
@@ -449,28 +578,30 @@ export async function sendFiles(options: {
       b: peerKeys.confirmationB,
     });
     key = peerKeys.key;
+    cipherHandle = await wasm().cipherInit(key);
 
     callbacks.onStatus?.("Opening encrypted data channels…");
-    data = await openDataConnections(
-      settings,
-      room,
-      dataPorts(relay.banner),
-      signal,
-    );
+    data = await openDataConnections(settings, room, dataPorts(relay.banner), relayIndex, signal);
 
     const peerIP = await receiveControl(control, key);
-    if (peerIP.t !== "externalip") throw new Error("Recipient did not secure the channel");
+    if (peerIP.t !== "externalip")
+      throw new Error("Recipient did not secure the channel");
     await sendControl(control, { t: "externalip", m: relay.externalIP }, key);
-    await sendControl(control, {
-      t: "fileinfo",
-      b: textEncoder.encode(JSON.stringify(senderInfo(files))),
-    }, key);
+    await sendControl(
+      control,
+      {
+        t: "fileinfo",
+        b: textEncoder.encode(JSON.stringify(senderInfo(files, sendingText))),
+      },
+      key,
+    );
 
     let totalTransferred = 0;
     for (;;) {
       checkAbort(signal);
       const message = await receiveControl(control, key);
-      if (message.t === "error") throw new Error(message.m || "Recipient refused transfer");
+      if (message.t === "error")
+        throw new Error(message.m || "Recipient refused transfer");
       if (message.t === "finished") {
         await sendControl(control, { t: "finished" }, key);
         callbacks.onStatus?.("Transfer complete");
@@ -486,19 +617,25 @@ export async function sendFiles(options: {
       const fileIndex = request.FilesToTransferCurrentNum;
       const prepared = files[fileIndex];
       if (!prepared) throw new Error("Recipient requested an unknown file");
-      callbacks.onStatus?.(`Sending ${prepared.name}`);
+      const displayName = sendingText ? "Text message" : prepared.name;
+      callbacks.onStatus?.(
+        sendingText ? "Sending text message" : `Sending ${prepared.name}`,
+      );
       const beforeFile = totalTransferred;
       await sendFileData(
         prepared,
         request.CurrentFileChunkRanges,
         data,
-        key,
+        cipherHandle,
+        (request.Features ?? []).includes(PER_FILE_COMPRESSION_FEATURE)
+          ? (prepared.compressed ?? true)
+          : true,
         (fileBytes) => {
           totalTransferred = beforeFile + fileBytes;
           callbacks.onProgress?.({
             fileIndex,
             fileCount: files.length,
-            fileName: prepared.name,
+            fileName: displayName,
             fileBytes,
             fileSize: prepared.size,
             totalBytes: totalTransferred,
@@ -508,17 +645,25 @@ export async function sendFiles(options: {
         signal,
       );
       const closed = await receiveControl(control, key);
-      if (closed.t === "error") throw new Error(closed.m || "Recipient cancelled");
+      if (closed.t === "error")
+        throw new Error(closed.m || "Recipient cancelled");
       if (closed.t !== "close-sender") {
-        throw new Error(`Expected recipient to close the file, got ${closed.t}`);
+        throw new Error(
+          `Expected recipient to close the file, got ${closed.t}`,
+        );
       }
       await sendControl(control, { t: "close-recipient" }, key);
-      callbacks.onFileComplete?.(prepared.name);
+      callbacks.onFileComplete?.(displayName);
     }
   } catch (error) {
     await reportPeerError(control, key, error);
     throw error;
   } finally {
+    if (cipherHandle !== undefined) {
+      await wasm()
+        .cipherRelease(cipherHandle)
+        .catch(() => {});
+    }
     closeAll(control, data);
   }
 }
@@ -543,6 +688,7 @@ export class DataReceiver {
     private sockets: CrocSocket[],
     private key: Uint8Array,
     private noCompress: boolean,
+    private cipherHandle?: number,
   ) {
     for (const socket of sockets) void this.read(socket);
   }
@@ -579,11 +725,20 @@ export class DataReceiver {
     const engine = wasm();
     while (!this.stopped) {
       try {
-        let payload = await engine.decrypt(await socket.receive(), this.key);
-        if (!this.noCompress) {
-          payload = await engine.decompress(payload, MAX_DECOMPRESSED_CHUNK_SIZE);
-        }
-        if (payload.byteLength < 9) throw new Error("Received an invalid file chunk");
+        const encrypted = await socket.receive();
+        const compressed =
+          !this.noCompress && (this.active?.file.compressed ?? true);
+        const payload =
+          this.cipherHandle === undefined
+            ? await this.decodeLegacy(engine, encrypted, compressed)
+            : await engine.decodeChunk(
+                this.cipherHandle,
+                encrypted,
+                compressed,
+                MAX_DECOMPRESSED_CHUNK_SIZE,
+              );
+        if (payload.byteLength < 9)
+          throw new Error("Received an invalid file chunk");
         const positionBig = new DataView(
           payload.buffer,
           payload.byteOffset,
@@ -593,7 +748,7 @@ export class DataReceiver {
           throw new Error("Received a file position that is too large");
         }
         const position = Number(positionBig);
-        const bytes = payload.slice(8);
+        const bytes = payload.subarray(8);
         await this.accept(position, bytes);
       } catch (error) {
         if (this.stopped) return;
@@ -601,6 +756,18 @@ export class DataReceiver {
         this.fail(error instanceof Error ? error : new Error(String(error)));
       }
     }
+  }
+
+  private async decodeLegacy(
+    engine: ReturnType<typeof wasm>,
+    encrypted: Uint8Array,
+    compressed: boolean,
+  ) {
+    let payload = await engine.decrypt(encrypted, this.key);
+    if (compressed) {
+      payload = await engine.decompress(payload, MAX_DECOMPRESSED_CHUNK_SIZE);
+    }
+    return payload;
   }
 
   private fail(error: Error) {
@@ -613,7 +780,8 @@ export class DataReceiver {
     const active = this.active;
     if (!active) throw new Error("Received file data before it was requested");
     active.queue = active.queue.then(async () => {
-      if (active.received.has(position)) throw new Error("Received a duplicate file chunk");
+      if (active.received.has(position))
+        throw new Error("Received a duplicate file chunk");
       if (
         position < 0 ||
         position % CHUNK_SIZE !== 0 ||
@@ -621,7 +789,9 @@ export class DataReceiver {
         bytes.byteLength > CHUNK_SIZE ||
         position + bytes.byteLength > active.file.size
       ) {
-        throw new Error("Received a file chunk outside the advertised file size");
+        throw new Error(
+          "Received a file chunk outside the advertised file size",
+        );
       }
       active.received.add(position);
       await active.sink.writeAt(position, bytes);
@@ -651,16 +821,19 @@ export async function receiveFiles(options: {
   const { secret, settings, callbacks, signal } = options;
   validateSecret(secret);
   const { room, passphrase } = await wasm().codeComponents(secret);
+  const relayIndex = await wasm().relayIndex(secret, settings.relayAddresses.length);
   let control: CrocSocket | undefined;
   let data: CrocSocket[] = [];
   let key: Uint8Array | undefined;
+  let cipherHandle: number | undefined;
   let receiver: DataReceiver | undefined;
   try {
     callbacks.onStatus?.("Connecting to relay…");
     const relay = await connectRelay(
       settings,
       room,
-      controlPort(settings.relayAddress),
+      controlPort(relayAddress(settings, relayIndex)),
+      relayIndex,
       signal,
     );
     control = relay.socket;
@@ -687,7 +860,9 @@ export async function receiveFiles(options: {
     }
     requirePakeVersion(peerPake.v);
     if (peerPake.b2.byteLength !== PAKE_SALT_SIZE) {
-      throw new Error(`Sender provided an invalid ${peerPake.b2.byteLength}-byte PAKE salt`);
+      throw new Error(
+        `Sender provided an invalid ${peerPake.b2.byteLength}-byte PAKE salt`,
+      );
     }
     const finished = await wasm().pakeUpdate(pake.handle, peerPake.b);
     const peerKeys = await wasm().derivePeerKeys(
@@ -709,26 +884,30 @@ export async function receiveFiles(options: {
       throw new Error("Sender did not confirm the croc PAKE handshake");
     }
     requirePakeVersion(confirmationB.v);
-    if (!(await wasm().confirmPeerKey(peerKeys.confirmationB, confirmationB.b))) {
+    if (
+      !(await wasm().confirmPeerKey(peerKeys.confirmationB, confirmationB.b))
+    ) {
       throw new Error("Sender PAKE confirmation failed");
     }
     key = peerKeys.key;
-    data = await openDataConnections(
-      settings,
-      room,
-      dataPorts(relay.banner),
-      signal,
+    cipherHandle = await wasm().cipherInit(key);
+    data = await openDataConnections(settings, room, dataPorts(relay.banner), relayIndex, signal);
+    await sendControl(
+      control,
+      {
+        t: "externalip",
+        m: relay.externalIP,
+        b: peerPake.b,
+      },
+      key,
     );
-    await sendControl(control, {
-      t: "externalip",
-      m: relay.externalIP,
-      b: peerPake.b,
-    }, key);
     const peerIP = await receiveControl(control, key);
-    if (peerIP.t !== "externalip") throw new Error("Sender did not secure the channel");
+    if (peerIP.t !== "externalip")
+      throw new Error("Sender did not secure the channel");
 
     const fileInfo = await receiveControl(control, key);
-    if (fileInfo.t === "error") throw new Error(fileInfo.m || "Sender cancelled");
+    if (fileInfo.t === "error")
+      throw new Error(fileInfo.m || "Sender cancelled");
     if (fileInfo.t !== "fileinfo" || !fileInfo.b) {
       throw new Error("Sender did not provide file metadata");
     }
@@ -745,18 +924,19 @@ export async function receiveFiles(options: {
       await destination.createEmptyFolder(folder);
     }
     let totalTransferred = 0;
-    receiver = new DataReceiver(data, key, offer.noCompress);
+    receiver = new DataReceiver(data, key, offer.noCompress, cipherHandle);
     for (let fileIndex = 0; fileIndex < offer.files.length; fileIndex += 1) {
       checkAbort(signal);
       const file = offer.files[fileIndex];
+      const displayName = offer.kind === "text" ? "Text message" : file.path;
       if (file.size === 0) {
         const sink = await destination.openFile(file);
         try {
           await sink.finalize();
-          callbacks.onStatus?.(`Verifying ${file.path}`);
+          callbacks.onStatus?.(`Verifying ${displayName}`);
           await verifySink(sink, file.hash);
           await sink.commit();
-          callbacks.onFileComplete?.(file.path);
+          callbacks.onFileComplete?.(displayName);
         } catch (error) {
           await sink.abort();
           throw error;
@@ -764,7 +944,7 @@ export async function receiveFiles(options: {
         continue;
       }
 
-      callbacks.onStatus?.(`Receiving ${file.path}`);
+      callbacks.onStatus?.(`Receiving ${displayName}`);
       const sink = await destination.openFile(file);
       const beforeFile = totalTransferred;
       try {
@@ -773,7 +953,7 @@ export async function receiveFiles(options: {
           callbacks.onProgress?.({
             fileIndex,
             fileCount: offer.files.length,
-            fileName: file.path,
+            fileName: displayName,
             fileBytes,
             fileSize: file.size,
             totalBytes: totalTransferred,
@@ -785,11 +965,18 @@ export async function receiveFiles(options: {
           FilesToTransferCurrentNum: fileIndex,
           MachineID: machineID(),
           ReconnectVersion: 0,
+          Features: offer.perFileCompression
+            ? [PER_FILE_COMPRESSION_FEATURE]
+            : undefined,
         };
-        await sendControl(control, {
-          t: "recipientready",
-          b: textEncoder.encode(JSON.stringify(request)),
-        }, key);
+        await sendControl(
+          control,
+          {
+            t: "recipientready",
+            b: textEncoder.encode(JSON.stringify(request)),
+          },
+          key,
+        );
         await receivePromise;
         await sink.finalize();
         await sendControl(control, { t: "close-sender" }, key);
@@ -798,11 +985,11 @@ export async function receiveFiles(options: {
         if (close.t !== "close-recipient") {
           throw new Error(`Expected sender to close the file, got ${close.t}`);
         }
-        callbacks.onStatus?.(`Verifying ${file.path}`);
+        callbacks.onStatus?.(`Verifying ${displayName}`);
         await verifySink(sink, file.hash);
         await sink.commit();
         totalTransferred = beforeFile + file.size;
-        callbacks.onFileComplete?.(file.path);
+        callbacks.onFileComplete?.(displayName);
       } catch (error) {
         await sink.abort();
         throw error;
@@ -815,11 +1002,17 @@ export async function receiveFiles(options: {
       throw new Error(`Expected transfer completion, got ${finishedMessage.t}`);
     }
     callbacks.onStatus?.("Transfer complete");
+    return offer;
   } catch (error) {
     await reportPeerError(control, key, error);
     throw error;
   } finally {
     receiver?.stop();
+    if (cipherHandle !== undefined) {
+      await wasm()
+        .cipherRelease(cipherHandle)
+        .catch(() => {});
+    }
     closeAll(control, data);
   }
 }
