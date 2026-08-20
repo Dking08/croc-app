@@ -132,9 +132,10 @@ jobs:
           git status --short
 
           # Record which tracked files were actually touched, for the PR body
+          # (excludes third_party/ - that's the vendored source dump, not a version-string edit)
           {
             echo "changed_files<<EOF"
-            git status --porcelain --untracked-files=all | awk '{print $2}'
+            git status --porcelain --untracked-files=all | awk '{print $2}' | grep -v '^third_party/' || true
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
