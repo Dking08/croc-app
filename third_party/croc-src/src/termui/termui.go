@@ -49,6 +49,12 @@ func Color(text, style string, enabled bool) string {
 	return style + text + Reset
 }
 
+// Plain removes terminal styling from text. It is useful when measuring or
+// comparing strings that may contain ANSI sequences.
+func Plain(text string) string {
+	return ansiPattern.ReplaceAllString(text, "")
+}
+
 // Emphasis highlights routine labels and choices without assigning a status
 // color to them.
 func Emphasis(text string, enabled bool) string {
@@ -81,15 +87,9 @@ func Error(text string, enabled bool) string {
 	return Color(text, Red, enabled)
 }
 
-// PromptChoices highlights conventional yes/no choices without styling the
-// filenames, paths, or other user-controlled data in the prompt.
+// PromptChoices leaves conventional yes/no choices unstyled.
 func PromptChoices(prompt string, enabled bool) string {
-	if !enabled {
-		return prompt
-	}
-	for _, choice := range []string{"(Y/n)", "(y/N)"} {
-		prompt = strings.ReplaceAll(prompt, choice, Emphasis(choice, true))
-	}
+	_ = enabled
 	return prompt
 }
 

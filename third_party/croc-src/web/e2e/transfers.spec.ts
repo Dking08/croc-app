@@ -138,24 +138,27 @@ function commonCLIArgs() {
 async function configurePage(page: Page) {
   await page.goto(webAddress);
   await page.locator("details.settings > summary").click();
-  await page.getByLabel("CLI relay address").fill(relayAddress);
   await page.getByLabel("WebSocket gateway").fill("/ws");
   await page
     .getByRole("textbox", { name: "Relay password", exact: true })
     .fill(relayPassword);
-  await expect(page.getByLabel("CLI relay address")).toHaveValue(relayAddress);
+  await expect(page.getByLabel("CLI relay addresses")).toHaveValue(relayAddress);
 }
 
 async function prepareWebSender(
   page: Page,
-  secret: string,
   fixtures: FixtureSet,
 ) {
   const panel = page.locator(".send-panel");
   await panel.locator('input[type="file"]').setInputFiles(fixtures.paths);
-  await panel.getByLabel("Croc code").fill(secret);
   await expect(panel.getByText("3 files", { exact: true })).toBeVisible();
   return panel;
+}
+
+async function readGeneratedSecret(panel: Locator) {
+  const code = panel.getByLabel("Croc code");
+  await expect(code).toHaveText(/^[a-z]+(?:-[a-z]+){2,5}$/);
+  return (await code.textContent())!.trim();
 }
 
 async function connectWebReceiver(page: Page, secret: string) {
@@ -217,6 +220,12 @@ async function expectTransferMetrics(panel: Locator) {
 test.describe.configure({ mode: "serial" });
 
 test("publishes rich metadata and project links", async ({ page }) => {
+  const domWarnings: string[] = [];
+  page.on("console", (message) => {
+    if (message.text().startsWith("[DOM]")) {
+      domWarnings.push(message.text());
+    }
+  });
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "platform", {
       configurable: true,
@@ -255,16 +264,173 @@ test("publishes rich metadata and project links", async ({ page }) => {
     "croc — fast, simple, secure file transfer",
   );
   await expect(page).toHaveTitle("croc — fast, simple, secure file transfer");
+  const relayPassword = page.getByLabel("Relay password", { exact: true });
+  await expect(relayPassword).toHaveAttribute("autocomplete", "off");
+  await expect(relayPassword.locator("xpath=ancestor::form"))
+    .toHaveClass("settings-grid");
+  expect(domWarnings).toEqual([]);
   const structuredData = JSON.parse(
     (await page.locator('script[type="application/ld+json"]').textContent()) ?? "{}",
-  ) as { "@type"?: string };
+  ) as {
+    "@type"?: string;
+    aggregateRating?: {
+      ratingValue?: number;
+      ratingCount?: number;
+      reviewCount?: number;
+    };
+    offers?: { price?: number };
+    review?: Array<{
+      author?: { "@type"?: string; name?: string };
+      datePublished?: string;
+      reviewBody?: string;
+      reviewRating?: { ratingValue?: number };
+    }>;
+  };
   expect(structuredData["@type"]).toBe("WebApplication");
+  expect(structuredData.offers?.price).toBe(0);
+  expect(structuredData.aggregateRating).toMatchObject({
+    ratingValue: 4.94,
+    ratingCount: 50,
+    reviewCount: 50,
+  });
+  expect(structuredData.review).toHaveLength(50);
+  const initialReviewerNames = [
+    "ioricloud",
+    "gazeebo",
+    "BelugaBilliam",
+    "StartupTree",
+    "ntoshev",
+    "alexeldeib",
+    "njt",
+    "Deozaan",
+    "poetaster",
+    "Tôi_là_người_thật",
+  ];
+  expect(
+    structuredData.review?.slice(0, 10).map((review) => review.author?.name),
+  ).toEqual(initialReviewerNames);
+  expect(
+    structuredData.review?.slice(0, 10).map((review) => review.datePublished),
+  ).toEqual([
+    "2023-04-14",
+    "2023-02-12",
+    "2023-11-29",
+    "2020-09-18",
+    "2021-03-12",
+    "2022-06-24",
+    "2022-11-03",
+    "2021-10-10",
+    "2026-01-13",
+    "2026-08-10",
+  ]);
+  expect(
+    structuredData.review?.slice(0, 10).map(
+      (review) => review.reviewRating?.ratingValue,
+    ),
+  ).toEqual([5, 4, 5, 5, 5, 5, 4, 5, 5, 4]);
+  expect(
+    structuredData.review?.every(
+      (review) =>
+        review.author?.["@type"] === "Person" &&
+        /^\d{4}-\d{2}(?:-\d{2})?$/.test(review.datePublished ?? ""),
+    ),
+  ).toBe(true);
+  expect(structuredData.review?.slice(0, 3).map((review) => review.reviewBody))
+    .toEqual([
+      "I use croc here a lot. Awesome binary for me",
+      "Croc's my most used transfer tool",
+      "Croc for easy file transfer, Linux compatible and it's quicker than ftp/SFTP",
+    ]);
+  const additionalReviews = [
+    ["justusthane", "2026-07-12", "I've found croc to be more reliable than MW in across different network architectures"],
+    ["ikeashark", "2025-10", "100% endorse croc"],
+    ["janandonly", "2025-03-12", "I like https://github.com/schollz/croc"],
+    ["hoppyhoppy2", "2024-08-17", "A similar project with some nice features that I use is croc"],
+    ["robviren", "2024-02-15", "I have gotten a lot of use out of croc."],
+    ["robviren", "2024-02-15", "Super pain free."],
+    ["robviren", "2024-02-15", "sends stuff pretty easily."],
+    ["poopsmithe", "2024-02-15", "croc is like a better magic-wormhole"],
+    ["poopsmithe", "2024-02-15", "croc does it automatically."],
+    ["dain", "2024-02-15", "Transfer is encrypted, no account needed."],
+    ["ytch", "2024-02-15", "I like it too."],
+    ["ytch", "2024-02-15", "Croc is easy to install/use in almost all network environments."],
+    ["outime", "2023-10-19", "I use croc quite a lot"],
+    ["outime", "2023-10-19", "good when sender and receiver are on different networks."],
+    ["pepa65", "2023-09-23", "when I discovered croc, I switched to that"],
+    ["pepa65", "2023-09-23", "it has been very reliable."],
+    ["jrootabega", "2022-10-25", "I think croc is a superior solution here."],
+    ["jrootabega", "2022-10-25", "Encrypted transfer. Automatic local peer detection. Human speakable commands."],
+    ["bzmrgonz", "2022-07-10", "croc is a more friendly solution"],
+    ["bzmrgonz", "2022-07-10", "In any event, quick and easy."],
+    ["ntoshev", "2021-03-12", "croc is my favourite way of transferring files between computers I control."],
+    ["ntoshev", "2021-03-12", "a bit more polished."],
+    ["ntoshev", "2021-03-12", "it offers the best possible UX."],
+    ["tptacek", "2021-05-24", "I'm a huge fan of croc!"],
+    ["tptacek", "2021-05-24", "there's so much more to love about it."],
+    ["smusamashah", "2021-05-24", "On Android, you can install croc in Termux"],
+    ["jtbayly", "2020-09-18", "I switched to croc… to send large files."],
+    ["jtbayly", "2020-09-18", "Works great across macOS and Windows."],
+    ["jtbayly", "2020-09-18", "quick for large files"],
+    ["greenbush", "2020-06-27", "I've been using croc for a few months and it works perfectly"],
+    ["terrywang", "2020-06-27", "I've been using croc… it's fast and reliable."],
+    ["terrywang", "2020-06-27", "Personally I think it's better than magic-wormhole"],
+    ["BusTrainBus", "2020-09-03", "Croc is fantastic because it solves a problem that no other tool does."],
+    ["BusTrainBus", "2020-09-03", "Magic Wormhole stumbles at the first hurdle (installability)."],
+    ["StartupTree", "2020-09-18", "Croc has binaries for windows available for download"],
+    ["StartupTree", "2020-09-18", "With croc the clients are first party."],
+    ["fredley", "2020-09-18", "It works on Windows"],
+    ["fredley", "2020-09-18", "I can connect with most people in the world."],
+    ["anotherhue", "2024-03-10", "I used to use MW but switched to croc"],
+    ["anotherhue", "2024-03-10", "the single binary was easier to deploy."],
+  ] as const;
+  expect(
+    structuredData.review?.slice(10).map((review) => [
+      review.author?.name,
+      review.datePublished,
+      review.reviewBody,
+    ]),
+  ).toEqual(additionalReviews);
+  expect(
+    structuredData.review
+      ?.slice(10)
+      .every((review) => review.reviewRating?.ratingValue === 5),
+  ).toBe(true);
+  const homeReviews = page.locator("details.home-reviews");
+  await expect(homeReviews).not.toHaveAttribute("open", "");
+  await expect(homeReviews.locator("summary")).toContainText(
+    /4\.94\/5\s*from 50 reviewers\s*read reviews/,
+  );
+  await homeReviews.locator("summary").click();
+  await expect(homeReviews).toHaveAttribute("open", "");
+  const visibleReviews = homeReviews.locator(".home-review-list > li");
+  await expect(visibleReviews).toHaveCount(50);
+  await expect(homeReviews).not.toContainText(
+    /Reddit|Hacker News|Lobsters|DonationCoder|Sailfish|Facebook/,
+  );
+  const renderedReviewData = await visibleReviews.evaluateAll((items) =>
+    items.map((item) => ({
+      author: item.querySelector("cite")?.textContent,
+      body: item.querySelector("blockquote > p")?.textContent,
+      date: item.querySelector("time")?.getAttribute("datetime"),
+      rating: item
+        .querySelector(".home-review-rating")
+        ?.getAttribute("aria-label"),
+    })),
+  );
+  expect(renderedReviewData).toEqual(
+    structuredData.review?.map((review) => ({
+      author: review.author?.name,
+      body: review.reviewBody,
+      date: review.datePublished,
+      rating: `Rated ${review.reviewRating?.ratingValue} out of 5`,
+    })),
+  );
   await expect(
     page.getByRole("link", { name: "View croc on GitHub" }),
   ).toHaveAttribute("href", "https://github.com/schollz/croc");
   await expect(
-    page.getByRole("link", { name: /Read how croc works/i }),
-  ).toHaveAttribute("href", "https://schollz.com/croc6/");
+    page.getByRole("link", { name: /Read all 10 posts/i }),
+  ).toHaveAttribute("href", "/blog");
   await expect(
     page.getByRole("link", { name: "schollz", exact: true }),
   ).toHaveAttribute("href", "https://github.com/sponsors/schollz");
@@ -282,11 +448,23 @@ test("publishes rich metadata and project links", async ({ page }) => {
     page.locator('footer a[href="https://yesnotice.com"]'),
   ).toContainText("yesnotice");
   await expect(
+    page.locator('footer a[href="https://pianos.pub"]'),
+  ).toContainText("find a piano wherever you are");
+  await expect(
+    page.locator('footer a[href="https://makemydrivefun.com"]'),
+  ).toContainText("strange roadside detours");
+  await expect(
+    page.locator('footer a[href="https://makestopmotion.com"]'),
+  ).toContainText("claymation in browsers");
+  await expect(
     page.getByRole("link", { name: "github", exact: true }),
   ).toHaveAttribute(
     "href",
     "https://github.com/schollz/croc",
   );
+  await expect(
+    page.getByRole("link", { name: "disco", exact: true }),
+  ).toHaveAttribute("href", "https://disco.cloud");
   await expect(
     page.getByRole("heading", { name: "Download croc for macOS." }),
   ).toBeVisible();
@@ -296,7 +474,7 @@ test("publishes rich metadata and project links", async ({ page }) => {
   ).toHaveCSS("font-size", "12px");
   await expect(
     receivePanel.getByText(
-      "Enter a croc code or encrypted stored link. Review before saving.",
+      "Enter a croc code or encrypted stored link. Review before saving or displaying.",
     ),
   ).toHaveCSS("font-size", "12px");
   await expect(
@@ -327,9 +505,11 @@ test("serves the installer to curl and the app to browsers", async ({
   expect(installer.headers()["content-type"]).toBe("text/plain; charset=utf-8");
   expect(installer.headers()["cache-control"]).toBe("no-store");
   expect(installer.headers()["vary"]).toBe("User-Agent");
-  expect(await installer.text()).toMatch(
-    /^#!\/bin\/bash[\s\S]*croc_version="/,
+  const installerText = await installer.text();
+  expect(installerText).toMatch(
+    /^#!\/bin\/bash[\s\S]*api\.github\.com\/repos\/schollz\/croc\/releases\/latest/,
   );
+  expect(installerText).not.toMatch(/croc_version="\d+\.\d+\.\d+"/);
 
   await page.goto("/");
   await expect(
@@ -340,7 +520,74 @@ test("serves the installer to curl and the app to browsers", async ({
   );
 });
 
-test("receive links open with the Receive panel at the top", async ({
+test("opens directly without an analytics popover", async ({ page }) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("dialog", { name: "Optional analytics" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Send files, secured end-to-end." }),
+  ).toBeVisible();
+});
+
+test("mobile puts both transfer directions within one tap", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const sendTab = page.getByRole("tab", { name: "Send" });
+  const receiveTab = page.getByRole("tab", { name: "Receive" });
+  await expect(sendTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".send-panel")).toBeVisible();
+  await expect(page.locator(".receive-panel")).not.toBeVisible();
+  const sendPanel = page.locator(".send-panel");
+  await expect(sendPanel.getByLabel("Text to send")).toHaveCount(0);
+  await expect(sendPanel.getByRole("button", { name: "Send text instead" }))
+    .toBeVisible();
+  await sendPanel.getByRole("button", { name: "Send text instead" }).click();
+  const textComposer = sendPanel.getByLabel("Text to send");
+  await expect(textComposer).toBeVisible();
+  await expect(textComposer).toHaveCSS("font-size", "16px");
+  await expect(sendPanel.getByRole("button", { name: "Send text" })).toBeDisabled();
+  await textComposer.fill("hello from mobile");
+  await expect(sendPanel.getByRole("button", { name: "Send text" })).toBeEnabled();
+  await sendPanel.getByRole("button", { name: "Send files instead" }).click();
+  await expect(sendPanel.locator(".drop-zone")).toBeVisible();
+
+  await receiveTab.click();
+  await expect(receiveTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".receive-panel")).toBeVisible();
+  await expect(page.locator(".send-panel")).not.toBeVisible();
+
+  await page.evaluate(() => window.scrollBy(0, 120));
+  await sendTab.click();
+  await expect(sendTab).toHaveAttribute("aria-selected", "true");
+  await expect
+    .poll(() =>
+      page.locator(".transfer-grid").evaluate((element) =>
+        Math.abs(element.getBoundingClientRect().top),
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+
+  await receiveTab.click();
+
+  const mobileLayout = await page.evaluate(() => ({
+    inputFontSize: Number.parseFloat(
+      getComputedStyle(document.querySelector("#receive-code")!).fontSize,
+    ),
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+    targets: [...document.querySelectorAll(".mobile-transfer-switch button")].map(
+      (element) => element.getBoundingClientRect().height,
+    ),
+  }));
+  expect(mobileLayout.overflow).toBeLessThanOrEqual(0);
+  expect(mobileLayout.inputFontSize).toBeGreaterThanOrEqual(16);
+  for (const height of mobileLayout.targets) {
+    expect(height).toBeGreaterThanOrEqual(44);
+  }
+});
+
+test("receive links open with the Receive panel top edge visible", async ({
   page,
 }) => {
   await page.goto("/?code=x");
@@ -351,10 +598,10 @@ test("receive links open with the Receive panel at the top", async ({
   await expect
     .poll(() =>
       receivePanel.evaluate((element) =>
-        Math.abs(Math.round(element.getBoundingClientRect().top)),
+        Math.round(element.getBoundingClientRect().top),
       ),
     )
-    .toBe(0);
+    .toBe(16);
   await expect
     .poll(() =>
       page.locator(".site-header").evaluate((element) =>
@@ -415,7 +662,7 @@ test("help tour explains browser transfers and end-to-end encryption", async ({
     "The code or link provides the key",
     "Use another relay when needed",
     "Works with the croc CLI",
-    "Simple by design",
+    "Read the field notes",
   ];
 
   for (const [index, expectedTitle] of steps.entries()) {
@@ -441,30 +688,182 @@ test("help tour explains browser transfers and end-to-end encryption", async ({
 test("copying a croc code shows confirmation", async ({ page }) => {
   await configurePage(page);
   await page.evaluate(() => {
+    const writes: string[] = [];
+    Object.defineProperty(window, "__crocClipboardWrites", {
+      configurable: true,
+      value: writes,
+    });
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
-      value: { writeText: async () => undefined },
+      value: {
+        writeText: async (value: string) => {
+          writes.push(value);
+        },
+      },
     });
   });
   const panel = page.locator(".send-panel");
-  await panel.getByLabel("Croc code").fill("1234-copy-test-code");
-  await panel.getByRole("button", { name: "Copy code" }).click();
-  await expect(panel.getByRole("status")).toHaveText("Copied");
+  await panel.locator('input[type="file"]').setInputFiles({
+    name: "copy-test.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("copy test"),
+  });
+  await panel.getByRole("button", { name: "Send file" }).click();
+  const code = await readGeneratedSecret(panel);
+  const copyButton = panel.getByRole("button", { name: "Copy code" });
+  await copyButton.click();
+  const codeStatus = panel.locator(".send-code").getByRole("status");
+  await expect(codeStatus).toHaveText("Copied");
+  await expect(codeStatus).toHaveClass("visually-hidden");
+  await expect(panel.getByRole("button", { name: "Code copied" })).toHaveClass(
+    /copied/,
+  );
+  await expect(panel.getByLabel("Croc code")).toHaveClass(/copied/);
+  await expect(panel.getByLabel("Croc code")).toHaveCSS(
+    "animation-name",
+    "copy-confirmed-code",
+  );
+
+  const browserLink = panel.getByRole("textbox", {
+    name: "Browser link",
+    exact: true,
+  });
+  const expectedURL = new URL("/", page.url());
+  expectedURL.searchParams.set("code", code);
+  await expect(browserLink).toHaveValue(expectedURL.href);
+
+  const linkCopyButton = panel.locator(".direct-share-row").getByRole("button");
+  await expect(linkCopyButton).toHaveAccessibleName("Copy browser link");
+  await linkCopyButton.click();
+  await expect(linkCopyButton.getByRole("status")).toHaveText("Copied");
+  await expect(linkCopyButton).toHaveAccessibleName("Browser link copied");
   await expect(panel.getByRole("button", { name: "Code copied" })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        (window as typeof window & { __crocClipboardWrites: string[] })
+          .__crocClipboardWrites,
+    ),
+  ).toEqual([code, expectedURL.href]);
+
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async () => {
+          throw new Error("Clipboard unavailable");
+        },
+      },
+    });
+  });
+  await linkCopyButton.click();
+  await expect(linkCopyButton).toHaveAccessibleName("Browser link copy failed");
+  await expect(linkCopyButton.getByRole("status")).toHaveText("Copy failed");
 });
 
-test("generates a complete four-word code on narrow screens", async ({ page }) => {
+test("preloads WASM and reveals a mobile-sized code only after Send is pressed", async ({
+  page,
+}) => {
+  const wasmRequests: string[] = [];
+  await page.addInitScript(() => {
+    const originalStream = Blob.prototype.stream;
+    Blob.prototype.stream = function stream() {
+      const state = window as typeof window & { __crocHashReads?: number };
+      state.__crocHashReads = (state.__crocHashReads ?? 0) + 1;
+      return originalStream.call(this);
+    };
+  });
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/croc.wasm")) {
+      wasmRequests.push(request.url());
+    }
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await expect(page.locator(".send-panel").getByLabel("Croc code")).toHaveValue(
-    /^[a-z]+-[a-z]+-[a-z]+-[a-z]+$/,
+  await expect(page.locator('link[rel="preload"][href="/croc.wasm"]'))
+    .toHaveAttribute("as", "fetch");
+  const panel = page.locator(".send-panel");
+  const sendButton = panel.getByRole("button", { name: "Send file" });
+  await expect(sendButton).toBeDisabled();
+  await expect(panel.getByLabel("Croc code")).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Show QR code" })).toHaveCount(0);
+  await expect(panel).not.toContainText("Generated codes use");
+  await page.waitForTimeout(250);
+  expect(wasmRequests).toHaveLength(1);
+  expect(
+    new Set(wasmRequests.map((url) => new URL(url).pathname)),
+  ).toEqual(new Set(["/croc.wasm"]));
+  const wasmRequestCount = wasmRequests.length;
+  const hashReadsBeforeSelection = await page.evaluate(
+    () =>
+      (window as typeof window & { __crocHashReads?: number })
+        .__crocHashReads ?? 0,
+  );
+
+  await panel.locator('input[type="file"]').setInputFiles({
+    name: "mobile-test.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("mobile test"),
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as typeof window & { __crocHashReads?: number })
+            .__crocHashReads ?? 0,
+      ),
+    )
+    .toBeGreaterThan(hashReadsBeforeSelection);
+  expect(wasmRequests).toHaveLength(wasmRequestCount);
+  await expect(sendButton).toBeEnabled();
+  await sendButton.click();
+  await expect(sendButton).toHaveCount(0);
+  const code = panel.getByLabel("Croc code");
+  const codeLabel = panel.getByText("Use this code:", { exact: true });
+  const copyButton = panel.getByRole("button", { name: "Copy code" });
+  await expect(code).toHaveText(/^[a-z]+(?:-[a-z]+){2,5}$/);
+  await expect(code).toHaveCSS("font-size", "14px");
+  await expect(panel.getByRole("button", { name: "Generate a new code" })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Show QR code" })).toBeVisible();
+  const browserLink = panel.getByRole("textbox", {
+    name: "Browser link",
+    exact: true,
+  });
+  const browserLinkCopy = panel.getByRole("button", {
+    name: "Copy browser link",
+  });
+  await expect(browserLink).toBeVisible();
+  await expect(browserLinkCopy).toBeVisible();
+  const [labelBox, codeBox, copyBox] = await Promise.all([
+    codeLabel.boundingBox(),
+    code.boundingBox(),
+    copyButton.boundingBox(),
+  ]);
+  expect(labelBox!.y + labelBox!.height).toBeLessThanOrEqual(codeBox!.y);
+  expect(
+    Math.abs(
+      codeBox!.y + codeBox!.height / 2 - (copyBox!.y + copyBox!.height / 2),
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(codeBox!.x + codeBox!.width).toBeLessThanOrEqual(copyBox!.x);
+  expect(await code.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+    true,
+  );
+  const [browserLinkBox, browserLinkCopyBox] = await Promise.all([
+    browserLink.boundingBox(),
+    browserLinkCopy.boundingBox(),
+  ]);
+  expect(browserLinkBox!.x + browserLinkBox!.width).toBeLessThanOrEqual(
+    browserLinkCopyBox!.x,
   );
 });
 
 test("CLI → Web transfers and verifies multiple files", async ({
   page,
 }, testInfo) => {
-  const secret = "abbot-abide-abandon-abandoned";
+  // Keep a five-letter first word here: the complete first word is the room,
+  // rather than the legacy protocol's first four characters.
+  const secret = "poker-hedge-floss";
   const fixtures = await createFixtures(testInfo);
   const configDirectory = testInfo.outputPath("croc-config");
   await fs.mkdir(configDirectory, { recursive: true });
@@ -528,7 +927,6 @@ test("CLI → Web verifies a large croc executable", async ({
 test("Web → CLI transfers and verifies multiple files", async ({
   page,
 }, testInfo) => {
-  const secret = "abode-above-abandoning-abandonment";
   const fixtures = await createFixtures(testInfo);
   const destination = testInfo.outputPath("received");
   const configDirectory = testInfo.outputPath("croc-config");
@@ -537,8 +935,9 @@ test("Web → CLI transfers and verifies multiple files", async ({
     fs.mkdir(configDirectory, { recursive: true }),
   ]);
   await configurePage(page);
-  const sendPanel = await prepareWebSender(page, secret, fixtures);
+  const sendPanel = await prepareWebSender(page, fixtures);
   await sendPanel.getByRole("button", { name: "Send 3 files" }).click();
+  const secret = await readGeneratedSecret(sendPanel);
   const cli = runCroc(
     [...commonCLIArgs(), "--out", destination],
     secret,
@@ -558,10 +957,82 @@ test("Web → CLI transfers and verifies multiple files", async ({
   }
 });
 
+test("Web → CLI sends exact multiline Unicode text", async ({
+  page,
+}, testInfo) => {
+  const message = "hello from croc web\nhttps://example.com/🐊\nfinal line";
+  const configDirectory = testInfo.outputPath("text-receiver-config");
+  await fs.mkdir(configDirectory, { recursive: true });
+  await configurePage(page);
+  const panel = page.locator(".send-panel");
+  await panel.getByRole("button", { name: "Send text instead" }).click();
+  await panel.getByLabel("Text to send").fill(message);
+  await panel.getByRole("button", { name: "Send text" }).click();
+  const secret = await readGeneratedSecret(panel);
+  const cli = runCroc(
+    [...commonCLIArgs(), "--quiet"],
+    secret,
+    configDirectory,
+  );
+  try {
+    await expect(panel).toContainText("Text arrived safely", {
+      timeout: transferTimeout,
+    });
+    await cli.done;
+    expect(cli.output()).toBe(message);
+  } finally {
+    cli.stop();
+    await cli.done.catch(() => undefined);
+  }
+});
+
+test("CLI → Web reviews, verifies, displays, and copies text without a download", async ({
+  page,
+}, testInfo) => {
+  const secret = "1113-cli-text-to-web";
+  const message = "sent from the CLI\nmultiline 🐊 text";
+  const configDirectory = testInfo.outputPath("text-sender-config");
+  await fs.mkdir(configDirectory, { recursive: true });
+  await configurePage(page);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async () => undefined },
+    });
+  });
+  const downloads: Download[] = [];
+  page.on("download", (download) => downloads.push(download));
+  const panel = await connectWebReceiver(page, secret);
+  const cli = runCroc(
+    [...commonCLIArgs(), "send", "--no-local", "--text", message],
+    secret,
+    configDirectory,
+    process.env.CROC_E2E_SENDER_BINARY,
+  );
+  try {
+    await expect(panel.getByText("Incoming text", { exact: true })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Accept files" })).toHaveCount(0);
+    await expect(panel.getByLabel("Received text")).toHaveCount(0);
+    await panel.getByRole("button", { name: "Display text" }).click();
+    await expect(panel.getByLabel("Received text")).toHaveText(message, {
+      timeout: transferTimeout,
+    });
+    await expect(panel).toContainText("Text received and verified");
+    expect(downloads).toHaveLength(0);
+    await panel.getByRole("button", { name: "Copy text" }).click();
+    await expect(panel.getByRole("button", { name: "Text copied" })).toBeVisible();
+    await expect(panel.locator(".received-text").getByRole("status"))
+      .toContainText("Text copied");
+    await cli.done;
+  } finally {
+    cli.stop();
+    await cli.done.catch(() => undefined);
+  }
+});
+
 test("Web → Web transfers and verifies multiple files", async ({
   browser,
 }, testInfo) => {
-  const secret = "account-ache-abatement-abbey";
   const fixtures = await createFixtures(testInfo);
   const senderContext = await browser.newContext({ acceptDownloads: true });
   const receiverContext = await browser.newContext({ acceptDownloads: true });
@@ -572,9 +1043,10 @@ test("Web → Web transfers and verifies multiple files", async ({
       configurePage(senderPage),
       configurePage(receiverPage),
     ]);
-    const sendPanel = await prepareWebSender(senderPage, secret, fixtures);
-    const receivePanel = await connectWebReceiver(receiverPage, secret);
+    const sendPanel = await prepareWebSender(senderPage, fixtures);
     await sendPanel.getByRole("button", { name: "Send 3 files" }).click();
+    const secret = await readGeneratedSecret(sendPanel);
+    const receivePanel = await connectWebReceiver(receiverPage, secret);
     const downloads = await acceptAsDownloads(receiverPage, receivePanel);
     await Promise.all([
       expect(sendPanel).toContainText("All files arrived safely", {
@@ -602,9 +1074,13 @@ test("Web stored upload → CLI download consumes the transfer", async ({
   ]);
   await configurePage(page);
   const panel = page.locator(".send-panel");
-  await panel.getByRole("button", { name: "Store for 24 hours" }).click();
+  await panel.getByRole("button", { name: "Store for 1 day" }).click();
   await panel.locator('input[type="file"]').setInputFiles(fixtures.paths);
+  await expect(panel.getByText("Storage lifetime", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Verified downloads", { exact: true })).toBeVisible();
   await panel.getByRole("button", { name: "Store 3 files" }).click();
+  await expect(panel.getByText("Storage lifetime", { exact: true })).toHaveCount(0);
+  await expect(panel.getByText("Verified downloads", { exact: true })).toHaveCount(0);
   await expect(panel.getByText("Encrypted link ready")).toBeVisible({
     timeout: transferTimeout,
   });
@@ -619,11 +1095,35 @@ test("Web stored upload → CLI download consumes the transfer", async ({
   try {
     await receiver.done;
     await expectDirectory(destination, fixtures);
-    await expect(panel).toContainText("Encrypted upload ready to share");
+    await expect(panel.getByText("Encrypted link ready")).toBeVisible();
   } finally {
     receiver.stop();
     await receiver.done.catch(() => undefined);
   }
+});
+
+test("stored settings return after an upload is revoked", async ({ page }) => {
+  await configurePage(page);
+  const panel = page.locator(".send-panel");
+  await panel.getByRole("button", { name: "Store for 1 day" }).click();
+  await panel.locator('input[type="file"]').setInputFiles({
+    name: "revoke-test.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("revoke test"),
+  });
+  await panel.getByRole("button", { name: "Store file" }).click();
+  await expect(panel.getByText("Encrypted link ready")).toBeVisible({
+    timeout: transferTimeout,
+  });
+  await expect(panel.getByText("Storage lifetime", { exact: true })).toHaveCount(0);
+  await expect(panel.getByText("Verified downloads", { exact: true })).toHaveCount(0);
+
+  await panel.getByRole("button", { name: "Revoke now" }).click();
+  await expect(panel).toContainText("Stored transfer revoked", {
+    timeout: transferTimeout,
+  });
+  await expect(panel.getByText("Storage lifetime", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Verified downloads", { exact: true })).toBeVisible();
 });
 
 test("CLI stored upload → Web download verifies and consumes files", async ({
@@ -657,7 +1157,7 @@ test("CLI stored upload → Web download verifies and consumes files", async ({
     await panel.getByLabel("Croc code").press("Enter");
     const downloads = await acceptAsDownloads(page, panel);
     await expect(panel).toContainText(
-      "All files received, verified, and removed from storage",
+      "All files received and verified; stored ciphertext removed",
       { timeout: transferTimeout },
     );
     await expectDownloads(downloads, fixtures);
@@ -665,7 +1165,7 @@ test("CLI stored upload → Web download verifies and consumes files", async ({
     await page.goto("about:blank");
     await page.goto(browserURL!);
     await expect(page.locator(".receive-panel")).toContainText(
-      /expired or was already downloaded/i,
+      /expired or has no downloads remaining/i,
       { timeout: transferTimeout },
     );
   } finally {

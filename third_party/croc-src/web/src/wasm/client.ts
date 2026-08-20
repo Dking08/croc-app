@@ -9,15 +9,15 @@ export interface PakeFinish {
 }
 
 export interface PeerKeys {
-	key: Uint8Array;
-	confirmationA: Uint8Array;
-	confirmationB: Uint8Array;
+  key: Uint8Array;
+  confirmationA: Uint8Array;
+  confirmationB: Uint8Array;
 }
 
 export interface CodeComponents {
   room: string;
   passphrase: string;
-  format: "legacy" | "four-word";
+  format: "legacy" | "three-word" | "four-word";
 }
 
 type Pending = {
@@ -25,10 +25,27 @@ type Pending = {
   reject(reason: Error): void;
 };
 
+async function compileWasmModule() {
+  const response = await fetch(`${import.meta.env.BASE_URL}croc.wasm`);
+  if (!response.ok) {
+    throw new Error(`Could not load croc.wasm (${response.status})`);
+  }
+
+  const contentType = response.headers.get("content-type")?.split(";", 1)[0];
+  if (
+    typeof WebAssembly.compileStreaming === "function" &&
+    contentType === "application/wasm"
+  ) {
+    return WebAssembly.compileStreaming(response);
+  }
+  return WebAssembly.compile(await response.arrayBuffer());
+}
+
 export class CrocWasm {
   private worker: Worker;
   private nextID = 1;
   private pending = new Map<number, Pending>();
+  private fatalError: Error | undefined;
 
   constructor(worker?: Worker) {
     this.worker =
@@ -43,10 +60,7 @@ export class CrocWasm {
         error?: string;
       };
       if (id === 0) {
-        for (const pending of this.pending.values()) {
-          pending.reject(new Error(error ?? "WASM worker failed"));
-        }
-        this.pending.clear();
+        this.fail(new Error(error ?? "WASM worker failed"));
         return;
       }
       const pending = this.pending.get(id);
@@ -56,23 +70,41 @@ export class CrocWasm {
       else pending.resolve(result);
     });
     this.worker.addEventListener("error", (event) => {
-      const error = new Error(event.message || "WASM worker crashed");
-      for (const pending of this.pending.values()) pending.reject(error);
-      this.pending.clear();
+      this.fail(new Error(event.message || "WASM worker crashed"));
     });
+    void compileWasmModule()
+      .then((module) => {
+        if (!this.fatalError) {
+          this.worker.postMessage({ type: "initialize", module });
+        }
+      })
+      .catch((error) => this.fail(error));
   }
 
   close() {
     this.worker.terminate();
-    const error = new Error("WASM worker closed");
+    this.fail(new Error("WASM worker closed"));
+  }
+
+  private fail(reason: unknown) {
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    this.fatalError = error;
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
   }
 
-  private call<T>(method: string, args: unknown[] = [], transfer: Transferable[] = []) {
+  private call<T>(
+    method: string,
+    args: unknown[] = [],
+    transfer: Transferable[] = [],
+  ) {
+    if (this.fatalError) return Promise.reject(this.fatalError);
     const id = this.nextID++;
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
+      this.pending.set(id, {
+        resolve: resolve as (value: unknown) => void,
+        reject,
+      });
       this.worker.postMessage({ id, method, args }, transfer);
     });
   }
@@ -145,6 +177,42 @@ export class CrocWasm {
     return this.call<Uint8Array>("decompress", [input, maxOutputSize]);
   }
 
+  cipherInit(key: Uint8Array) {
+    return this.call<number>("cipherInit", [key]);
+  }
+
+  cipherRelease(handle: number) {
+    return this.call<void>("cipherRelease", [handle]);
+  }
+
+  encodeChunk(handle: number, input: Uint8Array, compressed: boolean) {
+    return this.call<Uint8Array>(
+      "encodeChunk",
+      [handle, input, compressed],
+      [input.buffer],
+    );
+  }
+
+  decodeChunk(
+    handle: number,
+    input: Uint8Array,
+    compressed: boolean,
+    maxOutputSize: number,
+  ) {
+    // Framed WebSocket messages are views into a decoder buffer that may also
+    // contain later frames. Transfer only an owned buffer so decoding one
+    // chunk cannot detach the bytes backing the next chunk.
+    const owned =
+      input.byteOffset === 0 && input.byteLength === input.buffer.byteLength
+        ? input
+        : input.slice();
+    return this.call<Uint8Array>(
+      "decodeChunk",
+      [handle, owned, compressed, maxOutputSize],
+      [owned.buffer],
+    );
+  }
+
   hashInit() {
     return this.call<number>("hashInit");
   }
@@ -157,12 +225,12 @@ export class CrocWasm {
     return this.call<Uint8Array>("hashFinal", [handle]);
   }
 
-  randomCode() {
-    return this.call<string>("randomCode");
-  }
-
   codeComponents(secret: string) {
     return this.call<CodeComponents>("codeComponents", [secret]);
+  }
+
+  relayIndex(secret: string, relayCount: number) {
+    return this.call<number>("relayIndex", [secret, relayCount]);
   }
 
   sha256Init() {
@@ -245,6 +313,10 @@ export class CrocWasm {
 }
 
 let shared: CrocWasm | undefined;
+
+export function preloadWasm() {
+  wasm();
+}
 
 export function wasm() {
   shared ??= new CrocWasm();

@@ -221,7 +221,7 @@
     <string name="settings_about">Acerca de</string>
     <string name="settings_app_version">Versión de la aplicación</string>
     <string name="settings_croc_version">Versión de Croc</string>
-    <string name="settings_croc_version_value">v11.0.1</string>
+    <string name="settings_croc_version_value">v11.2.4</string>
     <string name="settings_developer">Desarrollador</string>
     <string name="settings_developer_value">Dking</string>
     <!-- ════ Setup / Binary ════ -->
@@ -263,7 +263,7 @@
     <string name="settings_about_label">Acerca de</string>
     <string name="settings_app_version_label">Versión de la aplicación</string>
     <string name="settings_croc_version_label">Versión de croc</string>
-    <string name="settings_croc_version_val">v11.0.1</string>
+    <string name="settings_croc_version_val">v11.2.4</string>
     <string name="settings_built_with">Construido con ❤️ por Dastageer</string>
     <string name="settings_croc_github">github.com/schollz/croc</string>
     <string name="settings_language">Idioma</string>

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const wasmMocks = vi.hoisted(() => ({
   decrypt: vi.fn(),
   decompress: vi.fn(),
+  compress: vi.fn(async (input: Uint8Array) => input),
 }));
 
 // Keep receiver tests off the (jsdom-less) Worker path.
@@ -10,7 +11,7 @@ vi.mock("../wasm/client", () => ({
   wasm: () => wasmMocks,
 }));
 
-import { DataReceiver } from "./client";
+import { DataReceiver, prepareFiles, prepareText } from "./client";
 import type { CrocSocket } from "./transport";
 import type { OfferedFile, ReceiveSink } from "./types";
 
@@ -51,7 +52,11 @@ beforeEach(() => {
 
 describe("DataReceiver failure handling", () => {
   it("rejects a receive requested after a socket already failed", async () => {
-    const receiver = new DataReceiver([failingSocket(new Error("relay closed"))], key, true);
+    const receiver = new DataReceiver(
+      [failingSocket(new Error("relay closed"))],
+      key,
+      true,
+    );
     // Let the read loop observe the socket failure before we request a file.
     await Promise.resolve();
     await expect(receiver.receive(file, sink, () => {})).rejects.toThrow(
@@ -96,7 +101,58 @@ describe("DataReceiver failure handling", () => {
 
     await receiver.receive(file, sink, () => {});
 
-    expect(wasmMocks.decompress).toHaveBeenCalledWith(compressed, 32 * 1024 + 8);
+    expect(wasmMocks.decompress).toHaveBeenCalledWith(
+      compressed,
+      32 * 1024 + 8,
+    );
     receiver.stop();
+  });
+});
+
+describe("outgoing file preparation", () => {
+  it("reuses a hash that was started before Send", async () => {
+    const file = new File(["croc"], "croc.txt", {
+      lastModified: 1_723_420_800_000,
+    });
+    const digest = Uint8Array.of(1, 2, 3, 4);
+    const hashProvider = vi.fn(async () => digest);
+
+    const [prepared] = await prepareFiles([file], {}, undefined, hashProvider);
+
+    expect(hashProvider).toHaveBeenCalledWith(file);
+    expect(prepared).toMatchObject({
+      file,
+      name: "croc.txt",
+      size: 4,
+      hash: digest,
+    });
+  });
+
+  it("prepares exact UTF-8 text with the CLI-compatible temporary name", async () => {
+    const digest = Uint8Array.of(9, 8, 7, 6);
+    const hashProvider = vi.fn(async (payload: File) => {
+      expect(await payload.text()).toBe("hello\n🐊");
+      return digest;
+    });
+
+    const [prepared] = await prepareText(
+      "hello\n🐊",
+      {},
+      undefined,
+      hashProvider,
+    );
+
+    expect(prepared).toMatchObject({
+      name: "croc-stdin-web",
+      size: new Blob(["hello\n🐊"]).size,
+      hash: digest,
+    });
+  });
+
+  it("rejects empty and oversized text", async () => {
+    await expect(prepareText("")).rejects.toThrow(/enter some text/i);
+    await expect(prepareText("x".repeat(1024 * 1024 + 1))).rejects.toThrow(
+      /1 MiB/i,
+    );
   });
 });

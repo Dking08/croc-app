@@ -5,16 +5,21 @@ import type {
   TransferOffer,
   WireFileInfo,
 } from "./types";
+import { maxTextTransferBytes } from "./types";
 
 function cleanSegments(value: string) {
   const replaced = value.replaceAll("\\", "/");
-  if (replaced.includes("\0")) throw new Error("A remote path contains a null byte");
+  if (replaced.includes("\0"))
+    throw new Error("A remote path contains a null byte");
   const segments: string[] = [];
   for (const segment of replaced.split("/")) {
     if (segment === "" || segment === ".") continue;
-    if (segment === "..") throw new Error(`Remote path escapes the destination: ${value}`);
+    if (segment === "..")
+      throw new Error(`Remote path escapes the destination: ${value}`);
     if ([...segment].some((character) => !/\P{C}/u.test(character))) {
-      throw new Error(`Remote path contains a non-printable character: ${value}`);
+      throw new Error(
+        `Remote path contains a non-printable character: ${value}`,
+      );
     }
     segments.push(segment);
   }
@@ -36,7 +41,10 @@ export function normalizeFolder(value = ".") {
 export function normalizeFilePath(folderValue: string, nameValue: string) {
   const folder = normalizeFolder(folderValue);
   const nameSegments = cleanSegments(nameValue);
-  if (nameSegments.length !== 1 || nameSegments[0] !== nameValue.replaceAll("\\", "/")) {
+  if (
+    nameSegments.length !== 1 ||
+    nameSegments[0] !== nameValue.replaceAll("\\", "/")
+  ) {
     throw new Error(`Remote filename must be a basename: ${nameValue}`);
   }
   const name = nameSegments[0];
@@ -61,16 +69,19 @@ function finiteSize(file: WireFileInfo) {
 }
 
 export function validateSenderInfo(info: SenderInfoWire): TransferOffer {
-  if (info.SendingText) throw new Error("Text transfers are not supported yet");
   if (info.HashAlgorithm && info.HashAlgorithm !== "xxhash") {
     throw new Error(`Hash algorithm "${info.HashAlgorithm}" is not supported`);
   }
 
+  const perFileCompression = (info.Features ?? []).includes(
+    "per-file-compression-v1",
+  );
   const destinations = new Set<string>();
   const files: OfferedFile[] = [];
   let totalSize = 0;
   for (const wire of info.FilesToTransfer ?? []) {
-    if (wire.sy) throw new Error("Symlink transfers are not supported in the browser");
+    if (wire.sy)
+      throw new Error("Symlink transfers are not supported in the browser");
     const normalized = normalizeFilePath(wire.fr ?? ".", wire.n ?? "");
     if (destinations.has(normalized.path)) {
       throw new Error(`Duplicate destination path: ${normalized.path}`);
@@ -78,13 +89,15 @@ export function validateSenderInfo(info: SenderInfoWire): TransferOffer {
     destinations.add(normalized.path);
     const size = finiteSize(wire);
     totalSize += size;
-    if (!Number.isSafeInteger(totalSize)) throw new Error("Transfer size is too large");
+    if (!Number.isSafeInteger(totalSize))
+      throw new Error("Transfer size is too large");
     files.push({
       ...normalized,
       size,
       hash: wire.h ? base64ToBytes(wire.h) : new Uint8Array(),
       modified: wire.m,
       mode: wire.md,
+      compressed: perFileCompression ? Boolean(wire.c) : !info.NoCompress,
     });
   }
 
@@ -98,11 +111,29 @@ export function validateSenderInfo(info: SenderInfoWire): TransferOffer {
     emptyFolders.push(folder);
   }
 
+  if (info.SendingText) {
+    if (
+      files.length !== 1 ||
+      emptyFolders.length !== 0 ||
+      info.TotalNumberFolders !== 0
+    ) {
+      throw new Error("A text transfer must contain exactly one text payload");
+    }
+    if (files[0].size === 0) {
+      throw new Error("A text transfer cannot be empty");
+    }
+    if (files[0].size > maxTextTransferBytes) {
+      throw new Error("The text transfer is larger than 1 MiB");
+    }
+  }
+
   return {
+    kind: info.SendingText ? "text" : "files",
     files,
     emptyFolders,
     totalSize,
     senderMachineID: info.MachineID || "unknown",
     noCompress: Boolean(info.NoCompress),
+    perFileCompression,
   };
 }

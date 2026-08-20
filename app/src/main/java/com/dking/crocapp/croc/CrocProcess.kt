@@ -24,7 +24,7 @@ import kotlin.coroutines.coroutineContext
 /**
  * Executes croc CLI commands and parses output for transfer progress.
  *
- * croc v11.0.1 global flags:
+ * croc v11.2.4 global flags:
  *   --yes, --relay, --pass, --curve, --overwrite,
  *   --no-compress, --local, --throttleUpload, --internal-dns,
  *   --classic, --multicast, --ip, --relay6, --out, --quiet
@@ -70,7 +70,7 @@ class CrocProcess(
 
     /**
      * Build common global flags from preferences.
-     * Only includes flags that actually exist in croc v11.0.1 and v10.6.0.
+     * Only includes flags that actually exist in croc v11.2.4.1 and v10.6.0.
      */
     private fun buildGlobalFlags(prefs: UserPreferencesRepository.CrocPreferences): List<String> {
         val relayAddress = resolveRelayAddress(prefs.relayAddress)

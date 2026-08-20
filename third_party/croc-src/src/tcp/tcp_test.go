@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"testing"
@@ -23,6 +24,39 @@ func TestMaxRoomsOpenOption(t *testing.T) {
 	assert.Error(t, WithMaxRoomsOpen(0)(s))
 	assert.Error(t, WithMaxRoomsOpen(-1)(s))
 	assert.Equal(t, 7, s.maxRoomsOpen)
+}
+
+func BenchmarkRelayForwarding(b *testing.B) {
+	payload := bytes.Repeat([]byte("r"), 16*1024*1024)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(payload)))
+	b.Run("legacy-copy-every-read", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			reader := bytes.NewReader(payload)
+			buf := make([]byte, 64*1024)
+			for {
+				n, err := reader.Read(buf)
+				if n > 0 {
+					forwarded := make([]byte, n)
+					copy(forwarded, buf[:n])
+					if _, writeErr := io.Discard.Write(forwarded); writeErr != nil {
+						b.Fatal(writeErr)
+					}
+				}
+				if err == io.EOF {
+					break
+				}
+			}
+		}
+	})
+	b.Run("io-copy", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			reader := io.LimitReader(bytes.NewReader(payload), int64(len(payload)))
+			if _, err := io.Copy(io.Discard, reader); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }
 
 func TestHandshakeOptions(t *testing.T) {
@@ -739,6 +773,57 @@ func TestServerHonorsIPv4LoopbackBind(t *testing.T) {
 	if err == nil {
 		connection.Close()
 		t.Fatalf("server configured for %s also accepted a connection on %s", address, alternateAddress)
+	}
+}
+
+func TestMeasureServerLatencyContextCancellationClosesConnection(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	accepted := make(chan struct{})
+	closed := make(chan struct{})
+	go func() {
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer connection.Close()
+		close(accepted)
+		buffer := make([]byte, 64)
+		for {
+			if _, readErr := connection.Read(buffer); readErr != nil {
+				close(closed)
+				return
+			}
+		}
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, probeErr := MeasureServerLatencyContext(ctx, listener.Addr().String(), 5*time.Second)
+		result <- probeErr
+	}()
+	select {
+	case <-accepted:
+	case <-time.After(time.Second):
+		t.Fatal("probe did not connect")
+	}
+	cancel()
+
+	select {
+	case probeErr := <-result:
+		assert.ErrorIs(t, probeErr, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("canceled probe did not return promptly")
+	}
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("canceled probe did not close its connection")
 	}
 }
 

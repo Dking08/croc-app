@@ -1,18 +1,18 @@
 /* global Go, crocWasm */
 
 let ready;
+let supplyModule;
+const moduleReady = new Promise((resolve) => {
+  supplyModule = resolve;
+});
 
 function initialize() {
   if (ready) return ready;
   ready = (async () => {
     importScripts(new URL("./wasm_exec.js", self.location.href).href);
     const go = new Go();
-    const response = await fetch(new URL("./croc.wasm", self.location.href));
-    if (!response.ok) {
-      throw new Error(`Could not load croc.wasm (${response.status})`);
-    }
-    const bytes = await response.arrayBuffer();
-    const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
+    const module = await moduleReady;
+    const instance = await WebAssembly.instantiate(module, go.importObject);
     void go.run(instance);
     for (let attempts = 0; !self.crocWasm && attempts < 100; attempts += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -34,7 +34,11 @@ function transferables(value, output = []) {
 }
 
 self.addEventListener("message", async (event) => {
-  const { id, method, args = [] } = event.data;
+  const { type, id, method, args = [], module } = event.data;
+  if (type === "initialize") {
+    supplyModule(module);
+    return;
+  }
   try {
     await initialize();
     const fn = self.crocWasm[method];
