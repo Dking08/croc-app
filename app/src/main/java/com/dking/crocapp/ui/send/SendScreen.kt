@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,6 +38,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import android.widget.Toast
@@ -183,11 +187,13 @@ fun SendScreen(
     val showTransferSection = isTransferActive || isTransferFinished || isLegacyFallback
     val canSend = (uiState.isStoreMode || uiState.codePhrase.isNotBlank()) && uiState.hasContent
 
-    val fabLabel = when (uiState.transferState) {
-        is CrocTransferState.Completed, is CrocTransferState.StoreCompleted -> stringResource(R.string.send_again)
-        is CrocTransferState.LegacyFallbackAvailable -> stringResource(R.string.action_retry_legacy)
-        is CrocTransferState.Error, CrocTransferState.Cancelled -> stringResource(R.string.action_retry)
-        else -> if (uiState.isStoreMode) stringResource(R.string.send_action_store) else stringResource(R.string.action_send)
+    val fabLabel = when {
+        isStoreCompleted -> "Normal Mode"
+        uiState.transferState is CrocTransferState.Completed -> stringResource(R.string.send_again)
+        isLegacyFallback -> stringResource(R.string.action_retry_legacy)
+        uiState.transferState is CrocTransferState.Error || uiState.transferState is CrocTransferState.Cancelled -> stringResource(R.string.action_retry)
+        uiState.isStoreMode -> stringResource(R.string.send_action_store)
+        else -> stringResource(R.string.action_send)
     }
 
     // Animated progress for the file card border
@@ -215,10 +221,10 @@ fun SendScreen(
                 },
                 actions = {
                     IconButton(onClick = onNavigateToHistory) {
-                        Icon(Icons.Rounded.History, contentDescription = stringResource(R.string.nav_history))
+                        Icon(Icons.Outlined.History, contentDescription = stringResource(R.string.nav_history))
                     }
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.nav_settings))
+                        Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.nav_settings))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -232,6 +238,9 @@ fun SendScreen(
                     onClick = {
                         if (isLegacyFallback) {
                             viewModel.retryWithLegacy()
+                        } else if (isStoreCompleted) {
+                            viewModel.dismissTransferResult()
+                            viewModel.setDeliveryMode(DeliveryMode.DIRECT)
                         } else {
                             if (isTransferFinished) {
                                 viewModel.dismissTransferResult()
@@ -241,9 +250,12 @@ fun SendScreen(
                     },
                     icon = {
                         Icon(
-                            if (isLegacyFallback) Icons.Rounded.History
-                            else if (uiState.isStoreMode) Icons.Rounded.CloudUpload
-                            else Icons.Rounded.Upload,
+                            when {
+                                isLegacyFallback -> Icons.Rounded.History
+                                isStoreCompleted -> Icons.AutoMirrored.Rounded.Send
+                                uiState.isStoreMode -> Icons.Rounded.CloudUpload
+                                else -> Icons.Rounded.Upload
+                            },
                             contentDescription = null
                         )
                     },
@@ -253,7 +265,7 @@ fun SendScreen(
                     elevation = FloatingActionButtonDefaults.elevation(
                         defaultElevation = 3.dp
                     ),
-                    expanded = canSend || isLegacyFallback
+                    expanded = canSend || isLegacyFallback || isStoreCompleted
                 )
             }
         }
@@ -267,30 +279,6 @@ fun SendScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Spacer(modifier = Modifier.height(2.dp))
-
-            // Delivery Mode: Direct vs Store
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                SegmentedButton(
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    onClick = { viewModel.setDeliveryMode(DeliveryMode.DIRECT) },
-                    selected = uiState.deliveryMode == DeliveryMode.DIRECT,
-                    icon = {
-                        Icon(Icons.Rounded.SwapHoriz, contentDescription = null, modifier = Modifier.size(18.dp))
-                    }
-                ) {
-                    Text(stringResource(R.string.delivery_mode_direct))
-                }
-                SegmentedButton(
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    onClick = { viewModel.setDeliveryMode(DeliveryMode.STORE) },
-                    selected = uiState.deliveryMode == DeliveryMode.STORE,
-                    icon = {
-                        Icon(Icons.Rounded.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                    }
-                ) {
-                    Text(stringResource(R.string.delivery_mode_store))
-                }
-            }
 
             // Mode Toggle: Files / Folder / Text
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -821,10 +809,129 @@ fun SendScreen(
             }
         }
 
-        // Bottom padding for FAB clearance
-        Spacer(modifier = Modifier.height(80.dp))
+        // ──── Mode Switch Banners at the Bottom ────
+        if (!isTransferActive && !isStoreCompleted) {
+                if (!uiState.isStoreMode) {
+                    // Switch to Store Mode Card
+                    Surface(
+                        onClick = { viewModel.setDeliveryMode(DeliveryMode.STORE) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primaryContainer),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.CloudUpload,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        text = "Store",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Upload encrypted files to store for later pickup",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Icon(
+                                Icons.AutoMirrored.Rounded.ArrowForward,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                } else {
+                    // Switch to Normal Direct Mode Card
+                    Surface(
+                        onClick = { viewModel.setDeliveryMode(DeliveryMode.DIRECT) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Rounded.Send,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        text = "Normal Mode",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Direct peer-to-peer real-time transfer",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Icon(
+                                Icons.AutoMirrored.Rounded.Send,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Bottom padding for FAB clearance
+            Spacer(modifier = Modifier.height(80.dp))
+        }
     }
-}
 }
 
 @Composable

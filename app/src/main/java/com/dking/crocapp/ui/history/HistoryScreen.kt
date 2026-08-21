@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -318,6 +320,7 @@ private fun CompactHistoryCard(
                     .clip(CircleShape)
                     .background(
                         when {
+                            transfer.isStored && transfer.type == TransferType.RECEIVE -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
                             transfer.isStored -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
                             transfer.type == TransferType.SEND -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
                             else -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f)
@@ -327,12 +330,14 @@ private fun CompactHistoryCard(
             ) {
                 Icon(
                     imageVector = when {
-                        transfer.isStored -> Icons.Rounded.CloudDone
-                        transfer.type == TransferType.SEND -> Icons.Rounded.CloudUpload
+                        transfer.isStored && transfer.type == TransferType.RECEIVE -> Icons.Rounded.CloudDownload
+                        transfer.isStored -> Icons.Rounded.CloudUpload
+                        transfer.type == TransferType.SEND -> Icons.Rounded.Upload
                         else -> Icons.Rounded.Download
                     },
                     contentDescription = null,
                     tint = when {
+                        transfer.isStored && transfer.type == TransferType.RECEIVE -> MaterialTheme.colorScheme.secondary
                         transfer.isStored -> MaterialTheme.colorScheme.primary
                         transfer.type == TransferType.SEND -> MaterialTheme.colorScheme.primary
                         else -> MaterialTheme.colorScheme.tertiary
@@ -367,6 +372,14 @@ private fun CompactHistoryCard(
                     }
                     if (transfer.isStored) {
                         when {
+                            transfer.type == TransferType.RECEIVE -> {
+                                Text(
+                                    text = "Received",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
                             transfer.isRevoked -> {
                                 Text(
                                     text = stringResource(R.string.store_revoked_badge),
@@ -385,7 +398,7 @@ private fun CompactHistoryCard(
                             else -> {
                                 val expText = formatExpiration(transfer.expiresAt)
                                 Text(
-                                    text = if (expText.isNotBlank()) "Expires in $expText" else stringResource(R.string.store_active_badge),
+                                    text = if (expText.isNotBlank()) "Expires in $expText" else "Stored",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.primary
