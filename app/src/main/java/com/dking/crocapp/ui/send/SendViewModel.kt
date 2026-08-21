@@ -227,13 +227,24 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSendMode(mode: SendMode) {
-        _uiState.update { it.copy(sendMode = mode) }
+        if (_uiState.value.sendMode != mode) {
+            val transferState = _uiState.value.transferState
+            if (transferState is CrocTransferState.Completed ||
+                transferState is CrocTransferState.StoreCompleted ||
+                transferState is CrocTransferState.Error ||
+                transferState is CrocTransferState.Cancelled ||
+                transferState is CrocTransferState.LegacyFallbackAvailable
+            ) {
+                crocProcess.reset()
+            }
+            _uiState.update { it.copy(sendMode = mode) }
+        }
     }
 
     fun toggleTextMode() {
-        _uiState.update {
-            it.copy(sendMode = if (it.sendMode == SendMode.TEXT) SendMode.FILES else SendMode.TEXT)
-        }
+        val currentMode = _uiState.value.sendMode
+        val nextMode = if (currentMode == SendMode.TEXT) SendMode.FILES else SendMode.TEXT
+        setSendMode(nextMode)
     }
 
     fun updateTextToSend(text: String) {
@@ -241,15 +252,27 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSharedText(text: String) {
-        _uiState.update { it.copy(sendMode = SendMode.TEXT, textToSend = text) }
+        setSendMode(SendMode.TEXT)
+        _uiState.update { it.copy(textToSend = text) }
     }
 
     fun setDeliveryMode(mode: DeliveryMode) {
-        _uiState.update {
-            it.copy(
-                deliveryMode = mode,
-                activeEngine = if (mode == DeliveryMode.STORE) CrocEngine.CURRENT else it.activeEngine
-            )
+        if (_uiState.value.deliveryMode != mode) {
+            val transferState = _uiState.value.transferState
+            if (transferState is CrocTransferState.Completed ||
+                transferState is CrocTransferState.StoreCompleted ||
+                transferState is CrocTransferState.Error ||
+                transferState is CrocTransferState.Cancelled ||
+                transferState is CrocTransferState.LegacyFallbackAvailable
+            ) {
+                crocProcess.reset()
+            }
+            _uiState.update {
+                it.copy(
+                    deliveryMode = mode,
+                    activeEngine = if (mode == DeliveryMode.STORE) CrocEngine.CURRENT else it.activeEngine
+                )
+            }
         }
     }
 

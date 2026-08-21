@@ -178,8 +178,9 @@ fun SendScreen(
     val isTransferActive = uiState.transferState is CrocTransferState.Preparing ||
             uiState.transferState is CrocTransferState.WaitingForPeer ||
             uiState.transferState is CrocTransferState.Transferring
-    val isStoreCompleted = uiState.transferState is CrocTransferState.StoreCompleted
-    val isTransferFinished = uiState.transferState is CrocTransferState.Completed ||
+    val isStoreCompleted = uiState.isStoreMode && uiState.transferState is CrocTransferState.StoreCompleted
+    val isDirectCompleted = !uiState.isStoreMode && uiState.transferState is CrocTransferState.Completed
+    val isTransferFinished = isDirectCompleted ||
             isStoreCompleted ||
             uiState.transferState is CrocTransferState.Error ||
             uiState.transferState is CrocTransferState.Cancelled
@@ -189,7 +190,7 @@ fun SendScreen(
 
     val fabLabel = when {
         isStoreCompleted -> "Normal Mode"
-        uiState.transferState is CrocTransferState.Completed -> stringResource(R.string.send_again)
+        isDirectCompleted -> stringResource(R.string.send_again)
         isLegacyFallback -> stringResource(R.string.action_retry_legacy)
         uiState.transferState is CrocTransferState.Error || uiState.transferState is CrocTransferState.Cancelled -> stringResource(R.string.action_retry)
         uiState.isStoreMode -> stringResource(R.string.send_action_store)
@@ -199,7 +200,8 @@ fun SendScreen(
     // Animated progress for the file card border
     val transferProgress = when (val state = uiState.transferState) {
         is CrocTransferState.Transferring -> state.fileCountProgress
-        is CrocTransferState.Completed, is CrocTransferState.StoreCompleted -> 1f
+        is CrocTransferState.Completed -> if (!uiState.isStoreMode) 1f else 0f
+        is CrocTransferState.StoreCompleted -> if (uiState.isStoreMode) 1f else 0f
         else -> 0f
     }
     val animatedBorderProgress by animateFloatAsState(
@@ -207,7 +209,7 @@ fun SendScreen(
         animationSpec = tween(400),
         label = "borderProgress"
     )
-    val showFileBorder = isTransferActive || uiState.transferState is CrocTransferState.Completed || isStoreCompleted
+    val showFileBorder = isTransferActive || isDirectCompleted || isStoreCompleted
     val borderColor = MaterialTheme.colorScheme.primary
 
     Scaffold(
