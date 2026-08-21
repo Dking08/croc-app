@@ -394,4 +394,24 @@
     <string name="settings_custom_store_url">URL de almacenamiento personalizada</string>
     <string name="settings_custom_store_url_desc">Origen de transferencia almacenada (dejar vacío para https://getcroc.com)</string>
     <string name="settings_custom_store_url_placeholder">https://getcroc.com</string>
+    <string name="store_custom_label">Personalizado</string>
+    <string name="store_custom_expiration_hint">ej. 45m, 12h, 3d, 2w</string>
+    <string name="store_custom_expiration_desc">Unidad de duración: m (minutos), h (horas), d (días), w (semanas)</string>
+    <string name="store_custom_downloads_hint">ej. 3, 20</string>
+    <string name="store_custom_downloads_desc">Número de descargas verificadas permitidas (mínimo 1)</string>
+    <string name="store_browser_link_subtitle">Enlace directo de descarga en el navegador</string>
+    <string name="store_cli_token_subtitle">Pegar en terminal: croc &lt;token&gt;</string>
+    <string name="mode_switch_store_title">Almacenar</string>
+    <string name="mode_switch_store_desc">Subir archivos cifrados para recogerlos más tarde</string>
+    <string name="mode_switch_normal_title">Modo normal</string>
+    <string name="mode_switch_normal_desc">Transferencia directa en tiempo real entre pares</string>
+    <string name="mode_normal_fab">Modo normal</string>
+    <string name="store_stats_expires">Expira</string>
+    <string name="store_stats_size">Tamaño</string>
+    <string name="store_stats_downloads">Descargas</string>
+    <string name="store_stats_available">disponibles</string>
+    <string name="store_action_copied">Copiado</string>
+    <string name="history_badge_received">Recibido</string>
+    <string name="history_badge_stored">Almacenado</string>
+    <string name="history_file_not_found">Archivo no encontrado en el dispositivo</string>
 </resources>

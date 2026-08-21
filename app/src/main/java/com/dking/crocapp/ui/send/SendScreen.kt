@@ -189,7 +189,7 @@ fun SendScreen(
     val canSend = (uiState.isStoreMode || uiState.codePhrase.isNotBlank()) && uiState.hasContent
 
     val fabLabel = when {
-        isStoreCompleted -> "Normal Mode"
+        isStoreCompleted -> stringResource(R.string.mode_normal_fab)
         isDirectCompleted -> stringResource(R.string.send_again)
         isLegacyFallback -> stringResource(R.string.action_retry_legacy)
         uiState.transferState is CrocTransferState.Error || uiState.transferState is CrocTransferState.Cancelled -> stringResource(R.string.action_retry)
@@ -875,13 +875,13 @@ fun SendScreen(
                                 }
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(
-                                        text = "Store",
+                                        text = stringResource(R.string.mode_switch_store_title),
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "Upload encrypted files to store for later pickup",
+                                        text = stringResource(R.string.mode_switch_store_desc),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -932,20 +932,20 @@ fun SendScreen(
                                 }
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(
-                                        text = "Normal Mode",
+                                        text = stringResource(R.string.mode_switch_normal_title),
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "Direct peer-to-peer real-time transfer",
+                                        text = stringResource(R.string.mode_switch_normal_desc),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
                             Icon(
-                                Icons.AutoMirrored.Rounded.Send,
+                                Icons.AutoMirrored.Rounded.ArrowBack,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(20.dp)
@@ -1158,7 +1158,7 @@ private fun StoreConfigurationCard(
     onExpirationChange: (String) -> Unit,
     onDownloadsChange: (Int) -> Unit
 ) {
-    val presetExpirations = listOf("1h", "12h", "1d", "3d", "1w", "2w")
+    val presetExpirations = listOf("30m", "1h", "1d", "1w")
     val presetDownloads = listOf(1, 2, 5, 10)
 
     var isCustomExpiration by remember(expiration) {
@@ -1523,7 +1523,7 @@ private fun StoreCompletedCard(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(
-                        text = "Expires",
+                        text = stringResource(R.string.store_stats_expires),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1556,7 +1556,7 @@ private fun StoreCompletedCard(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(
-                        text = "Size",
+                        text = stringResource(R.string.store_stats_size),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1589,7 +1589,7 @@ private fun StoreCompletedCard(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(
-                        text = "Downloads",
+                        text = stringResource(R.string.store_stats_downloads),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1601,7 +1601,7 @@ private fun StoreCompletedCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "available",
+                        text = stringResource(R.string.store_stats_available),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

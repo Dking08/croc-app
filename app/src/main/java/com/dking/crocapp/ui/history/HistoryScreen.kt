@@ -301,8 +301,12 @@ private fun CompactHistoryCard(
                     putExtra(Intent.EXTRA_TEXT, transfer.storeLink)
                     type = "text/plain"
                 }
-                context.startActivity(Intent.createChooser(sendIntent, null))
-            } else if (!canOpenTransfer || !onOpenTransfer()) {
+                try {
+                    context.startActivity(Intent.createChooser(sendIntent, null))
+                } catch (_: Exception) {}
+            } else if (canOpenTransfer) {
+                onOpenTransfer()
+            } else {
                 onCodeSelected(transfer.code)
             }
         }
@@ -374,7 +378,7 @@ private fun CompactHistoryCard(
                         when {
                             transfer.type == TransferType.RECEIVE -> {
                                 Text(
-                                    text = "Received",
+                                    text = stringResource(R.string.history_badge_received),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.secondary
@@ -398,7 +402,7 @@ private fun CompactHistoryCard(
                             else -> {
                                 val expText = formatExpiration(transfer.expiresAt)
                                 Text(
-                                    text = if (expText.isNotBlank()) "Expires in $expText" else "Stored",
+                                    text = if (expText.isNotBlank()) stringResource(R.string.store_expires_in, expText) else stringResource(R.string.history_badge_stored),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.primary
@@ -531,7 +535,9 @@ private fun CompactHistoryCard(
                             text = { Text(if (canOpenTransfer) stringResource(R.string.history_open_file) else stringResource(R.string.history_use_code)) },
                             onClick = {
                                 showMenu = false
-                                if (!canOpenTransfer || !onOpenTransfer()) {
+                                if (canOpenTransfer) {
+                                    onOpenTransfer()
+                                } else {
                                     onCodeSelected(transfer.code)
                                 }
                             },

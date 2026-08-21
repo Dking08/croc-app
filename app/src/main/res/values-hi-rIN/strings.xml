@@ -394,4 +394,24 @@
     <string name="settings_custom_store_url">कस्टम स्टोर URL</string>
     <string name="settings_custom_store_url_desc">संग्रहीत ट्रांसफ़र मूल सर्वर (https://getcroc.com के लिए खाली छोड़ें)</string>
     <string name="settings_custom_store_url_placeholder">https://getcroc.com</string>
+    <string name="store_custom_label">कस्टम</string>
+    <string name="store_custom_expiration_hint">उदा. 45m, 12h, 3d, 2w</string>
+    <string name="store_custom_expiration_desc">अवधि इकाई: m (मिनट), h (घंटे), d (दिन), w (सप्ताह)</string>
+    <string name="store_custom_downloads_hint">उदा. 3, 20</string>
+    <string name="store_custom_downloads_desc">अनुमत सत्यापित डाउनलोड संख्या (न्यूनतम 1)</string>
+    <string name="store_browser_link_subtitle">सीधा ब्राउज़र डाउनलोड लिंक</string>
+    <string name="store_cli_token_subtitle">टर्मिनल में पेस्ट करें: croc &lt;token&gt;</string>
+    <string name="mode_switch_store_title">स्टोर</string>
+    <string name="mode_switch_store_desc">बाद में लेने के लिए एन्क्रिप्टेड फ़ाइलें स्टोर पर अपलोड करें</string>
+    <string name="mode_switch_normal_title">सामान्य मोड</string>
+    <string name="mode_switch_normal_desc">सीधा पीयर-टू-पीयर रीयल-टाइम ट्रांसफ़र</string>
+    <string name="mode_normal_fab">सामान्य मोड</string>
+    <string name="store_stats_expires">समाप्ति</string>
+    <string name="store_stats_size">आकार</string>
+    <string name="store_stats_downloads">डाउनलोड</string>
+    <string name="store_stats_available">उपलब्ध</string>
+    <string name="store_action_copied">कॉपी किया गया</string>
+    <string name="history_badge_received">प्राप्त</string>
+    <string name="history_badge_stored">संग्रहीत</string>
+    <string name="history_file_not_found">डिवाइस पर फ़ाइल नहीं मिली</string>
 </resources>

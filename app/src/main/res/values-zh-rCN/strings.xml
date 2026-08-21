@@ -394,4 +394,24 @@
     <string name="settings_custom_store_url">自定义存储服务器 URL</string>
     <string name="settings_custom_store_url_desc">存储服务器源站（留空默认使用 https://getcroc.com）</string>
     <string name="settings_custom_store_url_placeholder">https://getcroc.com</string>
+    <string name="store_custom_label">自定义</string>
+    <string name="store_custom_expiration_hint">例如 45m, 12h, 3d, 2w</string>
+    <string name="store_custom_expiration_desc">时长单位：m (分钟), h (小时), d (天), w (周)</string>
+    <string name="store_custom_downloads_hint">例如 3, 20</string>
+    <string name="store_custom_downloads_desc">允许的验证下载次数（最少 1 次）</string>
+    <string name="store_browser_link_subtitle">浏览器直接下载链接</string>
+    <string name="store_cli_token_subtitle">在终端中运行：croc &lt;token&gt;</string>
+    <string name="mode_switch_store_title">存储模式</string>
+    <string name="mode_switch_store_desc">上传加密文件供稍后提取</string>
+    <string name="mode_switch_normal_title">普通模式</string>
+    <string name="mode_switch_normal_desc">点对点实时直接传输</string>
+    <string name="mode_normal_fab">普通模式</string>
+    <string name="store_stats_expires">过期时间</string>
+    <string name="store_stats_size">大小</string>
+    <string name="store_stats_downloads">下载次数</string>
+    <string name="store_stats_available">剩余可用</string>
+    <string name="store_action_copied">已复制</string>
+    <string name="history_badge_received">已接收</string>
+    <string name="history_badge_stored">已存储</string>
+    <string name="history_file_not_found">设备上未找到该文件</string>
 </resources>
