@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -42,6 +43,9 @@ class UserPreferencesRepository(private val context: Context) {
         val TRANSFER_PORTS = stringPreferencesKey("transfer_ports")
         val ZIP_FOLDER_BEFORE_SEND = booleanPreferencesKey("zip_folder_before_send")
         val SHOW_ADVANCED_SETTINGS = booleanPreferencesKey("show_advanced_settings")
+        val DEFAULT_STORE_EXPIRATION = stringPreferencesKey("default_store_expiration")
+        val DEFAULT_STORE_DOWNLOADS = intPreferencesKey("default_store_downloads")
+        val CUSTOM_STORE_URL = stringPreferencesKey("custom_store_url")
     }
 
     data class CrocPreferences(
@@ -70,7 +74,10 @@ class UserPreferencesRepository(private val context: Context) {
         val disableMultiplexing: Boolean = true,
         val transferPorts: String = "4",
         val zipFolderBeforeSend: Boolean = false,
-        val showAdvancedSettings: Boolean = false
+        val showAdvancedSettings: Boolean = false,
+        val defaultStoreExpiration: String = "1d",
+        val defaultStoreDownloads: Int = 1,
+        val customStoreUrl: String = ""
     ) {
         /** Effective Quick Send code: explicit quick code → defaultCodePhrase → empty */
         val effectiveQuickSendCode: String
@@ -97,7 +104,10 @@ class UserPreferencesRepository(private val context: Context) {
                     disableCompression ||
                     zipFolderBeforeSend ||
                     uploadThrottle.isNotBlank() ||
-                    tryLegacyFirst
+                    tryLegacyFirst ||
+                    defaultStoreExpiration != "1d" ||
+                    defaultStoreDownloads != 1 ||
+                    customStoreUrl.isNotBlank()
     }
 
     val preferencesFlow: Flow<CrocPreferences> = context.dataStore.data.map { prefs ->
@@ -134,7 +144,10 @@ class UserPreferencesRepository(private val context: Context) {
             disableMultiplexing = prefs[DISABLE_MULTIPLEXING] ?: true,
             transferPorts = prefs[TRANSFER_PORTS] ?: "4",
             zipFolderBeforeSend = prefs[ZIP_FOLDER_BEFORE_SEND] ?: false,
-            showAdvancedSettings = prefs[SHOW_ADVANCED_SETTINGS] ?: false
+            showAdvancedSettings = prefs[SHOW_ADVANCED_SETTINGS] ?: false,
+            defaultStoreExpiration = prefs[DEFAULT_STORE_EXPIRATION] ?: "1d",
+            defaultStoreDownloads = prefs[DEFAULT_STORE_DOWNLOADS] ?: 1,
+            customStoreUrl = prefs[CUSTOM_STORE_URL] ?: ""
         )
     }
 
@@ -296,6 +309,18 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun updateShowAdvancedSettings(value: Boolean) {
         context.dataStore.edit { it[SHOW_ADVANCED_SETTINGS] = value }
+    }
+
+    suspend fun updateDefaultStoreExpiration(value: String) {
+        context.dataStore.edit { it[DEFAULT_STORE_EXPIRATION] = value }
+    }
+
+    suspend fun updateDefaultStoreDownloads(value: Int) {
+        context.dataStore.edit { it[DEFAULT_STORE_DOWNLOADS] = value }
+    }
+
+    suspend fun updateCustomStoreUrl(value: String) {
+        context.dataStore.edit { it[CUSTOM_STORE_URL] = value.trim() }
     }
 
     suspend fun clearReceiveLocationUri() {

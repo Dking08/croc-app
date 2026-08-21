@@ -55,7 +55,14 @@ class CrocProcess(
         val totalFileCount: Int = 0,
         val receivedText: String? = null,
         val isLegacyFallback: Boolean = false,
-        val announcedCode: String = ""
+        val announcedCode: String = "",
+        val isStoreTransfer: Boolean = false,
+        val storeBrowserLink: String = "",
+        val storeCliToken: String = "",
+        val storeId: String = "",
+        val storeExpiresAt: Long = 0L,
+        val storeRawExpiration: String = "",
+        val storeDownloadsLimit: Int = 1
     )
 
     private val homeDir: File
@@ -64,8 +71,24 @@ class CrocProcess(
     private val tmpDir: File
         get() = File(context.cacheDir, "croc-tmp").also { it.mkdirs() }
 
+    fun isStoredToken(code: String?): Boolean {
+        if (code == null) return false
+        val trimmed = code.trim()
+        return trimmed.startsWith("croc-store-v1.") ||
+                ((trimmed.startsWith("http://") || trimmed.startsWith("https://")) && trimmed.contains("/s/"))
+    }
+
     private fun secretEnv(code: String?): Map<String, String> {
-        return if (code.isNullOrBlank()) emptyMap() else mapOf("CROC_SECRET" to code)
+        if (code.isNullOrBlank()) return emptyMap()
+        val trimmed = code.trim()
+        return if (isStoredToken(trimmed)) {
+            mapOf(
+                "CROC_STORE_TOKEN" to trimmed,
+                "CROC_SECRET" to trimmed
+            )
+        } else {
+            mapOf("CROC_SECRET" to trimmed)
+        }
     }
 
     /**
@@ -246,27 +269,171 @@ class CrocProcess(
             try {
                 _state.value = CrocTransferState.Preparing
                 val prefs = prefsRepository.preferencesFlow.first()
-                val binaryPath = binaryManager.getBinaryPath(engine)
+                val isStore = isStoredToken(code)
+                val effectiveEngine = if (isStore) CrocEngine.CURRENT else engine
+                val binaryPath = binaryManager.getBinaryPath(effectiveEngine)
                 outputDir.mkdirs()
 
                 val conflictFlag = if (prefs.receiveConflictStrategy == "rename") "--rename" else "--overwrite"
-                val command = mutableListOf(binaryPath, "--yes", conflictFlag).apply {
-                    addAll(buildGlobalFlags(prefs))
+                val command = mutableListOf(binaryPath, "--yes", "--ignore-stdin", conflictFlag).apply {
+                    if (prefs.useInternalDns) add("--internal-dns")
+                    if (prefs.socks5Proxy.isNotBlank()) {
+                        add("--socks5"); add(prefs.socks5Proxy)
+                    }
+                    if (prefs.httpProxy.isNotBlank()) {
+                        add("--connect"); add(prefs.httpProxy)
+                    }
+                    if (!isStore) {
+                        if (prefs.relayAddress.isNotBlank()) {
+                            add("--relay"); add(resolveRelayAddress(prefs.relayAddress))
+                        }
+                        if (prefs.relay6Address.isNotBlank()) {
+                            add("--relay6"); add(prefs.relay6Address)
+                        }
+                        if (prefs.relayPassword.isNotBlank()) {
+                            add("--pass"); add(prefs.relayPassword)
+                        }
+                        if (prefs.pakeCurve.isNotBlank()) {
+                            add("--curve"); add(prefs.pakeCurve)
+                        }
+                        if (prefs.forceLocal) add("--local")
+                        if (prefs.disableCompression) add("--no-compress")
+                        if (prefs.multicastAddress.isNotBlank() && prefs.multicastAddress != "239.255.255.250") {
+                            add("--multicast"); add(prefs.multicastAddress)
+                        }
+                        if (prefs.senderIp.isNotBlank()) {
+                            add("--ip"); add(prefs.senderIp)
+                        }
+                    }
                 }
 
                 executeWithDnsFallback(
                     baseCommand = command,
                     workDir = outputDir,
-                    waitingState = CrocTransferState.WaitingForPeer(code),
+                    waitingState = CrocTransferState.WaitingForPeer(if (isStore) "Connecting to secure store..." else code),
                     extraEnv = secretEnv(code),
                     prefs = prefs,
-                    opName = "Receive",
+                    opName = if (isStore) "ReceiveStore" else "Receive",
                     code = code,
-                    engine = engine
+                    engine = effectiveEngine
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Receive failed", e)
                 _state.value = CrocTransferState.Error(e.message ?: "Unknown error")
+            }
+        }
+    }
+
+    private var lastStoreExpiration: String = "1d"
+    private var lastStoreDownloads: Int = 1
+
+    private fun parseExpirationDurationMillis(exp: String): Long {
+        val trimmed = exp.trim().lowercase()
+        val value = trimmed.dropLast(1).toLongOrNull() ?: return 86_400_000L
+        return when (trimmed.takeLast(1)) {
+            "m" -> value * 60_000L
+            "h" -> value * 3_600_000L
+            "d" -> value * 86_400_000L
+            "w" -> value * 7 * 86_400_000L
+            else -> 86_400_000L
+        }
+    }
+
+    suspend fun sendStore(
+        filePaths: List<String>,
+        expiration: String = "1d",
+        downloads: Int = 1,
+        customStoreUrl: String? = null
+    ) {
+        lastStoreExpiration = expiration
+        lastStoreDownloads = downloads
+        withContext(Dispatchers.IO) {
+            try {
+                _state.value = CrocTransferState.Preparing
+                val prefs = prefsRepository.preferencesFlow.first()
+                // Store is only supported on CURRENT engine (croc v11+)
+                val binaryPath = binaryManager.getBinaryPath(CrocEngine.CURRENT)
+
+                val effectiveStoreUrl = customStoreUrl?.takeIf { it.isNotBlank() }
+                    ?: prefs.customStoreUrl.takeIf { it.isNotBlank() }
+
+                val command = mutableListOf(binaryPath, "--yes", "--ignore-stdin").apply {
+                    if (prefs.useInternalDns) add("--internal-dns")
+                    if (prefs.socks5Proxy.isNotBlank()) {
+                        add("--socks5"); add(prefs.socks5Proxy)
+                    }
+                    if (prefs.httpProxy.isNotBlank()) {
+                        add("--connect"); add(prefs.httpProxy)
+                    }
+                    add("send")
+                    add("--store")
+                    if (expiration.isNotBlank()) {
+                        add("--store-expiration"); add(expiration)
+                    }
+                    if (downloads > 0) {
+                        add("--store-downloads"); add(downloads.toString())
+                    }
+                    if (!effectiveStoreUrl.isNullOrBlank()) {
+                        add("--store-url"); add(effectiveStoreUrl)
+                    }
+                    addAll(filePaths)
+                }
+
+                executeWithDnsFallback(
+                    baseCommand = command,
+                    workDir = homeDir,
+                    waitingState = CrocTransferState.WaitingForPeer("Uploading to secure store..."),
+                    extraEnv = emptyMap(),
+                    prefs = prefs,
+                    opName = "SendStore",
+                    code = null,
+                    engine = CrocEngine.CURRENT
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "SendStore failed", e)
+                _state.value = CrocTransferState.Error(e.message ?: "Unknown error")
+            }
+        }
+    }
+
+    suspend fun revokeStore(storeId: String): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val binaryPath = binaryManager.getBinaryPath(CrocEngine.CURRENT)
+                val prefs = prefsRepository.preferencesFlow.first()
+                val command = mutableListOf(binaryPath, "--yes", "--revoke", storeId.trim()).apply {
+                    if (prefs.socks5Proxy.isNotBlank()) {
+                        add("--socks5"); add(prefs.socks5Proxy)
+                    }
+                    if (prefs.httpProxy.isNotBlank()) {
+                        add("--connect"); add(prefs.httpProxy)
+                    }
+                }
+
+                val env = buildMap {
+                    put("HOME", homeDir.absolutePath)
+                    put("TMPDIR", tmpDir.absolutePath)
+                }
+
+                val process = binaryManager.startProcess(
+                    command = command,
+                    workDir = homeDir,
+                    extraEnv = env,
+                    engine = CrocEngine.CURRENT
+                ) ?: return@withContext Result.failure(Exception("Failed to start croc process"))
+
+                val output = process.inputStream.bufferedReader().readText()
+                val exitCode = waitForExitCode(process, timeoutMs = 15_000)
+
+                if (exitCode == 0 || output.lowercase().contains("revoked")) {
+                    Result.success(output.trim())
+                } else {
+                    val errorMsg = output.lines().filter { it.isNotBlank() }.lastOrNull() ?: "Revoke failed with code $exitCode"
+                    Result.failure(Exception(errorMsg))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "revokeStore failed", e)
+                Result.failure(e)
             }
         }
     }
@@ -328,13 +495,39 @@ class CrocProcess(
         }
 
         if (isSuccessfulTransfer(result)) {
-            _state.value = CrocTransferState.Completed(
-                fileNames = result.fileNames,
-                totalBytes = result.totalBytes,
-                peerIp = result.peerIp,
-                totalFileCount = result.totalFileCount.coerceAtLeast(result.fileNames.size),
-                receivedText = result.receivedText
-            )
+            if (opName == "SendStore" || result.storeBrowserLink.isNotBlank()) {
+                val effectiveStoreId = result.storeId.ifBlank {
+                    if (result.storeBrowserLink.contains("/s/")) {
+                        result.storeBrowserLink.substringAfter("/s/").substringBefore("#").trim()
+                    } else ""
+                }
+                val calculatedExpiresAt = if (result.storeExpiresAt > 0L) {
+                    result.storeExpiresAt
+                } else {
+                    System.currentTimeMillis() + parseExpirationDurationMillis(lastStoreExpiration)
+                }
+                val effectiveDownloads = if (result.storeDownloadsLimit > 0) result.storeDownloadsLimit else lastStoreDownloads
+                val effectiveRawExpiration = result.storeRawExpiration.ifBlank { lastStoreExpiration }
+
+                _state.value = CrocTransferState.StoreCompleted(
+                    browserLink = result.storeBrowserLink,
+                    cliToken = result.storeCliToken,
+                    storeId = effectiveStoreId,
+                    expiresAt = calculatedExpiresAt,
+                    fileNames = result.fileNames,
+                    totalBytes = result.totalBytes,
+                    rawExpirationText = effectiveRawExpiration,
+                    downloadsLimit = effectiveDownloads
+                )
+            } else {
+                _state.value = CrocTransferState.Completed(
+                    fileNames = result.fileNames,
+                    totalBytes = result.totalBytes,
+                    peerIp = result.peerIp,
+                    totalFileCount = result.totalFileCount.coerceAtLeast(result.fileNames.size),
+                    receivedText = result.receivedText
+                )
+            }
         } else {
             _state.value = CrocTransferState.Error(errorMessageFor(result))
         }
@@ -431,6 +624,7 @@ class CrocProcess(
 
     private fun isSuccessfulTransfer(result: ProcessResult): Boolean {
         if (result.exitCode != 0 || hasCliUsageExit(result)) return false
+        if (result.isStoreTransfer || result.storeBrowserLink.isNotBlank() || result.storeId.isNotBlank()) return true
         if (result.fileNames.isNotEmpty() || result.totalBytes > 0L) return true
         // If we captured a peer IP, the transfer happened
         if (result.peerIp.isNotBlank()) return true
@@ -438,7 +632,11 @@ class CrocProcess(
         return result.outputTail.any {
             val line = it.lowercase()
             "sending '" in line || "receiving '" in line ||
-                    "sending (" in line || "receiving (" in line
+                    "sending (" in line || "receiving (" in line ||
+                    "stored transfer is encrypted" in line ||
+                    "browser link:" in line ||
+                    "verified download committed" in line ||
+                    "encrypted upload complete" in line
         }
     }
 
@@ -469,6 +667,13 @@ class CrocProcess(
         val receivedTextLines = mutableListOf<String>()
         var isLegacyFallback = false
         var announcedCode = ""
+        var isStoreTransfer = false
+        var storeBrowserLink = ""
+        var storeCliToken = ""
+        var storeId = ""
+        var storeRawExpiration = ""
+        var nextIsBrowserLink = false
+        var nextIsCliToken = false
 
         // Regex patterns for the latest and v10.6.0 output format
         // Matches: "Sending (->1.2.3.4:9009)" or "Receiving (<-1.2.3.4:9009)"
@@ -617,6 +822,106 @@ class CrocProcess(
                     continue
                 }
 
+                // Store output parsing:
+                if (l.contains("Stored transfer is encrypted and available until") ||
+                    l.contains("Encrypted stored transfer")) {
+                    isStoreTransfer = true
+                    if (l.contains("available until")) {
+                        storeRawExpiration = l.substringAfter("available until").substringBefore("or").trim()
+                    }
+                }
+
+                if (l.contains("Downloading ")) {
+                    val fName = l.substringAfter("Downloading ").trim()
+                    if (fName.isNotBlank()) {
+                        currentFileName = fName
+                        if (currentFileName !in fileNames) fileNames.add(currentFileName)
+                    }
+                    isStoreTransfer = true
+                }
+
+                if (l.contains("Verifying ")) {
+                    val fName = l.substringAfter("Verifying ").trim()
+                    if (fName.isNotBlank() && fName !in fileNames) {
+                        fileNames.add(fName)
+                    }
+                    isStoreTransfer = true
+                }
+
+                if (l.contains("Total:")) {
+                    Regex("""Total:\s*(\d+(?:\.\d+)?)\s*(\w+)""").find(l)?.let { m ->
+                        val num = m.groupValues[1].toDoubleOrNull() ?: 0.0
+                        val unit = m.groupValues[2]
+                        totalBytes = parseSize(num, unit)
+                    }
+                }
+
+                if (l.contains("Verified download committed") || l.contains("Encrypted upload complete")) {
+                    isStoreTransfer = true
+                }
+
+                if (l.contains("Browser link:")) {
+                    nextIsBrowserLink = true
+                    continue
+                }
+                if (nextIsBrowserLink) {
+                    if (l.trim().startsWith("http")) {
+                        storeBrowserLink = l.trim()
+                        nextIsBrowserLink = false
+                    }
+                } else if (l.trim().startsWith("http") && (l.contains("/s/") || l.contains("#v1."))) {
+                    storeBrowserLink = l.trim()
+                    isStoreTransfer = true
+                }
+
+                if (l.contains("CLI recipient:")) {
+                    nextIsCliToken = true
+                    continue
+                }
+                if (nextIsCliToken) {
+                    if (l.trim().startsWith("croc-store-v1")) {
+                        storeCliToken = l.trim()
+                        nextIsCliToken = false
+                    }
+                } else if (l.trim().startsWith("croc-store-v1")) {
+                    storeCliToken = l.trim()
+                    isStoreTransfer = true
+                }
+
+                if (l.contains("croc --revoke")) {
+                    storeId = l.substringAfter("croc --revoke").trim()
+                    isStoreTransfer = true
+                }
+
+                // Store upload progress line: "photo.jpg — 45.0% (450 kB / 1.0 MB)"
+                val storeProgressRegex = Regex("""^(.+?)\s+—\s+(\d+(?:\.\d+)?)%\s*\((.+?)\s*/\s*(.+?)\)""")
+                val storeProgressMatch = storeProgressRegex.find(l)
+                if (storeProgressMatch != null) {
+                    val sName = storeProgressMatch.groupValues[1].trim()
+                    val sPercent = storeProgressMatch.groupValues[2].toDoubleOrNull()?.toInt() ?: 0
+                    if (sName.isNotBlank()) currentFileName = sName
+                    if (currentFileName !in fileNames) fileNames.add(currentFileName)
+
+                    val curSizeStr = storeProgressMatch.groupValues[3].trim()
+                    val totSizeStr = storeProgressMatch.groupValues[4].trim()
+                    val curParts = curSizeStr.split(" ")
+                    val totParts = totSizeStr.split(" ")
+                    val curB = if (curParts.size >= 2) parseSize(curParts[0].toDoubleOrNull() ?: 0.0, curParts[1]) else 0L
+                    val totB = if (totParts.size >= 2) parseSize(totParts[0].toDoubleOrNull() ?: 0.0, totParts[1]) else 0L
+                    if (totB > 0) totalBytes = totB
+
+                    _state.value = CrocTransferState.Transferring(
+                        fileName = currentFileName,
+                        currentFile = fileNames.indexOf(currentFileName).coerceAtLeast(0) + 1,
+                        totalFiles = fileNames.size.coerceAtLeast(1),
+                        currentFilePercent = sPercent,
+                        bytesTransferred = curB,
+                        totalBytes = totalBytes.coerceAtLeast(curB),
+                        peerIp = peerIp
+                    )
+                    continue
+                }
+
                 // Fallback: simple percent match for lines we didn't parse above
                 Regex("(\\d+)%").find(l)?.let { match ->
                     val percent = match.groupValues[1].toIntOrNull() ?: 0
@@ -639,6 +944,11 @@ class CrocProcess(
             val effectiveLegacyFallback = isLegacyFallback || outputTail.any {
                 it.lowercase().contains("unsupported pake protocol version")
             }
+            val effectiveStoreId = storeId.ifBlank {
+                if (storeBrowserLink.contains("/s/")) {
+                    storeBrowserLink.substringAfter("/s/").substringBefore("#").trim()
+                } else ""
+            }
             return ProcessResult(
                 exitCode = exitCode,
                 fileNames = fileNames,
@@ -648,7 +958,13 @@ class CrocProcess(
                 totalFileCount = totalFilesFromProgress,
                 receivedText = receivedText,
                 isLegacyFallback = effectiveLegacyFallback,
-                announcedCode = announcedCode
+                announcedCode = announcedCode,
+                isStoreTransfer = isStoreTransfer || storeBrowserLink.isNotBlank(),
+                storeBrowserLink = storeBrowserLink,
+                storeCliToken = storeCliToken,
+                storeId = effectiveStoreId,
+                storeExpiresAt = 0L,
+                storeRawExpiration = storeRawExpiration
             )
         } catch (e: InterruptedIOException) {
             val exitCode = waitForExitCode(process)

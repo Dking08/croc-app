@@ -29,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.CompareArrows
@@ -790,6 +791,25 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    }
+
+                    // Stored Transfers (croc v11)
+                    SettingsSection(
+                        icon = Icons.Rounded.CloudUpload,
+                        title = stringResource(R.string.settings_stored_transfers_title)
+                    ) {
+                        TextFieldSetting(
+                            label = stringResource(R.string.settings_custom_store_url),
+                            value = prefs.customStoreUrl,
+                            onValueChange = { viewModel.updateCustomStoreUrl(it) },
+                            placeholder = stringResource(R.string.settings_custom_store_url_placeholder)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.settings_custom_store_url_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }

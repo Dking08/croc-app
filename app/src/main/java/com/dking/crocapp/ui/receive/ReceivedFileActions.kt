@@ -1,21 +1,53 @@
 package com.dking.crocapp.ui.receive
 
-import android.content.ActivityNotFoundException
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
+import com.dking.crocapp.R
 import com.dking.crocapp.data.db.TransferHistory
+import java.io.File
 
-fun openReceivedFile(context: Context, file: ReceivedFile) {
-    openTransferUri(context, file.uri, file.mimeType)
+fun doesFileUriExist(context: Context, uri: Uri): Boolean {
+    return try {
+        when (uri.scheme) {
+            ContentResolver.SCHEME_FILE -> {
+                val path = uri.path ?: return false
+                File(path).exists()
+            }
+            ContentResolver.SCHEME_CONTENT -> {
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false
+            }
+            else -> false
+        }
+    } catch (_: Exception) {
+        false
+    }
 }
 
-fun shareReceivedFile(context: Context, file: ReceivedFile) {
-    shareTransferUri(context, file.uri, file.mimeType, file.name)
+fun openReceivedFile(context: Context, file: ReceivedFile): Boolean {
+    if (!doesFileUriExist(context, file.uri)) {
+        Toast.makeText(context, context.getString(R.string.history_file_not_found), Toast.LENGTH_SHORT).show()
+        return false
+    }
+    return openTransferUri(context, file.uri, file.mimeType)
+}
+
+fun shareReceivedFile(context: Context, file: ReceivedFile): Boolean {
+    if (!doesFileUriExist(context, file.uri)) {
+        Toast.makeText(context, context.getString(R.string.history_file_not_found), Toast.LENGTH_SHORT).show()
+        return false
+    }
+    return shareTransferUri(context, file.uri, file.mimeType, file.name)
 }
 
 fun openHistoryTransfer(context: Context, transfer: TransferHistory): Boolean {
     val uri = transfer.fileUri?.let(Uri::parse) ?: return false
+    if (!doesFileUriExist(context, uri)) {
+        Toast.makeText(context, context.getString(R.string.history_file_not_found), Toast.LENGTH_SHORT).show()
+        return false
+    }
     val mimeType = transfer.mimeType ?: "application/octet-stream"
     return openTransferUri(context, uri, mimeType)
 }
@@ -32,9 +64,10 @@ private fun openTransferUri(
     }
 
     return try {
-        context.startActivity(Intent.createChooser(openIntent, "Open file"))
+        context.startActivity(Intent.createChooser(openIntent, context.getString(R.string.action_open_file)))
         true
-    } catch (_: ActivityNotFoundException) {
+    } catch (_: Exception) {
+        Toast.makeText(context, context.getString(R.string.history_file_not_found), Toast.LENGTH_SHORT).show()
         false
     }
 }
@@ -53,9 +86,10 @@ private fun shareTransferUri(
     }
 
     return try {
-        context.startActivity(Intent.createChooser(shareIntent, "Share file"))
+        context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.action_share_file)))
         true
-    } catch (_: ActivityNotFoundException) {
+    } catch (_: Exception) {
+        Toast.makeText(context, context.getString(R.string.history_file_not_found), Toast.LENGTH_SHORT).show()
         false
     }
 }

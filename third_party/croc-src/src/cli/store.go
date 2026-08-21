@@ -14,6 +14,7 @@ import (
 
 	"github.com/rivo/uniseg"
 	"github.com/schollz/croc/v11/internal/cli"
+	"github.com/schollz/croc/v11/src/comm"
 	"github.com/schollz/croc/v11/src/croc"
 	storeapi "github.com/schollz/croc/v11/src/store"
 	"github.com/schollz/croc/v11/src/storeclient"
@@ -241,6 +242,9 @@ func sendStored(c *cli.Context) error {
 		return fmt.Errorf("invalid --store-expiration: %w", err)
 	}
 
+	comm.Socks5Proxy = c.String("socks5")
+	comm.HttpProxy = c.String("connect")
+
 	client := new(storeclient.Client)
 	result, err := client.UploadWithOptions(
 		context.Background(),
@@ -294,6 +298,9 @@ func sendStored(c *cli.Context) error {
 }
 
 func receiveStored(c *cli.Context, value string) error {
+	comm.Socks5Proxy = c.String("socks5")
+	comm.HttpProxy = c.String("connect")
+
 	share, err := storecrypto.ParseShare(value)
 	if err != nil {
 		return err
@@ -372,6 +379,8 @@ func receiveStored(c *cli.Context, value string) error {
 
 func revokeStored(c *cli.Context, transferID string) error {
 	setDebugLevel(c)
+	comm.Socks5Proxy = c.String("socks5")
+	comm.HttpProxy = c.String("connect")
 	id := strings.TrimSpace(transferID)
 	if id == "" || c.Args().Present() {
 		return errors.New("usage: croc --revoke [transfer-id]")

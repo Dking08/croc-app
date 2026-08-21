@@ -50,6 +50,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updateTransferPorts(value: String) = viewModelScope.launch { prefsRepo.updateTransferPorts(value) }
     fun updateZipFolderBeforeSend(value: Boolean) = viewModelScope.launch { prefsRepo.updateZipFolderBeforeSend(value) }
     fun updateShowAdvancedSettings(value: Boolean) = viewModelScope.launch { prefsRepo.updateShowAdvancedSettings(value) }
+    fun updateDefaultStoreExpiration(value: String) = viewModelScope.launch { prefsRepo.updateDefaultStoreExpiration(value) }
+    fun updateDefaultStoreDownloads(value: Int) = viewModelScope.launch { prefsRepo.updateDefaultStoreDownloads(value) }
+    fun updateCustomStoreUrl(value: String) = viewModelScope.launch { prefsRepo.updateCustomStoreUrl(value) }
     fun clearLegacyBinary() = viewModelScope.launch { binaryManager.clearBinary(CrocEngine.LEGACY) }
     fun isLegacyBinaryCached(): Boolean = binaryManager.isBinaryCached(CrocEngine.LEGACY)
 }

@@ -355,4 +355,63 @@
     <string name="settings_advanced_title">Ajustes avanzados</string>
     <string name="settings_advanced_desc">Servidor repetidor, proxy, descubrimiento de red, cifrado y ajuste de transferencias</string>
     <string name="settings_advanced_customized_badge">Modificado</string>
+
+    <!-- Transferencias almacenadas (croc v11) -->
+    <string name="delivery_mode_direct">Directo</string>
+    <string name="delivery_mode_store">Almacenar</string>
+    <string name="send_action_store">Almacenar y compartir</string>
+    <string name="store_configuration_title">Opciones de almacenamiento cifrado</string>
+    <string name="store_expiration_title">Tiempo de expiración</string>
+    <string name="store_downloads_title">Descargas permitidas</string>
+    <string name="store_info_banner">Los archivos se cifran en su dispositivo y se almacenan temporalmente en la nube. Cualquiera que tenga el enlace o token puede descargarlos antes de que expiren.</string>
+    <string name="store_lifetime_info">Los archivos expiran automáticamente en 24 horas o después de una descarga verificada.</string>
+    <string name="store_result_title">Transferencia almacenada lista</string>
+    <string name="store_result_subtitle">Archivos subidos y cifrados</string>
+    <string name="store_browser_link">Enlace del navegador</string>
+    <string name="store_copy_link">Copiar enlace</string>
+    <string name="store_share_link">Compartir enlace</string>
+    <string name="store_cli_token">Token CLI</string>
+    <string name="store_copy_token">Copiar token</string>
+    <string name="store_qr_code">Mostrar QR</string>
+    <string name="store_revoke_action">Revocar</string>
+    <string name="store_revoke_confirm_title">¿Revocar transferencia almacenada?</string>
+    <string name="store_revoke_confirm_message">Esto eliminará permanentemente los archivos cifrados del servidor de almacenamiento de inmediato. El enlace y token dejarán de funcionar.</string>
+    <string name="store_revoke_confirm_button">Revocar ahora</string>
+    <string name="store_revoked_success">Transferencia almacenada revocada con éxito</string>
+    <string name="store_revoked_badge">Revocado</string>
+    <string name="store_expired_badge">Expirado</string>
+    <string name="store_active_badge">Activo</string>
+    <string name="store_filter_label">Almacenados</string>
+    <string name="store_expires_in">Expira %s</string>
+    <string name="store_v11_required_notice">Las transferencias almacenadas requieren el motor Croc v11+</string>
+
+    <!-- Ajustes de transferencias almacenadas -->
+    <string name="settings_stored_transfers_title">Transferencias almacenadas</string>
+    <string name="settings_default_store_expiration">Tiempo de almacenamiento predeterminado</string>
+    <string name="settings_default_store_expiration_desc">Duración de expiración predeterminada para nuevas transferencias almacenadas</string>
+    <string name="settings_default_store_downloads">Límite de descargas predeterminado</string>
+    <string name="settings_default_store_downloads_desc">Número de descargas verificadas permitidas antes de la eliminación automática</string>
+    <string name="settings_custom_store_url">URL de almacenamiento personalizada</string>
+    <string name="settings_custom_store_url_desc">Origen de transferencia almacenada (dejar vacío para https://getcroc.com)</string>
+    <string name="settings_custom_store_url_placeholder">https://getcroc.com</string>
+    <string name="store_custom_label">Personalizado</string>
+    <string name="store_custom_expiration_hint">ej. 45m, 12h, 3d, 2w</string>
+    <string name="store_custom_expiration_desc">Unidad de duración: m (minutos), h (horas), d (días), w (semanas)</string>
+    <string name="store_custom_downloads_hint">ej. 3, 20</string>
+    <string name="store_custom_downloads_desc">Número de descargas verificadas permitidas (mínimo 1)</string>
+    <string name="store_browser_link_subtitle">Enlace directo de descarga en el navegador</string>
+    <string name="store_cli_token_subtitle">Pegar en terminal: croc &lt;token&gt;</string>
+    <string name="mode_switch_store_title">Almacenar</string>
+    <string name="mode_switch_store_desc">Subir archivos cifrados para recogerlos más tarde</string>
+    <string name="mode_switch_normal_title">Modo normal</string>
+    <string name="mode_switch_normal_desc">Transferencia directa en tiempo real entre pares</string>
+    <string name="mode_normal_fab">Modo normal</string>
+    <string name="store_stats_expires">Expira</string>
+    <string name="store_stats_size">Tamaño</string>
+    <string name="store_stats_downloads">Descargas</string>
+    <string name="store_stats_available">disponibles</string>
+    <string name="store_action_copied">Copiado</string>
+    <string name="history_badge_received">Recibido</string>
+    <string name="history_badge_stored">Almacenado</string>
+    <string name="history_file_not_found">Archivo no encontrado en el dispositivo</string>
 </resources>

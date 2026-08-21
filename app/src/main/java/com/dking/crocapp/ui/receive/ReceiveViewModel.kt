@@ -230,6 +230,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         receivedFiles: List<ReceivedFile>
     ) {
         val code = _uiState.value.codePhrase
+        val isStore = crocProcess.isStoredToken(code)
         if (state.isTextTransfer || receivedFiles.isEmpty()) {
             app.database.transferHistoryDao().insert(
                 TransferHistory(
@@ -237,6 +238,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     type = TransferType.RECEIVE,
                     fileName = state.fileNames.firstOrNull() ?: "text",
                     fileSize = state.totalBytes,
+                    isStored = isStore,
                     status = TransferStatus.COMPLETED
                 )
             )
@@ -253,6 +255,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     fileUri = file.uri.toString(),
                     mimeType = file.mimeType,
                     savedLocation = file.savedLocation,
+                    isStored = isStore,
                     status = TransferStatus.COMPLETED
                 )
             )

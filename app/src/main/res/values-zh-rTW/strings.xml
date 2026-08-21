@@ -355,4 +355,63 @@
     <string name="settings_advanced_title">進階設定</string>
     <string name="settings_advanced_desc">中繼伺服器、代理、網路探索、加密及傳輸微調</string>
     <string name="settings_advanced_customized_badge">已修改</string>
+
+    <!-- 儲存中轉 (croc v11) -->
+    <string name="delivery_mode_direct">直接傳輸</string>
+    <string name="delivery_mode_store">儲存中轉</string>
+    <string name="send_action_store">儲存並分享</string>
+    <string name="store_configuration_title">加密儲存選項</string>
+    <string name="store_expiration_title">有效期限</string>
+    <string name="store_downloads_title">允許下載次數</string>
+    <string name="store_info_banner">檔案在您的裝置上本機加密後臨時儲存在雲端。在過期前，擁有網頁連結或 CLI Token 的任何人均可下載。</string>
+    <string name="store_lifetime_info">檔案在 24 小時後或完成一次驗證下載後自動刪除。</string>
+    <string name="store_result_title">儲存中轉已就緒</string>
+    <string name="store_result_subtitle">檔案已加密並上傳</string>
+    <string name="store_browser_link">網頁下載連結</string>
+    <string name="store_copy_link">複製連結</string>
+    <string name="store_share_link">分享連結</string>
+    <string name="store_cli_token">CLI Token</string>
+    <string name="store_copy_token">複製 Token</string>
+    <string name="store_qr_code">顯示 QR 圖碼</string>
+    <string name="store_revoke_action">撤銷中轉</string>
+    <string name="store_revoke_confirm_title">撤銷該儲存傳輸？</string>
+    <string name="store_revoke_confirm_message">這將立即從儲存伺服器永久刪除加密檔案。連結和 Token 將立即失效。</string>
+    <string name="store_revoke_confirm_button">立即撤銷</string>
+    <string name="store_revoked_success">已成功撤銷儲存中轉</string>
+    <string name="store_revoked_badge">已撤銷</string>
+    <string name="store_expired_badge">已過期</string>
+    <string name="store_active_badge">有效</string>
+    <string name="store_filter_label">儲存中轉</string>
+    <string name="store_expires_in">過期時間：%s</string>
+    <string name="store_v11_required_notice">儲存中轉需要 Croc 引擎 v11 及以上版本</string>
+
+    <!-- 設定：儲存中轉 -->
+    <string name="settings_stored_transfers_title">儲存中轉設定</string>
+    <string name="settings_default_store_expiration">預設儲存有效期限</string>
+    <string name="settings_default_store_expiration_desc">新儲存中轉的預設保留時長</string>
+    <string name="settings_default_store_downloads">預設下載次數限制</string>
+    <string name="settings_default_store_downloads_desc">自動刪除前允許的驗證下載次數</string>
+    <string name="settings_custom_store_url">自訂儲存伺服器 URL</string>
+    <string name="settings_custom_store_url_desc">儲存伺服器來源站（留空預設使用 https://getcroc.com）</string>
+    <string name="settings_custom_store_url_placeholder">https://getcroc.com</string>
+    <string name="store_custom_label">自訂</string>
+    <string name="store_custom_expiration_hint">例如 45m, 12h, 3d, 2w</string>
+    <string name="store_custom_expiration_desc">時長單位：m (分鐘), h (小時), d (天), w (週)</string>
+    <string name="store_custom_downloads_hint">例如 3, 20</string>
+    <string name="store_custom_downloads_desc">允許的驗證下載次數（最少 1 次）</string>
+    <string name="store_browser_link_subtitle">瀏覽器直接下載連結</string>
+    <string name="store_cli_token_subtitle">在終端機中執行：croc &lt;token&gt;</string>
+    <string name="mode_switch_store_title">儲存模式></string>
+    <string name="mode_switch_store_desc">上傳加密檔案供稍後提取</string>
+    <string name="mode_switch_normal_title">一般模式</string>
+    <string name="mode_switch_normal_desc">點對點即時直接傳輸</string>
+    <string name="mode_normal_fab">一般模式</string>
+    <string name="store_stats_expires">過期時間</string>
+    <string name="store_stats_size">大小</string>
+    <string name="store_stats_downloads">下載次數</string>
+    <string name="store_stats_available">剩餘可用</string>
+    <string name="store_action_copied">已複製</string>
+    <string name="history_badge_received">已接收</string>
+    <string name="history_badge_stored">已儲存</string>
+    <string name="history_file_not_found">裝置上找不到該檔案</string>
 </resources>

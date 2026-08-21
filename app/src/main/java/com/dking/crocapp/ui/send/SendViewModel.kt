@@ -32,6 +32,7 @@ data class SelectedFile(
 )
 
 enum class SendMode { FILES, FOLDER, TEXT }
+enum class DeliveryMode { DIRECT, STORE }
 
 data class SendUiState(
     val selectedFiles: List<SelectedFile> = emptyList(),
@@ -40,6 +41,9 @@ data class SendUiState(
     val defaultCodePhrase: String = "",
     val savedCodePhrases: List<String> = emptyList(),
     val sendMode: SendMode = SendMode.FILES,
+    val deliveryMode: DeliveryMode = DeliveryMode.DIRECT,
+    val storeExpiration: String = "1d",
+    val storeDownloads: Int = 1,
     val textToSend: String = "",
     val transferState: CrocTransferState = CrocTransferState.Idle,
     val activeEngine: CrocEngine = CrocEngine.CURRENT,
@@ -51,6 +55,7 @@ data class SendUiState(
 ) {
     // Backward compat helper
     val isTextMode: Boolean get() = sendMode == SendMode.TEXT
+    val isStoreMode: Boolean get() = deliveryMode == DeliveryMode.STORE
 
     val hasContent: Boolean
         get() = when (sendMode) {
@@ -78,6 +83,8 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                 // Save to history on completion
                 if (state is CrocTransferState.Completed) {
                     saveToHistory(state)
+                } else if (state is CrocTransferState.StoreCompleted) {
+                    saveStoreToHistory(state)
                 }
             }
         }
@@ -90,7 +97,9 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                             prefs.defaultCodePhrase.ifBlank { generateRandomCode() }
                         } else state.codePhrase,
                         defaultCodePhrase = prefs.defaultCodePhrase,
-                        savedCodePhrases = prefs.savedCodePhrases
+                        savedCodePhrases = prefs.savedCodePhrases,
+                        storeExpiration = state.storeExpiration.ifBlank { prefs.defaultStoreExpiration },
+                        storeDownloads = if (state.storeDownloads == 1) prefs.defaultStoreDownloads else state.storeDownloads
                     )
                 }
             }
@@ -144,6 +153,24 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         val context = getApplication<CrocApp>()
         val treeDoc = DocumentFile.fromTreeUri(context, treeUri) ?: return
         val folderName = treeDoc.name ?: "folder"
+
+        if (_uiState.value.deliveryMode == DeliveryMode.STORE) {
+            val fileList = mutableListOf<Uri>()
+            fun collectUris(doc: DocumentFile) {
+                doc.listFiles().forEach { child ->
+                    if (child.isDirectory) {
+                        collectUris(child)
+                    } else if (child.isFile) {
+                        fileList.add(child.uri)
+                    }
+                }
+            }
+            collectUris(treeDoc)
+            if (fileList.isNotEmpty()) {
+                addFiles(fileList)
+            }
+            return
+        }
 
         // Stage the entire folder tree into cache so croc can access it as a filesystem path
         val stagingDir = File(context.cacheDir, "croc-send-folder/$folderName").apply {
@@ -218,13 +245,24 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSendMode(mode: SendMode) {
-        _uiState.update { it.copy(sendMode = mode) }
+        if (_uiState.value.sendMode != mode) {
+            val transferState = _uiState.value.transferState
+            if (transferState is CrocTransferState.Completed ||
+                transferState is CrocTransferState.StoreCompleted ||
+                transferState is CrocTransferState.Error ||
+                transferState is CrocTransferState.Cancelled ||
+                transferState is CrocTransferState.LegacyFallbackAvailable
+            ) {
+                crocProcess.reset()
+            }
+            _uiState.update { it.copy(sendMode = mode) }
+        }
     }
 
     fun toggleTextMode() {
-        _uiState.update {
-            it.copy(sendMode = if (it.sendMode == SendMode.TEXT) SendMode.FILES else SendMode.TEXT)
-        }
+        val currentMode = _uiState.value.sendMode
+        val nextMode = if (currentMode == SendMode.TEXT) SendMode.FILES else SendMode.TEXT
+        setSendMode(nextMode)
     }
 
     fun updateTextToSend(text: String) {
@@ -232,15 +270,60 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSharedText(text: String) {
-        _uiState.update { it.copy(sendMode = SendMode.TEXT, textToSend = text) }
+        setSendMode(SendMode.TEXT)
+        _uiState.update { it.copy(textToSend = text) }
+    }
+
+    fun setDeliveryMode(mode: DeliveryMode) {
+        if (_uiState.value.deliveryMode != mode) {
+            val transferState = _uiState.value.transferState
+            if (transferState is CrocTransferState.Completed ||
+                transferState is CrocTransferState.StoreCompleted ||
+                transferState is CrocTransferState.Error ||
+                transferState is CrocTransferState.Cancelled ||
+                transferState is CrocTransferState.LegacyFallbackAvailable
+            ) {
+                crocProcess.reset()
+            }
+            _uiState.update {
+                it.copy(
+                    deliveryMode = mode,
+                    sendMode = if (mode == DeliveryMode.STORE && it.sendMode == SendMode.FOLDER) SendMode.FILES else it.sendMode,
+                    activeEngine = if (mode == DeliveryMode.STORE) CrocEngine.CURRENT else it.activeEngine
+                )
+            }
+        }
+    }
+
+    fun setStoreExpiration(expiration: String) {
+        _uiState.update { it.copy(storeExpiration = expiration) }
+    }
+
+    fun setStoreDownloads(downloads: Int) {
+        _uiState.update { it.copy(storeDownloads = downloads) }
+    }
+
+    fun revokeCurrentStore(storeId: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val result = crocProcess.revokeStore(storeId)
+            result.onSuccess { msg ->
+                app.database.transferHistoryDao().markAsRevokedByStoreId(storeId)
+                _uiState.update { it.copy(transferState = CrocTransferState.Cancelled) }
+                onResult(true, msg)
+            }.onFailure { err ->
+                onResult(false, err.message ?: "Revoke failed")
+            }
+        }
     }
 
     fun toggleEngine() {
+        if (_uiState.value.isStoreMode) return // Store mode requires v11
         val next = if (_uiState.value.activeEngine == CrocEngine.CURRENT) CrocEngine.LEGACY else CrocEngine.CURRENT
         _uiState.update { it.copy(activeEngine = next) }
     }
 
     fun setEngine(engine: CrocEngine) {
+        if (_uiState.value.isStoreMode && engine != CrocEngine.CURRENT) return
         _uiState.update { it.copy(activeEngine = engine) }
     }
 
@@ -249,19 +332,53 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
             val state = _uiState.value
             if (!state.hasContent) return@launch
 
-            val targetEngine = engine ?: _uiState.value.activeEngine.takeIf { it == CrocEngine.LEGACY }
-                ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
-                    CrocEngine.LEGACY
-                } else {
-                    CrocEngine.CURRENT
-                }
+            val isStore = state.deliveryMode == DeliveryMode.STORE
+            val targetEngine = if (isStore) {
+                CrocEngine.CURRENT
+            } else {
+                engine ?: _uiState.value.activeEngine.takeIf { it == CrocEngine.LEGACY }
+                    ?: if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
+                        CrocEngine.LEGACY
+                    } else {
+                        CrocEngine.CURRENT
+                    }
+            }
 
             _uiState.update { it.copy(activeEngine = targetEngine) }
 
             // Always reset before starting a new transfer
             crocProcess.reset()
-            // Give state a moment to settle
             kotlinx.coroutines.delay(50)
+
+            if (isStore) {
+                val filePaths = when (state.sendMode) {
+                    SendMode.FILES -> copyFilesToInternal(state.selectedFiles)
+                    SendMode.FOLDER -> {
+                        state.selectedFolderPath?.let { folderPath ->
+                            val folder = File(folderPath)
+                            if (folder.exists()) {
+                                folder.walkTopDown().filter { it.isFile }.map { it.absolutePath }.toList()
+                            } else emptyList()
+                        } ?: emptyList()
+                    }
+                    SendMode.TEXT -> {
+                        val context = getApplication<CrocApp>()
+                        val textFile = File(context.cacheDir, "croc-send/message.txt").apply {
+                            parentFile?.mkdirs()
+                            writeText(state.textToSend)
+                        }
+                        listOf(textFile.absolutePath)
+                    }
+                }
+                if (filePaths.isNotEmpty()) {
+                    crocProcess.sendStore(
+                        filePaths = filePaths,
+                        expiration = state.storeExpiration,
+                        downloads = state.storeDownloads
+                    )
+                }
+                return@launch
+            }
 
             when (state.sendMode) {
                 SendMode.TEXT -> {
@@ -329,6 +446,35 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
             }
             dest.absolutePath
         }
+    }
+
+    private suspend fun saveStoreToHistory(state: CrocTransferState.StoreCompleted) {
+        val uiState = _uiState.value
+        val displayFileName = when (uiState.sendMode) {
+            SendMode.FILES -> uiState.selectedFiles.joinToString(", ") { it.name }.ifBlank { state.fileNames.joinToString(", ") }
+            SendMode.FOLDER -> uiState.selectedFolderName ?: "folder"
+            SendMode.TEXT -> "text message"
+        }
+        val totalSize = if (uiState.selectedBytes > 0L) uiState.selectedBytes
+        else if (uiState.selectedFolderSize > 0L) uiState.selectedFolderSize
+        else state.totalBytes
+
+        app.database.transferHistoryDao().insert(
+            TransferHistory(
+                code = state.cliToken.ifBlank { state.storeId },
+                type = TransferType.SEND,
+                fileName = displayFileName.ifBlank { "Stored Files (${state.fileCount})" },
+                fileSize = totalSize,
+                status = TransferStatus.COMPLETED,
+                isStored = true,
+                storeId = state.storeId,
+                storeLink = state.browserLink,
+                storeToken = state.cliToken,
+                expiresAt = state.expiresAt,
+                isRevoked = false,
+                storeDownloads = state.downloadsLimit
+            )
+        )
     }
 
     private suspend fun saveToHistory(state: CrocTransferState.Completed) {

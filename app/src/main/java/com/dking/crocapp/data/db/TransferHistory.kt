@@ -16,7 +16,15 @@ data class TransferHistory(
     val savedLocation: String? = null,
     val timestamp: Long = System.currentTimeMillis(),
     val status: TransferStatus = TransferStatus.COMPLETED,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    // Stored transfer metadata (croc v11)
+    val isStored: Boolean = false,
+    val storeId: String? = null,
+    val storeLink: String? = null,
+    val storeToken: String? = null,
+    val expiresAt: Long? = null,
+    val isRevoked: Boolean = false,
+    val storeDownloads: Int = 1
 )
 
 enum class TransferType {
@@ -24,5 +32,5 @@ enum class TransferType {
 }
 
 enum class TransferStatus {
-    IN_PROGRESS, COMPLETED, FAILED, CANCELLED
+    IN_PROGRESS, COMPLETED, FAILED, CANCELLED, REVOKED, EXPIRED
 }
