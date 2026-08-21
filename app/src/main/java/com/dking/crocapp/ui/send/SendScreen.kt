@@ -282,37 +282,62 @@ fun SendScreen(
         ) {
             Spacer(modifier = Modifier.height(2.dp))
 
-            // Mode Toggle: Files / Folder / Text
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                SegmentedButton(
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
-                    onClick = { viewModel.setSendMode(SendMode.FILES) },
-                    selected = uiState.sendMode == SendMode.FILES,
-                    icon = {
-                        Icon(Icons.Rounded.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
+            // Mode Toggle: Files / Folder / Text (Store mode only supports Files & Text)
+            if (uiState.isStoreMode) {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        onClick = { viewModel.setSendMode(SendMode.FILES) },
+                        selected = uiState.sendMode == SendMode.FILES,
+                        icon = {
+                            Icon(Icons.Rounded.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                    ) {
+                        Text(stringResource(R.string.send_mode_files))
                     }
-                ) {
-                    Text(stringResource(R.string.send_mode_files))
+                    SegmentedButton(
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        onClick = { viewModel.setSendMode(SendMode.TEXT) },
+                        selected = uiState.sendMode == SendMode.TEXT,
+                        icon = {
+                            Icon(Icons.Outlined.TextFields, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                    ) {
+                        Text(stringResource(R.string.send_mode_text))
+                    }
                 }
-                SegmentedButton(
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
-                    onClick = { viewModel.setSendMode(SendMode.FOLDER) },
-                    selected = uiState.sendMode == SendMode.FOLDER,
-                    icon = {
-                        Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+            } else {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                        onClick = { viewModel.setSendMode(SendMode.FILES) },
+                        selected = uiState.sendMode == SendMode.FILES,
+                        icon = {
+                            Icon(Icons.Rounded.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                    ) {
+                        Text(stringResource(R.string.send_mode_files))
                     }
-                ) {
-                    Text(stringResource(R.string.send_mode_folder))
-                }
-                SegmentedButton(
-                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
-                    onClick = { viewModel.setSendMode(SendMode.TEXT) },
-                    selected = uiState.sendMode == SendMode.TEXT,
-                    icon = {
-                        Icon(Icons.Outlined.TextFields, contentDescription = null, modifier = Modifier.size(18.dp))
+                    SegmentedButton(
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                        onClick = { viewModel.setSendMode(SendMode.FOLDER) },
+                        selected = uiState.sendMode == SendMode.FOLDER,
+                        icon = {
+                            Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                    ) {
+                        Text(stringResource(R.string.send_mode_folder))
                     }
-                ) {
-                    Text(stringResource(R.string.send_mode_text))
+                    SegmentedButton(
+                        shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                        onClick = { viewModel.setSendMode(SendMode.TEXT) },
+                        selected = uiState.sendMode == SendMode.TEXT,
+                        icon = {
+                            Icon(Icons.Outlined.TextFields, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                    ) {
+                        Text(stringResource(R.string.send_mode_text))
+                    }
                 }
             }
 

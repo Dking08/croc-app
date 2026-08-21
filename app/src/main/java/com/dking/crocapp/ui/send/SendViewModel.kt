@@ -154,6 +154,24 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         val treeDoc = DocumentFile.fromTreeUri(context, treeUri) ?: return
         val folderName = treeDoc.name ?: "folder"
 
+        if (_uiState.value.deliveryMode == DeliveryMode.STORE) {
+            val fileList = mutableListOf<Uri>()
+            fun collectUris(doc: DocumentFile) {
+                doc.listFiles().forEach { child ->
+                    if (child.isDirectory) {
+                        collectUris(child)
+                    } else if (child.isFile) {
+                        fileList.add(child.uri)
+                    }
+                }
+            }
+            collectUris(treeDoc)
+            if (fileList.isNotEmpty()) {
+                addFiles(fileList)
+            }
+            return
+        }
+
         // Stage the entire folder tree into cache so croc can access it as a filesystem path
         val stagingDir = File(context.cacheDir, "croc-send-folder/$folderName").apply {
             deleteRecursively()
@@ -270,6 +288,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update {
                 it.copy(
                     deliveryMode = mode,
+                    sendMode = if (mode == DeliveryMode.STORE && it.sendMode == SendMode.FOLDER) SendMode.FILES else it.sendMode,
                     activeEngine = if (mode == DeliveryMode.STORE) CrocEngine.CURRENT else it.activeEngine
                 )
             }
@@ -334,7 +353,14 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
             if (isStore) {
                 val filePaths = when (state.sendMode) {
                     SendMode.FILES -> copyFilesToInternal(state.selectedFiles)
-                    SendMode.FOLDER -> state.selectedFolderPath?.let { listOf(it) } ?: emptyList()
+                    SendMode.FOLDER -> {
+                        state.selectedFolderPath?.let { folderPath ->
+                            val folder = File(folderPath)
+                            if (folder.exists()) {
+                                folder.walkTopDown().filter { it.isFile }.map { it.absolutePath }.toList()
+                            } else emptyList()
+                        } ?: emptyList()
+                    }
                     SendMode.TEXT -> {
                         val context = getApplication<CrocApp>()
                         val textFile = File(context.cacheDir, "croc-send/message.txt").apply {
