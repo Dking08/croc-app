@@ -44,6 +44,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AttachFile
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -61,13 +62,17 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -88,6 +93,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TopAppBar
@@ -101,6 +107,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -111,6 +118,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -118,6 +126,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dking.crocapp.R
+import com.dking.crocapp.croc.CrocEngine
 import com.dking.crocapp.croc.CrocTransferState
 import com.dking.crocapp.ui.components.EngineBadge
 import com.dking.crocapp.ui.components.QrCodeExpandedDialog
@@ -206,10 +215,10 @@ fun SendScreen(
                 },
                 actions = {
                     IconButton(onClick = onNavigateToHistory) {
-                        Icon(Icons.Outlined.History, contentDescription = stringResource(R.string.nav_history))
+                        Icon(Icons.Rounded.History, contentDescription = stringResource(R.string.nav_history))
                     }
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.nav_settings))
+                        Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.nav_settings))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -989,7 +998,24 @@ private fun SavedCodeChipWithActions(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+private enum class StoreResultTab {
+    BROWSER_LINK,
+    CLI_TOKEN
+}
+
+private fun formatStoreExpirationParts(expiresAt: Long, rawText: String): Pair<String, String> {
+    if (expiresAt > 0) {
+        val date = java.util.Date(expiresAt)
+        val dayFormat = java.text.SimpleDateFormat("d MMM", java.util.Locale.US)
+        val timeFormat = java.text.SimpleDateFormat("HH:mm z", java.util.Locale.US)
+        return Pair(dayFormat.format(date), timeFormat.format(date))
+    }
+    if (rawText.isNotBlank()) {
+        return Pair("In $rawText", "auto-delete")
+    }
+    return Pair("Active", "temporary")
+}
+
 @Composable
 private fun StoreConfigurationCard(
     expiration: String,
@@ -1023,9 +1049,10 @@ private fun StoreConfigurationCard(
         shape = MaterialTheme.shapes.extraLarge
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1033,51 +1060,61 @@ private fun StoreConfigurationCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(
-                        Icons.Rounded.CloudUpload,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.store_configuration_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.CloudUpload,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = stringResource(R.string.store_configuration_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = stringResource(R.string.store_info_banner),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 EngineBadge(
-                    engine = com.dking.crocapp.croc.CrocEngine.CURRENT,
+                    engine = CrocEngine.CURRENT,
                     onClick = null,
                     showCurrentMode = true
                 )
             }
 
-            Text(
-                text = stringResource(R.string.store_info_banner),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 2.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
             )
 
-            // Expiration Lifetime Section
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Expiration Lifetime Section (Line 1: Scrollable Chips, Line 2: Custom Input)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = stringResource(R.string.store_expiration_title),
                     style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.SemiBold
                 )
-                // Line 1: Single horizontal scrollable row
+
+                // Line 1: Single scrollable row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     presetExpirations.forEach { preset ->
                         FilterChip(
@@ -1089,7 +1126,8 @@ private fun StoreConfigurationCard(
                                 }
                             },
                             enabled = enabled,
-                            label = { Text(preset) }
+                            label = { Text(preset) },
+                            shape = MaterialTheme.shapes.medium
                         )
                     }
                     FilterChip(
@@ -1110,12 +1148,13 @@ private fun StoreConfigurationCard(
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp)
                             )
-                        }
+                        },
+                        shape = MaterialTheme.shapes.medium
                     )
                 }
 
-                // Line 2: Custom input when Custom is active
-                if (isCustomExpiration) {
+                // Line 2: Custom input with real-time validation (m, h, d, w)
+                AnimatedVisibility(visible = isCustomExpiration) {
                     val isInvalid = customExpirationInput.isNotBlank() && !customExpirationInput.matches(Regex("^[1-9][0-9]*[mhdw]$"))
                     OutlinedTextField(
                         value = customExpirationInput,
@@ -1143,19 +1182,25 @@ private fun StoreConfigurationCard(
                 }
             }
 
-            // Allowed Downloads Section
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+            )
+
+            // Allowed Downloads Section (Line 1: Scrollable Numbers, Line 2: Custom Input)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = stringResource(R.string.store_downloads_title),
                     style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.SemiBold
                 )
-                // Line 1: Single horizontal scrollable row with just numbers
+
+                // Line 1: Single scrollable row with just 1, 2, 5, 10, Custom
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     presetDownloads.forEach { count ->
                         FilterChip(
@@ -1167,7 +1212,8 @@ private fun StoreConfigurationCard(
                                 }
                             },
                             enabled = enabled,
-                            label = { Text(count.toString()) }
+                            label = { Text(count.toString()) },
+                            shape = MaterialTheme.shapes.medium
                         )
                     }
                     FilterChip(
@@ -1189,12 +1235,13 @@ private fun StoreConfigurationCard(
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp)
                             )
-                        }
+                        },
+                        shape = MaterialTheme.shapes.medium
                     )
                 }
 
-                // Line 2: Custom input when Custom is active
-                if (isCustomDownloads) {
+                // Line 2: Custom input for downloads count
+                AnimatedVisibility(visible = isCustomDownloads) {
                     OutlinedTextField(
                         value = customDownloadsInput,
                         onValueChange = { input ->
@@ -1219,7 +1266,6 @@ private fun StoreConfigurationCard(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StoreCompletedCard(
     state: CrocTransferState.StoreCompleted,
@@ -1228,28 +1274,38 @@ private fun StoreCompletedCard(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    var selectedTab by remember { mutableStateOf(StoreResultTab.BROWSER_LINK) }
     var showQrDialog by remember { mutableStateOf(false) }
     var showRevokeDialog by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
 
-    if (showQrDialog && state.browserLink.isNotBlank()) {
+    val qrData = if (selectedTab == StoreResultTab.BROWSER_LINK && state.browserLink.isNotBlank()) {
+        state.browserLink
+    } else if (state.cliToken.isNotBlank()) {
+        state.cliToken
+    } else {
+        state.browserLink
+    }
+
+    if (showQrDialog && qrData.isNotBlank()) {
         QrCodeExpandedDialog(
-            data = state.browserLink,
+            data = qrData,
             onDismiss = { showQrDialog = false }
         )
     }
 
     if (showRevokeDialog) {
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { showRevokeDialog = false },
             title = { Text(stringResource(R.string.store_revoke_confirm_title), fontWeight = FontWeight.Bold) },
             text = { Text(stringResource(R.string.store_revoke_confirm_message)) },
             confirmButton = {
-                androidx.compose.material3.Button(
+                Button(
                     onClick = {
                         showRevokeDialog = false
                         onRevoke(state.storeId)
                     },
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error
                     )
                 ) {
@@ -1257,7 +1313,7 @@ private fun StoreCompletedCard(
                 }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { showRevokeDialog = false }) {
+                TextButton(onClick = { showRevokeDialog = false }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             }
@@ -1275,144 +1331,238 @@ private fun StoreCompletedCard(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ──── Header ────
+            // ──── 1. Hero Header ────
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Rounded.CloudUpload,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    Column {
-                        Text(
-                            text = stringResource(R.string.store_result_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = stringResource(R.string.store_result_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Icon(
+                        Icons.Rounded.CloudUpload,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = stringResource(R.string.store_result_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(R.string.store_result_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 EngineBadge(
-                    engine = com.dking.crocapp.croc.CrocEngine.CURRENT,
+                    engine = CrocEngine.CURRENT,
                     onClick = null,
                     showCurrentMode = true
                 )
             }
 
-            // ──── Transfer Meta Pills (Nudges) ────
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+            )
+
+            // ──── 2. 3-Column Stats Grid (Expires | Size | Downloads) ────
+            val (expiresDate, expiresTime) = formatStoreExpirationParts(state.expiresAt, state.rawExpirationText)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Expiration Pill
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f)
+                // Column 1: Expires
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            Icons.Rounded.Schedule,
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = if (state.rawExpirationText.isNotBlank()) "Expires in ${state.rawExpirationText}"
-                            else stringResource(R.string.store_active_badge),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    Text(
+                        text = "Expires",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = expiresDate,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = expiresTime,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
-                // File Count & Size Pill
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f)
+                // Vertical Divider
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(36.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                )
+
+                // Column 2: Size
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            Icons.Rounded.InsertDriveFile,
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "${state.fileCount} ${if (state.fileCount == 1) "file" else "files"} (${formatBytes(state.totalBytes)})",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    Text(
+                        text = "Size",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = formatBytes(state.totalBytes),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "${state.fileCount} ${if (state.fileCount == 1) "file" else "files"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
-                // Download Limit Pill (if > 0)
-                if (state.downloadsLimit > 0) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                Icons.Rounded.Download,
-                                contentDescription = null,
-                                modifier = Modifier.size(15.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = if (state.downloadsLimit == 1) "1 download" else "${state.downloadsLimit} downloads",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
+                // Vertical Divider
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(36.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                )
+
+                // Column 3: Downloads
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = "Downloads",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = if (state.downloadsLimit > 0) "${state.downloadsLimit}" else "∞",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "available",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 2.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
             )
 
-            // ──── Improved Browser Link Copy Element ────
-            Surface(
+            // ──── 3. Tab Selector ([ Browser link ] [ CLI token ]) ────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                // Browser Link Tab
+                val isBrowserSelected = selectedTab == StoreResultTab.BROWSER_LINK
+                Surface(
+                    onClick = {
+                        selectedTab = StoreResultTab.BROWSER_LINK
+                        copied = false
+                    },
+                    shape = CircleShape,
+                    color = if (isBrowserSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
+                    shadowElevation = if (isBrowserSelected) 2.dp else 0.dp,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Rounded.Link,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (isBrowserSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.store_browser_link),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isBrowserSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isBrowserSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // CLI Token Tab
+                val isCliSelected = selectedTab == StoreResultTab.CLI_TOKEN
+                Surface(
+                    onClick = {
+                        selectedTab = StoreResultTab.CLI_TOKEN
+                        copied = false
+                    },
+                    shape = CircleShape,
+                    color = if (isCliSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
+                    shadowElevation = if (isCliSelected) 2.dp else 0.dp,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Rounded.Terminal,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (isCliSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.store_cli_token),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isCliSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isCliSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // ──── 4. Received Text Card with Embedded Action Icons (Matching QuickScreen / ReceiveScreen) ────
+            val activeContent = if (selectedTab == StoreResultTab.BROWSER_LINK) state.browserLink else state.cliToken
+
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
+                ),
+                shape = MaterialTheme.shapes.large
             ) {
                 Column(
                     modifier = Modifier.padding(14.dp),
@@ -1423,208 +1573,155 @@ private fun StoreCompletedCard(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Text(
+                            text = if (selectedTab == StoreResultTab.BROWSER_LINK) stringResource(R.string.store_browser_link) else stringResource(R.string.store_cli_token),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            Icon(
-                                Icons.Rounded.Link,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.store_browser_link),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            IconButton(
-                                onClick = {
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(state.browserLink.trim()))
-                                        context.startActivity(intent)
-                                    } catch (_: Exception) {}
-                                },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    Icons.Rounded.OpenInNew,
-                                    contentDescription = stringResource(R.string.quick_open_url),
-                                    modifier = Modifier.size(17.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            if (selectedTab == StoreResultTab.BROWSER_LINK) {
+                                IconButton(
+                                    onClick = {
+                                        try {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(activeContent.trim()))
+                                            context.startActivity(intent)
+                                        } catch (_: Exception) {}
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.OpenInNew,
+                                        contentDescription = stringResource(R.string.quick_open_url),
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                             IconButton(
                                 onClick = {
                                     val sendIntent = Intent().apply {
                                         action = Intent.ACTION_SEND
-                                        putExtra(Intent.EXTRA_TEXT, state.browserLink)
+                                        putExtra(Intent.EXTRA_TEXT, activeContent)
                                         type = "text/plain"
                                     }
-                                    context.startActivity(Intent.createChooser(sendIntent, null))
+                                    context.startActivity(Intent.createChooser(sendIntent, "Share"))
                                 },
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 Icon(
                                     Icons.Rounded.Share,
-                                    contentDescription = stringResource(R.string.store_share_link),
-                                    modifier = Modifier.size(17.dp),
+                                    contentDescription = "Share",
+                                    modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             IconButton(
                                 onClick = {
-                                    clipboardManager.setText(AnnotatedString(state.browserLink))
-                                    Toast.makeText(context, context.getString(R.string.qr_url_copied), Toast.LENGTH_SHORT).show()
+                                    clipboardManager.setText(AnnotatedString(activeContent))
+                                    copied = true
+                                    Toast.makeText(
+                                        context,
+                                        if (selectedTab == StoreResultTab.BROWSER_LINK) context.getString(R.string.qr_url_copied)
+                                        else context.getString(R.string.qr_code_copied),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 },
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 Icon(
-                                    Icons.Rounded.ContentCopy,
-                                    contentDescription = stringResource(R.string.store_copy_link),
-                                    modifier = Modifier.size(17.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                                    contentDescription = stringResource(R.string.quick_copy_text),
+                                    modifier = Modifier.size(18.dp),
+                                    tint = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
                     }
 
-                    // Link Content Container
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium,
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
-                    ) {
-                        SelectionContainer {
-                            Text(
-                                text = state.browserLink,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                maxLines = 3,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                    SelectionContainer {
+                        Text(
+                            text = activeContent,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.5.sp,
+                                lineHeight = 18.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 6,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
 
-            // ──── Improved CLI Token Copy Element (if present) ────
-            if (state.cliToken.isNotBlank()) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 1.dp
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    Icons.Rounded.Terminal,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = stringResource(R.string.store_cli_token),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    clipboardManager.setText(AnnotatedString(state.cliToken))
-                                    Toast.makeText(context, context.getString(R.string.qr_code_copied), Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    Icons.Rounded.ContentCopy,
-                                    contentDescription = stringResource(R.string.store_copy_token),
-                                    modifier = Modifier.size(17.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        // Token Content Container
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium,
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
-                        ) {
-                            SelectionContainer {
-                                Text(
-                                    text = state.cliToken,
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 12.sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ──── Action Buttons ────
+            // ──── 5. Secondary Outlined Actions: Show QR & Revoke (Split 50-50 across the width) ────
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                FilledTonalButton(
+                OutlinedButton(
                     onClick = { showQrDialog = true },
                     modifier = Modifier.weight(1f),
-                    shape = MaterialTheme.shapes.large
+                    shape = MaterialTheme.shapes.medium
                 ) {
-                    Icon(Icons.Rounded.QrCode2, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Rounded.QrCode2,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(stringResource(R.string.store_qr_code))
+                    Text(
+                        text = stringResource(R.string.store_qr_code),
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
+
                 if (state.storeId.isNotBlank()) {
                     OutlinedButton(
                         onClick = { showRevokeDialog = true },
                         modifier = Modifier.weight(1f),
-                        shape = MaterialTheme.shapes.large,
-                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.error
                         )
                     ) {
-                        Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.Rounded.Close,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.error
+                        )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(stringResource(R.string.store_revoke_action))
+                        Text(
+                            text = stringResource(R.string.store_revoke_action),
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }
 
-            OutlinedButton(
+            // ──── 6. Bottom Dismiss Button ────
+            Button(
                 onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = MaterialTheme.shapes.medium,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
             ) {
-                Text(stringResource(R.string.action_dismiss))
+                Text(
+                    text = stringResource(R.string.action_dismiss),
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall
+                )
             }
         }
     }

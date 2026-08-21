@@ -324,12 +324,29 @@ class CrocProcess(
         }
     }
 
+    private var lastStoreExpiration: String = "1d"
+    private var lastStoreDownloads: Int = 1
+
+    private fun parseExpirationDurationMillis(exp: String): Long {
+        val trimmed = exp.trim().lowercase()
+        val value = trimmed.dropLast(1).toLongOrNull() ?: return 86_400_000L
+        return when (trimmed.takeLast(1)) {
+            "m" -> value * 60_000L
+            "h" -> value * 3_600_000L
+            "d" -> value * 86_400_000L
+            "w" -> value * 7 * 86_400_000L
+            else -> 86_400_000L
+        }
+    }
+
     suspend fun sendStore(
         filePaths: List<String>,
         expiration: String = "1d",
         downloads: Int = 1,
         customStoreUrl: String? = null
     ) {
+        lastStoreExpiration = expiration
+        lastStoreDownloads = downloads
         withContext(Dispatchers.IO) {
             try {
                 _state.value = CrocTransferState.Preparing
@@ -484,15 +501,23 @@ class CrocProcess(
                         result.storeBrowserLink.substringAfter("/s/").substringBefore("#").trim()
                     } else ""
                 }
+                val calculatedExpiresAt = if (result.storeExpiresAt > 0L) {
+                    result.storeExpiresAt
+                } else {
+                    System.currentTimeMillis() + parseExpirationDurationMillis(lastStoreExpiration)
+                }
+                val effectiveDownloads = if (result.storeDownloadsLimit > 0) result.storeDownloadsLimit else lastStoreDownloads
+                val effectiveRawExpiration = result.storeRawExpiration.ifBlank { lastStoreExpiration }
+
                 _state.value = CrocTransferState.StoreCompleted(
                     browserLink = result.storeBrowserLink,
                     cliToken = result.storeCliToken,
                     storeId = effectiveStoreId,
-                    expiresAt = if (result.storeExpiresAt > 0L) result.storeExpiresAt else (System.currentTimeMillis() + 86_400_000L),
+                    expiresAt = calculatedExpiresAt,
                     fileNames = result.fileNames,
                     totalBytes = result.totalBytes,
-                    rawExpirationText = result.storeRawExpiration,
-                    downloadsLimit = result.storeDownloadsLimit
+                    rawExpirationText = effectiveRawExpiration,
+                    downloadsLimit = effectiveDownloads
                 )
             } else {
                 _state.value = CrocTransferState.Completed(
