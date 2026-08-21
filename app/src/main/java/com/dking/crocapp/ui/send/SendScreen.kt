@@ -30,9 +30,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.History
@@ -42,18 +44,18 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AttachFile
-import androidx.compose.material.icons.rounded.Block
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RestartAlt
@@ -106,6 +108,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -995,6 +998,23 @@ private fun StoreConfigurationCard(
     onExpirationChange: (String) -> Unit,
     onDownloadsChange: (Int) -> Unit
 ) {
+    val presetExpirations = listOf("1h", "12h", "1d", "3d", "1w", "2w")
+    val presetDownloads = listOf(1, 2, 5, 10)
+
+    var isCustomExpiration by remember(expiration) {
+        mutableStateOf(expiration !in presetExpirations)
+    }
+    var customExpirationInput by remember(expiration) {
+        mutableStateOf(if (expiration !in presetExpirations) expiration else "")
+    }
+
+    var isCustomDownloads by remember(downloads) {
+        mutableStateOf(downloads !in presetDownloads)
+    }
+    var customDownloadsInput by remember(downloads) {
+        mutableStateOf(if (downloads !in presetDownloads) downloads.toString() else "")
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -1045,56 +1065,154 @@ private fun StoreConfigurationCard(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
             )
 
-            // Expiration Lifetime Chips
+            // Expiration Lifetime Section
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     text = stringResource(R.string.store_expiration_title),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Medium
                 )
-                val expirationOptions = listOf(
-                    "1h" to "1h",
-                    "12h" to "12h",
-                    "1d" to "1d",
-                    "3d" to "3d",
-                    "1w" to "1w",
-                    "2w" to "2w"
-                )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                // Line 1: Single horizontal scrollable row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    expirationOptions.forEach { (key, label) ->
+                    presetExpirations.forEach { preset ->
                         FilterChip(
-                            selected = expiration == key,
-                            onClick = { if (enabled) onExpirationChange(key) },
+                            selected = !isCustomExpiration && expiration == preset,
+                            onClick = {
+                                if (enabled) {
+                                    isCustomExpiration = false
+                                    onExpirationChange(preset)
+                                }
+                            },
                             enabled = enabled,
-                            label = { Text(label) }
+                            label = { Text(preset) }
                         )
                     }
+                    FilterChip(
+                        selected = isCustomExpiration,
+                        onClick = {
+                            if (enabled) {
+                                isCustomExpiration = true
+                                if (customExpirationInput.isNotBlank() && customExpirationInput.matches(Regex("^[1-9][0-9]*[mhdw]$"))) {
+                                    onExpirationChange(customExpirationInput)
+                                }
+                            }
+                        },
+                        enabled = enabled,
+                        label = { Text(stringResource(R.string.store_custom_label)) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Rounded.Edit,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
+                }
+
+                // Line 2: Custom input when Custom is active
+                if (isCustomExpiration) {
+                    val isInvalid = customExpirationInput.isNotBlank() && !customExpirationInput.matches(Regex("^[1-9][0-9]*[mhdw]$"))
+                    OutlinedTextField(
+                        value = customExpirationInput,
+                        onValueChange = { input ->
+                            val clean = input.trim().lowercase()
+                            customExpirationInput = clean
+                            if (clean.matches(Regex("^[1-9][0-9]*[mhdw]$"))) {
+                                onExpirationChange(clean)
+                            }
+                        },
+                        enabled = enabled,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large,
+                        placeholder = { Text(stringResource(R.string.store_custom_expiration_hint)) },
+                        supportingText = {
+                            Text(
+                                if (isInvalid) "Invalid format. Suffix must be m, h, d, or w (e.g. 45m, 12h, 3d, 2w)"
+                                else stringResource(R.string.store_custom_expiration_desc)
+                            )
+                        },
+                        isError = isInvalid,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None)
+                    )
                 }
             }
 
-            // Allowed Downloads Chips
+            // Allowed Downloads Section
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     text = stringResource(R.string.store_downloads_title),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Medium
                 )
-                val downloadOptions = listOf(1, 2, 5, 10)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                // Line 1: Single horizontal scrollable row with just numbers
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    downloadOptions.forEach { count ->
+                    presetDownloads.forEach { count ->
                         FilterChip(
-                            selected = downloads == count,
-                            onClick = { if (enabled) onDownloadsChange(count) },
+                            selected = !isCustomDownloads && downloads == count,
+                            onClick = {
+                                if (enabled) {
+                                    isCustomDownloads = false
+                                    onDownloadsChange(count)
+                                }
+                            },
                             enabled = enabled,
-                            label = { Text(if (count == 1) "1 download" else "$count downloads") }
+                            label = { Text(count.toString()) }
                         )
                     }
+                    FilterChip(
+                        selected = isCustomDownloads,
+                        onClick = {
+                            if (enabled) {
+                                isCustomDownloads = true
+                                val parsed = customDownloadsInput.toIntOrNull()
+                                if (parsed != null && parsed > 0) {
+                                    onDownloadsChange(parsed)
+                                }
+                            }
+                        },
+                        enabled = enabled,
+                        label = { Text(stringResource(R.string.store_custom_label)) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Rounded.Edit,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
+                }
+
+                // Line 2: Custom input when Custom is active
+                if (isCustomDownloads) {
+                    OutlinedTextField(
+                        value = customDownloadsInput,
+                        onValueChange = { input ->
+                            val digits = input.filter { it.isDigit() }
+                            customDownloadsInput = digits
+                            val parsed = digits.toIntOrNull()
+                            if (parsed != null && parsed > 0) {
+                                onDownloadsChange(parsed)
+                            }
+                        },
+                        enabled = enabled,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large,
+                        placeholder = { Text(stringResource(R.string.store_custom_downloads_hint)) },
+                        supportingText = { Text(stringResource(R.string.store_custom_downloads_desc)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
                 }
             }
         }
@@ -1112,8 +1230,6 @@ private fun StoreCompletedCard(
     val clipboardManager = LocalClipboardManager.current
     var showQrDialog by remember { mutableStateOf(false) }
     var showRevokeDialog by remember { mutableStateOf(false) }
-    var copiedLink by remember { mutableStateOf(false) }
-    var copiedToken by remember { mutableStateOf(false) }
 
     if (showQrDialog && state.browserLink.isNotBlank()) {
         QrCodeExpandedDialog(
@@ -1205,7 +1321,7 @@ private fun StoreCompletedCard(
                 )
             }
 
-            // ──── Transfer Meta Pills ────
+            // ──── Transfer Meta Pills (Nudges) ────
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -1291,7 +1407,7 @@ private fun StoreCompletedCard(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
             )
 
-            // ──── Classy Browser Link Copy Element ────
+            // ──── Improved Browser Link Copy Element ────
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.large,
@@ -1327,17 +1443,18 @@ private fun StoreCompletedCard(
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             IconButton(
                                 onClick = {
-                                    clipboardManager.setText(AnnotatedString(state.browserLink))
-                                    copiedLink = true
-                                    Toast.makeText(context, context.getString(R.string.qr_url_copied), Toast.LENGTH_SHORT).show()
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(state.browserLink.trim()))
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {}
                                 },
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 Icon(
-                                    imageVector = if (copiedLink) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
-                                    contentDescription = stringResource(R.string.store_copy_link),
+                                    Icons.Rounded.OpenInNew,
+                                    contentDescription = stringResource(R.string.quick_open_url),
                                     modifier = Modifier.size(17.dp),
-                                    tint = if (copiedLink) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             IconButton(
@@ -1358,6 +1475,20 @@ private fun StoreCompletedCard(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                            IconButton(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(state.browserLink))
+                                    Toast.makeText(context, context.getString(R.string.qr_url_copied), Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.ContentCopy,
+                                    contentDescription = stringResource(R.string.store_copy_link),
+                                    modifier = Modifier.size(17.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
 
@@ -1367,22 +1498,24 @@ private fun StoreCompletedCard(
                         shape = MaterialTheme.shapes.medium,
                         color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
                     ) {
-                        Text(
-                            text = state.browserLink,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        SelectionContainer {
+                            Text(
+                                text = state.browserLink,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
 
-            // ──── Classy CLI Token Copy Element (if present) ────
+            // ──── Improved CLI Token Copy Element (if present) ────
             if (state.cliToken.isNotBlank()) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -1419,16 +1552,15 @@ private fun StoreCompletedCard(
                             IconButton(
                                 onClick = {
                                     clipboardManager.setText(AnnotatedString(state.cliToken))
-                                    copiedToken = true
                                     Toast.makeText(context, context.getString(R.string.qr_code_copied), Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 Icon(
-                                    imageVector = if (copiedToken) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                                    Icons.Rounded.ContentCopy,
                                     contentDescription = stringResource(R.string.store_copy_token),
                                     modifier = Modifier.size(17.dp),
-                                    tint = if (copiedToken) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -1439,17 +1571,19 @@ private fun StoreCompletedCard(
                             shape = MaterialTheme.shapes.medium,
                             color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
                         ) {
-                            Text(
-                                text = state.cliToken,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            SelectionContainer {
+                                Text(
+                                    text = state.cliToken,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
@@ -1478,7 +1612,7 @@ private fun StoreCompletedCard(
                             contentColor = MaterialTheme.colorScheme.error
                         )
                     ) {
-                        Icon(Icons.Rounded.Block, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(stringResource(R.string.store_revoke_action))
                     }

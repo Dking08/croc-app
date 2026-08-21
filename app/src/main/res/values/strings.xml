@@ -417,4 +417,11 @@
     <string name="settings_custom_store_url">Custom Store URL</string>
     <string name="settings_custom_store_url_desc">Stored-transfer origin (leave empty for https://getcroc.com)</string>
     <string name="settings_custom_store_url_placeholder">https://getcroc.com</string>
+    <string name="store_custom_label">Custom</string>
+    <string name="store_custom_expiration_hint">e.g. 45m, 12h, 3d, 2w</string>
+    <string name="store_custom_expiration_desc">Duration unit: m (minutes), h (hours), d (days), w (weeks)</string>
+    <string name="store_custom_downloads_hint">e.g. 3, 20</string>
+    <string name="store_custom_downloads_desc">Number of allowed verified downloads (minimum 1)</string>
+    <string name="store_browser_link_subtitle">Direct browser download link</string>
+    <string name="store_cli_token_subtitle">Paste in terminal: croc &lt;token&gt;</string>
 </resources>
