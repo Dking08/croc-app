@@ -414,4 +414,6 @@
     <string name="history_badge_received">Recibido</string>
     <string name="history_badge_stored">Almacenado</string>
     <string name="history_file_not_found">Archivo no encontrado en el dispositivo</string>
+    <string name="quick_code_not_set_toast">Por favor, configure primero un código predeterminado o rápido en Ajustes</string>
+    <string name="quick_clipboard_empty_toast">El portapapeles está vacío</string>
 </resources>

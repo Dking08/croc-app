@@ -414,4 +414,6 @@
     <string name="history_badge_received">प्राप्त</string>
     <string name="history_badge_stored">संग्रहीत</string>
     <string name="history_file_not_found">डिवाइस पर फ़ाइल नहीं मिली</string>
+    <string name="quick_code_not_set_toast">कृपया पहले सेटिंग्स में एक डिफ़ॉल्ट या त्वरित कोड सेट करें</string>
+    <string name="quick_clipboard_empty_toast">क्लिपबोर्ड खाली है</string>
 </resources>

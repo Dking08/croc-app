@@ -437,4 +437,6 @@
     <string name="history_badge_received">Received</string>
     <string name="history_badge_stored">Stored</string>
     <string name="history_file_not_found">File not found on device</string>
+    <string name="quick_code_not_set_toast">Please set a default code or quick code in Settings first</string>
+    <string name="quick_clipboard_empty_toast">Clipboard is empty</string>
 </resources>

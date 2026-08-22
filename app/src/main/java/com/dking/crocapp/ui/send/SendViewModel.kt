@@ -7,6 +7,7 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dking.crocapp.CrocApp
+import com.dking.crocapp.croc.CodePhraseGenerator
 import com.dking.crocapp.croc.CrocBinaryManager
 import com.dking.crocapp.croc.CrocEngine
 import com.dking.crocapp.croc.CrocProcess
@@ -94,7 +95,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { state ->
                     state.copy(
                         codePhrase = if (state.codePhrase.isBlank()) {
-                            prefs.defaultCodePhrase.ifBlank { generateRandomCode() }
+                            prefs.defaultCodePhrase.ifBlank { CodePhraseGenerator.generate() }
                         } else state.codePhrase,
                         defaultCodePhrase = prefs.defaultCodePhrase,
                         savedCodePhrases = prefs.savedCodePhrases,
@@ -241,7 +242,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun regenerateCode() {
-        _uiState.update { it.copy(codePhrase = generateRandomCode()) }
+        _uiState.update { it.copy(codePhrase = CodePhraseGenerator.generate()) }
     }
 
     fun setSendMode(mode: SendMode) {
@@ -412,6 +413,9 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissTransferResult() {
         crocProcess.reset()
+        if (_uiState.value.defaultCodePhrase.isBlank()) {
+            _uiState.update { it.copy(codePhrase = CodePhraseGenerator.generate()) }
+        }
     }
 
     fun resetSession() {
@@ -424,7 +428,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 selectedFiles = emptyList(),
                 selectedBytes = 0,
-                codePhrase = it.defaultCodePhrase.ifBlank { generateRandomCode() },
+                codePhrase = it.defaultCodePhrase.ifBlank { CodePhraseGenerator.generate() },
                 textToSend = "",
                 selectedFolderName = null,
                 selectedFolderFileCount = 0,
@@ -532,22 +536,6 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
-    }
-
-    private fun generateRandomCode(): String {
-        // Short words only — resulting codes are always ≤15 chars including hyphens
-        val adjectives = listOf(
-            "red", "blue", "cold", "dark", "dry", "icy",
-            "old", "shy", "bold", "cool", "wild", "dim",
-            "fast", "big", "tiny", "soft", "warm", "new"
-        )
-        val nouns = listOf(
-            "sun", "rain", "moon", "bird", "leaf", "fog",
-            "dew", "sky", "hill", "lake", "pine", "fire",
-            "snow", "wind", "wave", "dawn", "dust", "glow"
-        )
-        val num = (10..99).random()
-        return "${adjectives.random()}-${nouns.random()}-$num"
     }
 
     private fun normalizeCodePhrase(code: String): String {

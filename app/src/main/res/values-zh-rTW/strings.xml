@@ -401,7 +401,7 @@
     <string name="store_custom_downloads_desc">允許的驗證下載次數（最少 1 次）</string>
     <string name="store_browser_link_subtitle">瀏覽器直接下載連結</string>
     <string name="store_cli_token_subtitle">在終端機中執行：croc &lt;token&gt;</string>
-    <string name="mode_switch_store_title">儲存模式></string>
+    <string name="mode_switch_store_title">儲存模式</string>
     <string name="mode_switch_store_desc">上傳加密檔案供稍後提取</string>
     <string name="mode_switch_normal_title">一般模式</string>
     <string name="mode_switch_normal_desc">點對點即時直接傳輸</string>
@@ -414,4 +414,6 @@
     <string name="history_badge_received">已接收</string>
     <string name="history_badge_stored">已儲存</string>
     <string name="history_file_not_found">裝置上找不到該檔案</string>
+    <string name="quick_code_not_set_toast">請先在設定中設定預設代碼或快捷代碼</string>
+    <string name="quick_clipboard_empty_toast">剪貼簿為空</string>
 </resources>

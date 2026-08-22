@@ -4,7 +4,6 @@ import android.app.Application
 import android.util.Log
 import com.dking.crocapp.croc.CrocBinaryManager
 import com.dking.crocapp.data.db.AppDatabase
-import com.dking.crocapp.data.preferences.UserPreferencesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,10 +27,6 @@ class CrocApp : Application() {
         super.onCreate()
         database = AppDatabase.getInstance(this)
         binaryManager = CrocBinaryManager(this)
-
-        appScope.launch {
-            UserPreferencesRepository(this@CrocApp).ensureDefaultCodePhrase()
-        }
 
         appScope.launch {
             val ready = binaryManager.initialize()

@@ -414,4 +414,6 @@
     <string name="history_badge_received">已接收</string>
     <string name="history_badge_stored">已存储</string>
     <string name="history_file_not_found">设备上未找到该文件</string>
+    <string name="quick_code_not_set_toast">请先在设置中配置默认代码或快捷代码</string>
+    <string name="quick_clipboard_empty_toast">剪贴板为空</string>
 </resources>

@@ -73,7 +73,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
+import android.widget.Toast
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -107,6 +109,7 @@ fun QuickScreen(
     onNavigateToSettings: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var showInfoDialog by remember { mutableStateOf(false) }
 
@@ -196,16 +199,30 @@ fun QuickScreen(
                     enabled = true,
                     savedCodes = uiState.savedCodePhrases,
                     onSendTap = {
-                        filePickerLauncher.launch(arrayOf("*/*"))
+                        if (uiState.quickSendCode.isBlank()) {
+                            Toast.makeText(context, R.string.quick_code_not_set_toast, Toast.LENGTH_LONG).show()
+                        } else {
+                            filePickerLauncher.launch(arrayOf("*/*"))
+                        }
                     },
                     onClipboardSendTap = {
-                        val text = clipboardManager.getText()?.text ?: ""
-                        if (text.isNotBlank()) {
-                            viewModel.sendClipboardText(text)
+                        if (uiState.quickSendCode.isBlank()) {
+                            Toast.makeText(context, R.string.quick_code_not_set_toast, Toast.LENGTH_LONG).show()
+                        } else {
+                            val text = clipboardManager.getText()?.text ?: ""
+                            if (text.isNotBlank()) {
+                                viewModel.sendClipboardText(text)
+                            } else {
+                                Toast.makeText(context, R.string.quick_clipboard_empty_toast, Toast.LENGTH_SHORT).show()
+                            }
                         }
                     },
                     onReceiveTap = {
-                        viewModel.startReceive()
+                        if (uiState.quickReceiveCode.isBlank()) {
+                            Toast.makeText(context, R.string.quick_code_not_set_toast, Toast.LENGTH_LONG).show()
+                        } else {
+                            viewModel.startReceive()
+                        }
                     },
                     onReceiveWithCode = { code ->
                         viewModel.startReceiveWithCode(code)
