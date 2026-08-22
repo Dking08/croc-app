@@ -421,17 +421,31 @@
     <string name="guide_title">使用指南與疑難排解</string>
     <string name="guide_hero_subtitle">加密傳輸、密碼短語與錯誤解決的完整使用指南。</string>
     <string name="guide_troubleshooting_badge">疑難排解</string>
+    <string name="guide_badge_beginner">新手入門</string>
 
-    <string name="guide_sec_basics_title">Croc 的運作原理</string>
+    <string name="guide_sec_how_to_use_title">如何使用 croc</string>
+    <string name="guide_sec_how_to_use_subtitle">檔案傳送與接收分步指南</string>
+    <string name="guide_how_send_title">傳送檔案或文字（直接模式）</string>
+    <string name="guide_how_send_step1">1. 開啟「傳送」頁面，選取檔案/資料夾或輸入文字。</string>
+    <string name="guide_how_send_step2">2. 將 3 個單字組成的安全密碼（或出示 QR Code）分享給接收端。</string>
+    <string name="guide_how_send_step3">3. 一旦接收端輸入該代碼，傳送流程將自動開始。</string>
+    <string name="guide_how_receive_title">接收檔案（直接模式）</string>
+    <string name="guide_how_receive_step1">1. 開啟「接收」頁面並輸入傳送端給出的代碼，或點擊 QR Code 掃描。</string>
+    <string name="guide_how_receive_step2">2. 點擊「接收」按鈕確認，檔案將自動儲存至您在設定中指定的下載目錄。</string>
+    <string name="guide_how_store_title">儲存模式（隨時提取）</string>
+    <string name="guide_how_store_step1">1. 點擊「傳送」頁面底部的「儲存」，選取過期時間與下載次數限制。</string>
+    <string name="guide_how_store_step2">2. 上傳檔案並將產生的 getcroc.com 網頁連結或終端機提取指令分享給對方。</string>
+
+    <string name="guide_sec_basics_title">croc 的運作原理</string>
     <string name="guide_sec_basics_subtitle">核心概念、加密演算法與傳輸機制</string>
     <string name="guide_sec_basics_pake_title">端到端 PAKE 加密</string>
-    <string name="guide_sec_basics_pake_desc">Croc 使用密碼驗證金鑰交換 (PAKE) 產生臨時加密金鑰。中繼伺服器無法讀取或攔截您的檔案。</string>
+    <string name="guide_sec_basics_pake_desc">croc 使用密碼驗證金鑰交換 (PAKE) 產生臨時加密金鑰。中繼伺服器無法讀取或攔截您的檔案。</string>
     <string name="guide_sec_basics_modes_title">直接模式 vs 儲存模式</string>
     <string name="guide_sec_basics_modes_desc">直接模式在兩台連線裝置間即時點對點傳輸。儲存模式加密檔案並暫存在 getcroc.com 上，方便隨時提取。</string>
-    <string name="guide_sec_basics_lan_title">區域網路 (LAN) 極速傳輸</string>
-    <string name="guide_sec_basics_lan_desc">如果兩台裝置處於同一 Wi-Fi 下，croc 會自動協商使用區域網路 IP 直連，享受千兆極速傳輸。</string>
+    <string name="guide_sec_basics_relay_title">自訂中繼與私有化部署</string>
+    <string name="guide_sec_basics_relay_desc">croc 依賴中繼伺服器協商配對與傳輸資料。您可以連線公共中繼，也可以自建私有中繼並在「設定」中設定伺服器位址。</string>
     <string name="guide_sec_basics_codes_title">安全密碼短語</string>
-    <string name="guide_sec_basics_codes_desc">Croc 使用由 3 個單字組成的短語（如 bold-wave-rock），具備數十億種組合。發送端與接收端必須使用完全相同的代碼。</string>
+    <string name="guide_sec_basics_codes_desc">croc 使用由 3 個單字組成的短語（如 bold-wave-rock），具備數十億種組合。每個代碼建立一個專屬 2 裝置房間，多人共用相同代碼會導致衝突。</string>
 
     <string name="guide_sec_troubleshooting_title">常見錯誤與解決方法</string>
     <string name="guide_sec_troubleshooting_subtitle">針對常見傳輸問題的排錯指南</string>
@@ -441,7 +455,7 @@
     <string name="guide_err_pake_title">錯誤：\"Could not secure channel\" / PAKE 驗證失敗</string>
     <string name="guide_err_pake_cause">發送端與接收端輸入的代碼不一致、單字拼寫錯誤或對端中斷連線。</string>
     <string name="guide_err_pake_solution">請仔細檢查兩端輸入的密碼短語（包含連字號），或使用 QR Code 掃描以避免輸入錯誤。</string>
-    <string name="guide_err_legacy_title">\"Older Croc Detected\" / 協定版本不符</string>
+    <string name="guide_err_legacy_title">\"Older croc Detected\" / 協定版本不符</string>
     <string name="guide_err_legacy_cause">一端執行 croc v11（最新加密協定），另一端執行 croc v10 或更舊版本。</string>
     <string name="guide_err_legacy_solution">點擊傳輸卡片上的「重試（相容模式）」，或在設定中開啟「優先嘗試相容模式」。</string>
     <string name="guide_err_relay_title">錯誤：\"Relay connection failed / Timed out\"</string>
@@ -449,7 +463,8 @@
     <string name="guide_err_relay_solution">檢查網路連線。若在 Tor/VPN 環境下，可在設定中設定 SOCKS5 代理或自訂中繼伺服器。</string>
     <string name="guide_err_file_missing_title">裝置上找不到該檔案</string>
     <string name="guide_err_file_missing_cause">先前接收的檔案在應用程式外部被重新命名、移動或刪除了。</string>
-    <string name="guide_err_file_missing_solution">使用檔案管理員查看 Downloads/croc-received 目錄以尋找或還原檔案。</string>
+    <string name="guide_err_file_missing_solution">使用檔案管理員查看您在「設定」中設定的下載目錄以尋找或還原檔案。</string>
+    <string name="guide_err_upstream_disclaimer">說明：所有傳輸錯誤皆來自上游 croc CLI 核心引擎。本應用程式僅提供原生客戶端互動介面，並非錯誤源頭。</string>
 
     <string name="guide_sec_quick_title">快捷模式與一鍵傳輸</string>
     <string name="guide_sec_quick_subtitle">使用預設代碼實現日常極速分享</string>

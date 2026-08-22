@@ -421,17 +421,31 @@
     <string name="guide_title">使用指南与故障排除</string>
     <string name="guide_hero_subtitle">加密传输、密码短语与错误解决的完整使用指南。</string>
     <string name="guide_troubleshooting_badge">故障排除</string>
+    <string name="guide_badge_beginner">新手入门</string>
 
-    <string name="guide_sec_basics_title">Croc 的工作原理</string>
+    <string name="guide_sec_how_to_use_title">如何使用 croc</string>
+    <string name="guide_sec_how_to_use_subtitle">文件发送与接收分步指南</string>
+    <string name="guide_how_send_title">发送文件或文本（直接模式）</string>
+    <string name="guide_how_send_step1">1. 打开“发送”页面，选择文件/文件夹或输入文本。</string>
+    <string name="guide_how_send_step2">2. 将 3 个单词组成的安全密码（或展示二维码）分享给接收方。</string>
+    <string name="guide_how_send_step3">3. 一旦接收方输入该代码，发送流程将自动开始。</string>
+    <string name="guide_how_receive_title">接收文件（直接模式）</string>
+    <string name="guide_how_receive_step1">1. 打开“接收”页面并输入发送方给出的代码，或点击二维码扫描。</string>
+    <string name="guide_how_receive_step2">2. 点击“接收”按钮确认，文件将自动保存至您在设置中指定的下载目录。</string>
+    <string name="guide_how_store_title">存储模式（随时提取）</string>
+    <string name="guide_how_store_step1">1. 点击“发送”页面底部的“存储”，选择过期时间与下载次数限制。</string>
+    <string name="guide_how_store_step2">2. 上传文件并将生成的 getcroc.com 网页链接或终端提取命令分享给对方。</string>
+
+    <string name="guide_sec_basics_title">croc 的工作原理</string>
     <string name="guide_sec_basics_subtitle">核心概念、加密算法与传输机制</string>
     <string name="guide_sec_basics_pake_title">端到端 PAKE 加密</string>
-    <string name="guide_sec_basics_pake_desc">Croc 使用密码验证密钥交换 (PAKE) 生成临时加密密钥。中继服务器无法读取或拦截您的文件。</string>
+    <string name="guide_sec_basics_pake_desc">croc 使用密码验证密钥交换 (PAKE) 生成临时加密密钥。中继服务器无法读取或拦截您的文件。</string>
     <string name="guide_sec_basics_modes_title">直接模式 vs 存储模式</string>
     <string name="guide_sec_basics_modes_desc">直接模式在两台在线设备间实时点对点传输。存储模式加密文件并暂存在 getcroc.com 上，方便随时提取。</string>
-    <string name="guide_sec_basics_lan_title">局域网 (LAN) 极速传输</string>
-    <string name="guide_sec_basics_lan_desc">如果两台设备处于同一 Wi-Fi 下，croc 会自动协商使用局域网 IP 直连，享受千兆极速传输。</string>
+    <string name="guide_sec_basics_relay_title">自定义中继与私有化部署</string>
+    <string name="guide_sec_basics_relay_desc">croc 依赖中继服务器协商配对与传输数据。您可以连接公共中继，也可以自建私有中继并在“设置”中配置服务器地址。</string>
     <string name="guide_sec_basics_codes_title">安全密码短语</string>
-    <string name="guide_sec_basics_codes_desc">Croc 使用由 3 个单词组成的短语（如 bold-wave-rock），具备数十亿种组合。发送方与接收方必须使用完全相同的代码。</string>
+    <string name="guide_sec_basics_codes_desc">croc 使用由 3 个单词组成的短语（如 bold-wave-rock），具备数十亿种组合。每个代码建立一个专属 2 设备房间，多人共用相同代码会导致冲突。</string>
 
     <string name="guide_sec_troubleshooting_title">常见错误与解决方法</string>
     <string name="guide_sec_troubleshooting_subtitle">针对常见传输问题的排错指南</string>
@@ -441,7 +455,7 @@
     <string name="guide_err_pake_title">错误：\"Could not secure channel\" / PAKE 验证失败</string>
     <string name="guide_err_pake_cause">发送方与接收方输入的代码不一致、单词拼写错误或对端断开连接。</string>
     <string name="guide_err_pake_solution">请仔细检查两端输入的密码短语（包括连字符），或使用二维码扫描以避免输入错误。</string>
-    <string name="guide_err_legacy_title">\"Older Croc Detected\" / 协议版本不匹配</string>
+    <string name="guide_err_legacy_title">\"Older croc Detected\" / 协议版本不匹配</string>
     <string name="guide_err_legacy_cause">一端运行 croc v11（最新加密协议），另一端运行 croc v10 或更旧版本。</string>
     <string name="guide_err_legacy_solution">点击传输卡片上的“重试（兼容模式）”，或在设置中开启“优先尝试兼容模式”。</string>
     <string name="guide_err_relay_title">错误：\"Relay connection failed / Timed out\"</string>
@@ -449,7 +463,8 @@
     <string name="guide_err_relay_solution">检查网络连接。若在 Tor/VPN 环境下，可在设置中配置 SOCKS5 代理或自定义中继服务器。</string>
     <string name="guide_err_file_missing_title">设备上未找到该文件</string>
     <string name="guide_err_file_missing_cause">先前接收的文件在应用外部被重命名、移动或删除了。</string>
-    <string name="guide_err_file_missing_solution">使用文件管理器查看 Downloads/croc-received 目录以查找或恢复文件。</string>
+    <string name="guide_err_file_missing_solution">使用文件管理器查看您在“设置”中配置的下载目录以查找或恢复文件。</string>
+    <string name="guide_err_upstream_disclaimer">说明：所有传输错误均来自上游 croc CLI 核心引擎。本应用仅提供原生客户端交互界面，并非错误源头。</string>
 
     <string name="guide_sec_quick_title">快捷模式与一键传输</string>
     <string name="guide_sec_quick_subtitle">使用预设代码实现日常极速分享</string>

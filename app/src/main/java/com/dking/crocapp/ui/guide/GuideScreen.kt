@@ -2,12 +2,8 @@ package com.dking.crocapp.ui.guide
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,16 +23,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudUpload
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FlashOn
-import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Security
@@ -52,7 +51,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -66,7 +64,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -83,8 +80,9 @@ fun GuideScreen(
     val context = LocalContext.current
     val expandedSections = remember {
         mutableStateMapOf(
-            "basics" to true,
-            "troubleshooting" to true,
+            "how_to_use" to true,
+            "basics" to false,
+            "troubleshooting" to false,
             "quick" to false,
             "crossplatform" to false
         )
@@ -118,16 +116,56 @@ fun GuideScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Spacer(modifier = Modifier.height(2.dp))
-
             // Hero Brand Header
             GuideHeroHeader()
 
             // ═══════════════════════════════════════════════════════════
-            // Section 1: How Croc Works
+            // Section 1: How to Use Croc (Beginner Flow)
+            // ═══════════════════════════════════════════════════════════
+            GuideSectionContainer(
+                title = stringResource(R.string.guide_sec_how_to_use_title),
+                subtitle = stringResource(R.string.guide_sec_how_to_use_subtitle),
+                icon = Icons.Rounded.PlayArrow,
+                isExpanded = expandedSections["how_to_use"] == true,
+                onToggle = { expandedSections["how_to_use"] = !(expandedSections["how_to_use"] ?: false) }
+            ) {
+                // Direct Send
+                GuideStepBlock(
+                    icon = Icons.AutoMirrored.Rounded.Send,
+                    title = stringResource(R.string.guide_how_send_title),
+                    steps = listOf(
+                        stringResource(R.string.guide_how_send_step1),
+                        stringResource(R.string.guide_how_send_step2),
+                        stringResource(R.string.guide_how_send_step3)
+                    )
+                )
+
+                // Direct Receive
+                GuideStepBlock(
+                    icon = Icons.Rounded.Download,
+                    title = stringResource(R.string.guide_how_receive_title),
+                    steps = listOf(
+                        stringResource(R.string.guide_how_receive_step1),
+                        stringResource(R.string.guide_how_receive_step2)
+                    )
+                )
+
+                // Store Mode
+                GuideStepBlock(
+                    icon = Icons.Rounded.CloudUpload,
+                    title = stringResource(R.string.guide_how_store_title),
+                    steps = listOf(
+                        stringResource(R.string.guide_how_store_step1),
+                        stringResource(R.string.guide_how_store_step2)
+                    )
+                )
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // Section 2: How Croc Works (Architecture & Security)
             // ═══════════════════════════════════════════════════════════
             GuideSectionContainer(
                 title = stringResource(R.string.guide_sec_basics_title),
@@ -141,70 +179,72 @@ fun GuideScreen(
                     title = stringResource(R.string.guide_sec_basics_pake_title),
                     description = stringResource(R.string.guide_sec_basics_pake_desc)
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 GuideItem(
                     icon = Icons.Rounded.FlashOn,
                     title = stringResource(R.string.guide_sec_basics_modes_title),
                     description = stringResource(R.string.guide_sec_basics_modes_desc)
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 GuideItem(
-                    icon = Icons.Rounded.Wifi,
-                    title = stringResource(R.string.guide_sec_basics_lan_title),
-                    description = stringResource(R.string.guide_sec_basics_lan_desc)
+                    icon = Icons.Rounded.CloudUpload,
+                    title = stringResource(R.string.guide_sec_basics_relay_title),
+                    description = stringResource(R.string.guide_sec_basics_relay_desc)
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 GuideItem(
-                    icon = Icons.Rounded.HelpOutline,
+                    icon = Icons.AutoMirrored.Rounded.HelpOutline,
                     title = stringResource(R.string.guide_sec_basics_codes_title),
                     description = stringResource(R.string.guide_sec_basics_codes_desc)
                 )
             }
 
             // ═══════════════════════════════════════════════════════════
-            // Section 2: Troubleshooting & Error Resolutions
+            // Section 3: Troubleshooting & Error Resolutions
             // ═══════════════════════════════════════════════════════════
             GuideSectionContainer(
                 title = stringResource(R.string.guide_sec_troubleshooting_title),
                 subtitle = stringResource(R.string.guide_sec_troubleshooting_subtitle),
                 icon = Icons.Rounded.BugReport,
                 isExpanded = expandedSections["troubleshooting"] == true,
-                onToggle = { expandedSections["troubleshooting"] = !(expandedSections["troubleshooting"] ?: false) },
-                headerBadge = stringResource(R.string.guide_troubleshooting_badge)
+                onToggle = { expandedSections["troubleshooting"] = !(expandedSections["troubleshooting"] ?: false) }
             ) {
                 GuideErrorItem(
                     title = stringResource(R.string.guide_err_room_full_title),
                     cause = stringResource(R.string.guide_err_room_full_cause),
                     solution = stringResource(R.string.guide_err_room_full_solution)
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 GuideErrorItem(
                     title = stringResource(R.string.guide_err_pake_title),
                     cause = stringResource(R.string.guide_err_pake_cause),
                     solution = stringResource(R.string.guide_err_pake_solution)
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 GuideErrorItem(
                     title = stringResource(R.string.guide_err_legacy_title),
                     cause = stringResource(R.string.guide_err_legacy_cause),
                     solution = stringResource(R.string.guide_err_legacy_solution)
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 GuideErrorItem(
                     title = stringResource(R.string.guide_err_relay_title),
                     cause = stringResource(R.string.guide_err_relay_cause),
                     solution = stringResource(R.string.guide_err_relay_solution)
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 GuideErrorItem(
                     title = stringResource(R.string.guide_err_file_missing_title),
                     cause = stringResource(R.string.guide_err_file_missing_cause),
                     solution = stringResource(R.string.guide_err_file_missing_solution)
                 )
+
+                Text(
+                    text = stringResource(R.string.guide_err_upstream_disclaimer),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, start = 2.dp, end = 2.dp)
+                )
             }
 
             // ═══════════════════════════════════════════════════════════
-            // Section 3: Quick Mode & 1-Tap Transfers
+            // Section 4: Quick Mode & 1-Tap Transfers
             // ═══════════════════════════════════════════════════════════
             GuideSectionContainer(
                 title = stringResource(R.string.guide_sec_quick_title),
@@ -218,13 +258,13 @@ fun GuideScreen(
                     title = stringResource(R.string.guide_sec_quick_setup_title),
                     description = stringResource(R.string.guide_sec_quick_setup_desc)
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 GuideItem(
                     icon = Icons.Rounded.Info,
                     title = stringResource(R.string.guide_sec_quick_clipboard_title),
                     description = stringResource(R.string.guide_sec_quick_clipboard_desc)
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 GuideItem(
                     icon = Icons.Rounded.QrCodeScanner,
                     title = stringResource(R.string.guide_sec_quick_qr_title),
@@ -233,7 +273,7 @@ fun GuideScreen(
             }
 
             // ═══════════════════════════════════════════════════════════
-            // Section 4: Web & Cross-Platform Sharing
+            // Section 5: Web & Cross-Platform Sharing
             // ═══════════════════════════════════════════════════════════
             GuideSectionContainer(
                 title = stringResource(R.string.guide_sec_crossplatform_title),
@@ -247,13 +287,13 @@ fun GuideScreen(
                     title = stringResource(R.string.guide_sec_web_title),
                     description = stringResource(R.string.guide_sec_web_desc)
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 GuideItem(
                     icon = Icons.Rounded.Terminal,
                     title = stringResource(R.string.guide_sec_cli_title),
                     description = stringResource(R.string.guide_sec_cli_desc)
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 GuideItem(
                     icon = Icons.Rounded.CloudUpload,
                     title = stringResource(R.string.guide_sec_storelinks_title),
@@ -273,7 +313,7 @@ fun GuideScreen(
                 }
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -283,19 +323,19 @@ private fun GuideHeroHeader() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
         ),
-        shape = MaterialTheme.shapes.extraLarge
+        shape = MaterialTheme.shapes.large
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(54.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
@@ -304,16 +344,19 @@ private fun GuideHeroHeader() {
                     painter = painterResource(id = R.drawable.croc_icon),
                     contentDescription = "croc-app icon",
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
                 )
             }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text(
                         text = stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -347,7 +390,6 @@ private fun GuideSectionContainer(
     icon: ImageVector,
     isExpanded: Boolean,
     onToggle: () -> Unit,
-    headerBadge: String? = null,
     content: @Composable () -> Unit
 ) {
     val rotation by animateFloatAsState(
@@ -355,10 +397,12 @@ private fun GuideSectionContainer(
         label = "expand_rotation"
     )
 
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.outlinedCardColors(
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
     ) {
@@ -367,12 +411,12 @@ private fun GuideSectionContainer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onToggle() }
-                    .padding(18.dp),
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                     contentAlignment = Alignment.Center
@@ -381,64 +425,108 @@ private fun GuideSectionContainer(
                         imageVector = icon,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        if (headerBadge != null) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
-                                shape = MaterialTheme.shapes.extraSmall
-                            ) {
-                                Text(
-                                    text = headerBadge,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = onToggle) {
+                IconButton(
+                    onClick = onToggle,
+                    modifier = Modifier.size(36.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.ExpandMore,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.rotate(rotation)
+                        modifier = Modifier
+                            .size(20.dp)
+                            .rotate(rotation)
                     )
                 }
             }
 
-            AnimatedVisibility(
-                visible = isExpanded,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
+            if (isExpanded) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 18.dp)
-                        .padding(bottom = 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(start = 14.dp, end = 14.dp, bottom = 14.dp, top = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                    Spacer(modifier = Modifier.height(2.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    Spacer(modifier = Modifier.height(1.dp))
                     content()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GuideStepBlock(
+    icon: ImageVector,
+    title: String,
+    steps: List<String>
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainer
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                steps.forEach { step ->
+                    Text(
+                        text = step,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.2f
+                    )
                 }
             }
         }
@@ -458,7 +546,7 @@ private fun GuideItem(
         Box(
             modifier = Modifier
                 .padding(top = 2.dp)
-                .size(32.dp)
+                .size(28.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh),
             contentAlignment = Alignment.Center
@@ -466,8 +554,8 @@ private fun GuideItem(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp)
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(14.dp)
             )
         }
         Spacer(modifier = Modifier.width(12.dp))
@@ -482,7 +570,7 @@ private fun GuideItem(
                 text = description,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.25f
+                lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.2f
             )
         }
     }
@@ -494,18 +582,16 @@ private fun GuideErrorItem(
     cause: String,
     solution: String
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
-        ),
-        shape = MaterialTheme.shapes.large
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainer
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -515,11 +601,11 @@ private fun GuideErrorItem(
                     imageVector = Icons.Rounded.WarningAmber,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -531,33 +617,31 @@ private fun GuideErrorItem(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = MaterialTheme.shapes.medium
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                        shape = MaterialTheme.shapes.small
+                    )
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
+                Icon(
+                    imageVector = Icons.Rounded.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(10.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .padding(top = 1.dp)
-                            .size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = solution,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
+                        .padding(top = 1.dp)
+                        .size(14.dp)
+                )
+                Text(
+                    text = solution,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
     }
@@ -572,14 +656,14 @@ private fun GuideFooterCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
-        shape = MaterialTheme.shapes.extraLarge
+        shape = MaterialTheme.shapes.large
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
                 text = stringResource(R.string.guide_footer_privacy_note),
@@ -591,7 +675,7 @@ private fun GuideFooterCard(
 
             FilledTonalButton(
                 onClick = onOpenWeb,
-                shape = MaterialTheme.shapes.large,
+                shape = MaterialTheme.shapes.medium,
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -600,18 +684,19 @@ private fun GuideFooterCard(
                 Icon(
                     imageVector = Icons.Rounded.Language,
                     contentDescription = null,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.guide_footer_web_button),
+                    style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
                     contentDescription = null,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(14.dp)
                 )
             }
         }
