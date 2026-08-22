@@ -1,0 +1,9 @@
+Changes Made:
+
+1. Dual croc engine, legacy (v10.6.0) and latest croc (v11.2.4)
+2. Add support for some missing flags in settings
+3. Store feature support
+4. croc-app.github.io app link
+5. Spanish language support
+6. Some minor UI tweaks and bug fixes
+7. Added Guide and Troubleshooting
