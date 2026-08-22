@@ -256,7 +256,7 @@ fun SendScreen(
                                 isLegacyFallback -> Icons.Rounded.History
                                 isStoreCompleted -> Icons.AutoMirrored.Rounded.Send
                                 uiState.isStoreMode -> Icons.Rounded.CloudUpload
-                                else -> Icons.Rounded.Upload
+                                else -> Icons.AutoMirrored.Rounded.Send
                             },
                             contentDescription = null
                         )

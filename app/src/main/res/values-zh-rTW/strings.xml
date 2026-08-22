@@ -416,4 +416,59 @@
     <string name="history_file_not_found">裝置上找不到該檔案</string>
     <string name="quick_code_not_set_toast">請先在設定中設定預設代碼或快捷代碼</string>
     <string name="quick_clipboard_empty_toast">剪貼簿為空</string>
+
+    <!-- ════ Guide & Troubleshooting Screen ════ -->
+    <string name="guide_title">使用指南與疑難排解</string>
+    <string name="guide_hero_subtitle">加密傳輸、密碼短語與錯誤解決的完整使用指南。</string>
+    <string name="guide_troubleshooting_badge">疑難排解</string>
+
+    <string name="guide_sec_basics_title">Croc 的運作原理</string>
+    <string name="guide_sec_basics_subtitle">核心概念、加密演算法與傳輸機制</string>
+    <string name="guide_sec_basics_pake_title">端到端 PAKE 加密</string>
+    <string name="guide_sec_basics_pake_desc">Croc 使用密碼驗證金鑰交換 (PAKE) 產生臨時加密金鑰。中繼伺服器無法讀取或攔截您的檔案。</string>
+    <string name="guide_sec_basics_modes_title">直接模式 vs 儲存模式</string>
+    <string name="guide_sec_basics_modes_desc">直接模式在兩台連線裝置間即時點對點傳輸。儲存模式加密檔案並暫存在 getcroc.com 上，方便隨時提取。</string>
+    <string name="guide_sec_basics_lan_title">區域網路 (LAN) 極速傳輸</string>
+    <string name="guide_sec_basics_lan_desc">如果兩台裝置處於同一 Wi-Fi 下，croc 會自動協商使用區域網路 IP 直連，享受千兆極速傳輸。</string>
+    <string name="guide_sec_basics_codes_title">安全密碼短語</string>
+    <string name="guide_sec_basics_codes_desc">Croc 使用由 3 個單字組成的短語（如 bold-wave-rock），具備數十億種組合。發送端與接收端必須使用完全相同的代碼。</string>
+
+    <string name="guide_sec_troubleshooting_title">常見錯誤與解決方法</string>
+    <string name="guide_sec_troubleshooting_subtitle">針對常見傳輸問題的排錯指南</string>
+    <string name="guide_err_room_full_title">錯誤：\"Room is full\"（房間已滿）</string>
+    <string name="guide_err_room_full_cause">目前有其他傳輸正在佔用相同的密碼，或者先前的連線尚未完全逾時關閉。</string>
+    <string name="guide_err_room_full_solution">請等待 10–15 秒，或在發送頁面點擊「重新產生」按鈕以建立新的唯一密碼短語。</string>
+    <string name="guide_err_pake_title">錯誤：\"Could not secure channel\" / PAKE 驗證失敗</string>
+    <string name="guide_err_pake_cause">發送端與接收端輸入的代碼不一致、單字拼寫錯誤或對端中斷連線。</string>
+    <string name="guide_err_pake_solution">請仔細檢查兩端輸入的密碼短語（包含連字號），或使用 QR Code 掃描以避免輸入錯誤。</string>
+    <string name="guide_err_legacy_title">\"Older Croc Detected\" / 協定版本不符</string>
+    <string name="guide_err_legacy_cause">一端執行 croc v11（最新加密協定），另一端執行 croc v10 或更舊版本。</string>
+    <string name="guide_err_legacy_solution">點擊傳輸卡片上的「重試（相容模式）」，或在設定中開啟「優先嘗試相容模式」。</string>
+    <string name="guide_err_relay_title">錯誤：\"Relay connection failed / Timed out\"</string>
+    <string name="guide_err_relay_cause">防火牆、代理伺服器、VPN 或網路不穩定阻礙了與中繼伺服器的通訊。</string>
+    <string name="guide_err_relay_solution">檢查網路連線。若在 Tor/VPN 環境下，可在設定中設定 SOCKS5 代理或自訂中繼伺服器。</string>
+    <string name="guide_err_file_missing_title">裝置上找不到該檔案</string>
+    <string name="guide_err_file_missing_cause">先前接收的檔案在應用程式外部被重新命名、移動或刪除了。</string>
+    <string name="guide_err_file_missing_solution">使用檔案管理員查看 Downloads/croc-received 目錄以尋找或還原檔案。</string>
+
+    <string name="guide_sec_quick_title">快捷模式與一鍵傳輸</string>
+    <string name="guide_sec_quick_subtitle">使用預設代碼實現日常極速分享</string>
+    <string name="guide_sec_quick_setup_title">設定預設代碼與快捷代碼</string>
+    <string name="guide_sec_quick_setup_desc">在設定中設定預設代碼後，快捷發送與快捷接收將直接使用該代碼，無需每次重複輸入。</string>
+    <string name="guide_sec_quick_clipboard_title">一鍵發送剪貼簿</string>
+    <string name="guide_sec_quick_clipboard_desc">點擊快捷頁面左上角的剪貼簿圖示，即可立即將複製的文字廣播給接收端。</string>
+    <string name="guide_sec_quick_qr_title">QR Code 掃描器</string>
+    <string name="guide_sec_quick_qr_desc">點擊快捷頁面的 QR 按鈕，即可直接掃描發送端的 QR Code 並立即開始接收。</string>
+
+    <string name="guide_sec_crossplatform_title">跨平台與網頁分享</string>
+    <string name="guide_sec_crossplatform_subtitle">在 Android、Linux、macOS、Windows 和網頁瀏覽器間互傳</string>
+    <string name="guide_sec_web_title">Web 網頁端 (https://croc-app.github.io)</string>
+    <string name="guide_sec_web_desc">與未安裝此應用程式的使用者分享檔案時，對方可以在任何現代瀏覽器中開啟網頁端直接接收檔案。</string>
+    <string name="guide_sec_cli_title">命令列客戶端 (CLI)</string>
+    <string name="guide_sec_cli_desc">在電腦上安裝官方 croc 命令列工具（brew, scoop 或 apt），執行 croc &lt;代碼&gt; 即可直接發送或接收。</string>
+    <string name="guide_sec_storelinks_title">儲存提取連結 (https://getcroc.com)</string>
+    <string name="guide_sec_storelinks_desc">使用儲存模式產生網頁下載連結，接收端無需同時連線即可在瀏覽器中提取。</string>
+
+    <string name="guide_footer_privacy_note">croc-app 完全開源且注重隱私。所有傳輸皆為點對點連線並經由 PAKE 與 AES-GCM 高度加密。</string>
+    <string name="guide_footer_web_button">造訪 croc-app.github.io</string>
 </resources>

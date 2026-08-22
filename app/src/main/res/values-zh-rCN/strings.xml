@@ -416,4 +416,59 @@
     <string name="history_file_not_found">设备上未找到该文件</string>
     <string name="quick_code_not_set_toast">请先在设置中配置默认代码或快捷代码</string>
     <string name="quick_clipboard_empty_toast">剪贴板为空</string>
+
+    <!-- ════ Guide & Troubleshooting Screen ════ -->
+    <string name="guide_title">使用指南与故障排除</string>
+    <string name="guide_hero_subtitle">加密传输、密码短语与错误解决的完整使用指南。</string>
+    <string name="guide_troubleshooting_badge">故障排除</string>
+
+    <string name="guide_sec_basics_title">Croc 的工作原理</string>
+    <string name="guide_sec_basics_subtitle">核心概念、加密算法与传输机制</string>
+    <string name="guide_sec_basics_pake_title">端到端 PAKE 加密</string>
+    <string name="guide_sec_basics_pake_desc">Croc 使用密码验证密钥交换 (PAKE) 生成临时加密密钥。中继服务器无法读取或拦截您的文件。</string>
+    <string name="guide_sec_basics_modes_title">直接模式 vs 存储模式</string>
+    <string name="guide_sec_basics_modes_desc">直接模式在两台在线设备间实时点对点传输。存储模式加密文件并暂存在 getcroc.com 上，方便随时提取。</string>
+    <string name="guide_sec_basics_lan_title">局域网 (LAN) 极速传输</string>
+    <string name="guide_sec_basics_lan_desc">如果两台设备处于同一 Wi-Fi 下，croc 会自动协商使用局域网 IP 直连，享受千兆极速传输。</string>
+    <string name="guide_sec_basics_codes_title">安全密码短语</string>
+    <string name="guide_sec_basics_codes_desc">Croc 使用由 3 个单词组成的短语（如 bold-wave-rock），具备数十亿种组合。发送方与接收方必须使用完全相同的代码。</string>
+
+    <string name="guide_sec_troubleshooting_title">常见错误与解决方法</string>
+    <string name="guide_sec_troubleshooting_subtitle">针对常见传输问题的排错指南</string>
+    <string name="guide_err_room_full_title">错误：\"Room is full\"（房间已满）</string>
+    <string name="guide_err_room_full_cause">当前有其他传输正在占用相同的密码，或者先前的连接尚未完全超时关闭。</string>
+    <string name="guide_err_room_full_solution">请等待 10–15 秒，或在发送页面点击“重新生成”按钮以创建新的唯一密码短语。</string>
+    <string name="guide_err_pake_title">错误：\"Could not secure channel\" / PAKE 验证失败</string>
+    <string name="guide_err_pake_cause">发送方与接收方输入的代码不一致、单词拼写错误或对端断开连接。</string>
+    <string name="guide_err_pake_solution">请仔细检查两端输入的密码短语（包括连字符），或使用二维码扫描以避免输入错误。</string>
+    <string name="guide_err_legacy_title">\"Older Croc Detected\" / 协议版本不匹配</string>
+    <string name="guide_err_legacy_cause">一端运行 croc v11（最新加密协议），另一端运行 croc v10 或更旧版本。</string>
+    <string name="guide_err_legacy_solution">点击传输卡片上的“重试（兼容模式）”，或在设置中开启“优先尝试兼容模式”。</string>
+    <string name="guide_err_relay_title">错误：\"Relay connection failed / Timed out\"</string>
+    <string name="guide_err_relay_cause">防火墙、代理、VPN 或网络不稳定阻碍了与中继服务器的通信。</string>
+    <string name="guide_err_relay_solution">检查网络连接。若在 Tor/VPN 环境下，可在设置中配置 SOCKS5 代理或自定义中继服务器。</string>
+    <string name="guide_err_file_missing_title">设备上未找到该文件</string>
+    <string name="guide_err_file_missing_cause">先前接收的文件在应用外部被重命名、移动或删除了。</string>
+    <string name="guide_err_file_missing_solution">使用文件管理器查看 Downloads/croc-received 目录以查找或恢复文件。</string>
+
+    <string name="guide_sec_quick_title">快捷模式与一键传输</string>
+    <string name="guide_sec_quick_subtitle">使用预设代码实现日常极速分享</string>
+    <string name="guide_sec_quick_setup_title">配置默认代码与快捷代码</string>
+    <string name="guide_sec_quick_setup_desc">在设置中配置默认代码后，快捷发送和快捷接收将直接使用该代码，无需每次重复输入。</string>
+    <string name="guide_sec_quick_clipboard_title">一键发送剪贴板</string>
+    <string name="guide_sec_quick_clipboard_desc">点击快捷页面左上角的剪贴板图标，即可立即将复制的文本广播给接收端。</string>
+    <string name="guide_sec_quick_qr_title">二维码扫描器</string>
+    <string name="guide_sec_quick_qr_desc">点击快捷页面的二维码图标，即可直接扫描发送方的二维码并立即开始接收。</string>
+
+    <string name="guide_sec_crossplatform_title">跨平台与网页分享</string>
+    <string name="guide_sec_crossplatform_subtitle">在 Android、Linux、macOS、Windows 和网页浏览器间互传</string>
+    <string name="guide_sec_web_title">Web 网页端 (https://croc-app.github.io)</string>
+    <string name="guide_sec_web_desc">与未安装此应用的用户分享文件时，对方可以在任何现代浏览器中打开网页端直接接收文件。</string>
+    <string name="guide_sec_cli_title">命令行客户端 (CLI)</string>
+    <string name="guide_sec_cli_desc">在电脑上安装官方 croc 命令行工具（brew, scoop 或 apt），运行 croc &lt;代码&gt; 即可直接发送或接收。</string>
+    <string name="guide_sec_storelinks_title">存储提取链接 (https://getcroc.com)</string>
+    <string name="guide_sec_storelinks_desc">使用存储模式生成网页下载链接，接收方无需同时在线即可在浏览器中提取。</string>
+
+    <string name="guide_footer_privacy_note">croc-app 完全开源且注重隐私。所有传输均为点对点连接并经由 PAKE 与 AES-GCM 高度加密。</string>
+    <string name="guide_footer_web_button">访问 croc-app.github.io</string>
 </resources>

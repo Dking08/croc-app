@@ -439,4 +439,59 @@
     <string name="history_file_not_found">File not found on device</string>
     <string name="quick_code_not_set_toast">Please set a default code or quick code in Settings first</string>
     <string name="quick_clipboard_empty_toast">Clipboard is empty</string>
+
+    <!-- ════ Guide & Troubleshooting Screen ════ -->
+    <string name="guide_title">Guide &amp; Troubleshooting</string>
+    <string name="guide_hero_subtitle">Comprehensive guide to encrypted transfers, secret codes, and error resolutions.</string>
+    <string name="guide_troubleshooting_badge">Troubleshoot</string>
+
+    <string name="guide_sec_basics_title">How Croc Works</string>
+    <string name="guide_sec_basics_subtitle">Core concepts, encryption, and transfer mechanisms</string>
+    <string name="guide_sec_basics_pake_title">End-to-End PAKE Encryption</string>
+    <string name="guide_sec_basics_pake_desc">Croc uses Password Authenticated Key Exchange (PAKE) to generate ephemeral cryptographic keys. The relay server cannot read or intercept your files.</string>
+    <string name="guide_sec_basics_modes_title">Direct Mode vs Store Mode</string>
+    <string name="guide_sec_basics_modes_desc">Direct Mode sends files directly in real-time between two online devices. Store Mode encrypts files and holds them temporarily on getcroc.com for pickup anytime.</string>
+    <string name="guide_sec_basics_lan_title">Local LAN Acceleration</string>
+    <string name="guide_sec_basics_lan_desc">If both devices are on the same Wi-Fi network, croc automatically switches to direct local IP transfer for maximum gigabit speeds.</string>
+    <string name="guide_sec_basics_codes_title">Secret Code Phrases</string>
+    <string name="guide_sec_basics_codes_desc">Croc uses 3-word phrases (e.g. bold-wave-rock) with billions of possible combinations. Both sender and receiver must use the exact same code.</string>
+
+    <string name="guide_sec_troubleshooting_title">Common Errors &amp; Solutions</string>
+    <string name="guide_sec_troubleshooting_subtitle">Step-by-step fixes for frequent transfer issues</string>
+    <string name="guide_err_room_full_title">Error: \"Room is full\"</string>
+    <string name="guide_err_room_full_cause">Another transfer is currently active using the exact same code, or a previous session hasn\'t fully timed out.</string>
+    <string name="guide_err_room_full_solution">Wait 10–15 seconds, or tap the Regenerate button on the Send screen to create a fresh new secret code.</string>
+    <string name="guide_err_pake_title">Error: \"Could not secure channel\" / PAKE Failed</string>
+    <string name="guide_err_pake_cause">The sender and receiver entered different code phrases, misspelled a word, or peer disconnected.</string>
+    <string name="guide_err_pake_solution">Double check that both devices typed the exact code phrase including hyphens, or use QR Code scan to avoid typos.</string>
+    <string name="guide_err_legacy_title">\"Older Croc Detected\" / Version Mismatch</string>
+    <string name="guide_err_legacy_cause">One device is running croc v11 (new protocol) and the other is running croc v10 or earlier.</string>
+    <string name="guide_err_legacy_solution">Tap \"Retry (Legacy)\" on the transfer card, or turn on \"Try legacy croc first\" in Settings.</string>
+    <string name="guide_err_relay_title">Error: \"Relay connection failed / Timed out\"</string>
+    <string name="guide_err_relay_cause">Firewall, proxy, VPN, or unstable internet connection blocking communication with the relay server.</string>
+    <string name="guide_err_relay_solution">Verify internet access. If behind Tor/VPN, configure SOCKS5 proxy in Settings, or use a custom self-hosted relay.</string>
+    <string name="guide_err_file_missing_title">File not found on device</string>
+    <string name="guide_err_file_missing_cause">The previously received file was renamed, moved, or deleted outside the croc-app.</string>
+    <string name="guide_err_file_missing_solution">Check your Downloads/croc-received folder using your file manager to locate or restore the file.</string>
+
+    <string name="guide_sec_quick_title">Quick Mode &amp; 1-Tap Transfers</string>
+    <string name="guide_sec_quick_subtitle">Fast daily sharing with saved defaults</string>
+    <string name="guide_sec_quick_setup_title">Configuring Default &amp; Quick Codes</string>
+    <string name="guide_sec_quick_setup_desc">Set a default secret code in Settings. Quick Send and Quick Receive will use this preset code so you don\'t need to type each time.</string>
+    <string name="guide_sec_quick_clipboard_title">Clipboard 1-Tap Send</string>
+    <string name="guide_sec_quick_clipboard_desc">Tap the top-left clipboard icon in Quick tab to instantly broadcast your copied text to your receiver.</string>
+    <string name="guide_sec_quick_qr_title">QR Code Scanner</string>
+    <string name="guide_sec_quick_qr_desc">Tap the QR button in Quick tab to instantly scan a sender\'s QR code and begin downloading immediately.</string>
+
+    <string name="guide_sec_crossplatform_title">Cross-Platform &amp; Web Sharing</string>
+    <string name="guide_sec_crossplatform_subtitle">Connect across Android, Linux, macOS, Windows, and browsers</string>
+    <string name="guide_sec_web_title">Web Client (https://croc-app.github.io)</string>
+    <string name="guide_sec_web_desc">Share files with recipients who don\'t have the app installed. They can open the web client on any modern browser to receive files.</string>
+    <string name="guide_sec_cli_title">Command Line Interface (CLI)</string>
+    <string name="guide_sec_cli_desc">On computers, install the official croc CLI (via brew, scoop, or apt) and run: croc &lt;code&gt; to receive or send directly.</string>
+    <string name="guide_sec_storelinks_title">Stored Pickups (https://getcroc.com)</string>
+    <string name="guide_sec_storelinks_desc">Use Store Mode to share download links that recipients can download from any web browser without being online at the same time.</string>
+
+    <string name="guide_footer_privacy_note">croc-app is open-source and privacy-focused. Transfers are peer-to-peer and encrypted with PAKE &amp; AES-GCM.</string>
+    <string name="guide_footer_web_button">Visit croc-app.github.io</string>
 </resources>

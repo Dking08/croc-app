@@ -416,4 +416,59 @@
     <string name="history_file_not_found">Archivo no encontrado en el dispositivo</string>
     <string name="quick_code_not_set_toast">Por favor, configure primero un código predeterminado o rápido en Ajustes</string>
     <string name="quick_clipboard_empty_toast">El portapapeles está vacío</string>
+
+    <!-- ════ Guide & Troubleshooting Screen ════ -->
+    <string name="guide_title">Guía y Solución de problemas</string>
+    <string name="guide_hero_subtitle">Guía completa de transferencias cifradas, códigos secretos y resolución de errores.</string>
+    <string name="guide_troubleshooting_badge">Solución</string>
+
+    <string name="guide_sec_basics_title">Cómo funciona Croc</string>
+    <string name="guide_sec_basics_subtitle">Conceptos básicos, cifrado y mecanismos de transferencia</string>
+    <string name="guide_sec_basics_pake_title">Cifrado de extremo a extremo con PAKE</string>
+    <string name="guide_sec_basics_pake_desc">Croc utiliza intercambio de claves autenticado por contraseña (PAKE) para generar claves efímeras. El servidor relay no puede leer ni interceptar sus archivos.</string>
+    <string name="guide_sec_basics_modes_title">Modo Directo vs Modo Almacenar</string>
+    <string name="guide_sec_basics_modes_desc">El Modo Directo envía archivos en tiempo real entre dos dispositivos activos. El Modo Almacenar cifra los archivos y los guarda temporalmente en getcroc.com para recogerlos en cualquier momento.</string>
+    <string name="guide_sec_basics_lan_title">Aceleración en red local (LAN)</string>
+    <string name="guide_sec_basics_lan_desc">Si ambos dispositivos están en la misma red Wi-Fi, croc cambia automáticamente a transferencia por IP local directa para máxima velocidad.</string>
+    <string name="guide_sec_basics_codes_title">Frases de códigos secretos</string>
+    <string name="guide_sec_basics_codes_desc">Croc utiliza frases de 3 palabras (ej. bold-wave-rock) con miles de millones de combinaciones. Ambos extremos deben usar el mismo código exacto.</string>
+
+    <string name="guide_sec_troubleshooting_title">Errores comunes y Soluciones</string>
+    <string name="guide_sec_troubleshooting_subtitle">Instrucciones paso a paso para resolver problemas frecuentes</string>
+    <string name="guide_err_room_full_title">Error: \"Room is full\" (Sala llena)</string>
+    <string name="guide_err_room_full_cause">Hay otra transferencia activa usando exactamente el mismo código, o una sesión previa no ha terminado de cerrarse.</string>
+    <string name="guide_err_room_full_solution">Espere 10–15 segundos, o pulse el botón Regenerar en la pantalla Enviar para crear un nuevo código secreto único.</string>
+    <string name="guide_err_pake_title">Error: \"Could not secure channel\" / Fallo de PAKE</string>
+    <string name="guide_err_pake_cause">El emisor y el receptor introdujeron códigos distintos, hubo una errata o el par se desconectó.</string>
+    <string name="guide_err_pake_solution">Compruebe que ambos dispositivos escribieron la frase de código exacta incluyendo guiones, o use el escaneo QR para evitar erratas.</string>
+    <string name="guide_err_legacy_title">\"Older Croc Detected\" / Versión incompatible</string>
+    <string name="guide_err_legacy_cause">Un dispositivo ejecuta croc v11 (nuevo protocolo) y el otro ejecuta croc v10 o anterior.</string>
+    <string name="guide_err_legacy_solution">Pulse \"Reintentar (Legacy)\" en la tarjeta de transferencia, o active \"Probar croc heredado primero\" en Ajustes.</string>
+    <string name="guide_err_relay_title">Error: \"Relay connection failed / Timed out\"</string>
+    <string name="guide_err_relay_cause">Cortafuegos, proxy, VPN o conexión inestable que bloquea la comunicación con el servidor relay.</string>
+    <string name="guide_err_relay_solution">Verifique el acceso a Internet. Si usa Tor/VPN, configure el proxy SOCKS5 en Ajustes o use un relay personalizado.</string>
+    <string name="guide_err_file_missing_title">Archivo no encontrado en el dispositivo</string>
+    <string name="guide_err_file_missing_cause">El archivo recibido anteriormente fue renombrado, movido o eliminado fuera de croc-app.</string>
+    <string name="guide_err_file_missing_solution">Revise su carpeta Descargas/croc-received usando su gestor de archivos para localizar o restaurar el archivo.</string>
+
+    <string name="guide_sec_quick_title">Modo Rápido y Transferencias en 1 toque</string>
+    <string name="guide_sec_quick_subtitle">Compartir rápidamente en el día a día con valores guardados</string>
+    <string name="guide_sec_quick_setup_title">Configurar códigos predeterminados y rápidos</string>
+    <string name="guide_sec_quick_setup_desc">Defina un código secreto predeterminado en Ajustes. Envío rápido y Recepción rápida usarán este código para no tener que escribirlo cada vez.</string>
+    <string name="guide_sec_quick_clipboard_title">Envío rápido de portapapeles</string>
+    <string name="guide_sec_quick_clipboard_desc">Toque el icono de portapapeles en la pestaña Rápido para transmitir inmediatamente el texto copiado al receptor.</string>
+    <string name="guide_sec_quick_qr_title">Escáner de código QR</string>
+    <string name="guide_sec_quick_qr_desc">Toque el botón QR en la pestaña Rápido para escanear el código QR de un emisor y comenzar a descargar de inmediato.</string>
+
+    <string name="guide_sec_crossplatform_title">Multiplataforma y Enlaces web</string>
+    <string name="guide_sec_crossplatform_subtitle">Conéctese entre Android, Linux, macOS, Windows y navegadores</string>
+    <string name="guide_sec_web_title">Cliente Web (https://croc-app.github.io)</string>
+    <string name="guide_sec_web_desc">Comparta archivos con personas que no tengan la app instalada. Pueden abrir el cliente web en cualquier navegador moderno para recibir archivos.</string>
+    <string name="guide_sec_cli_title">Línea de comandos (CLI)</string>
+    <string name="guide_sec_cli_desc">En ordenadores, instale el CLI oficial de croc (vía brew, scoop o apt) y ejecute: croc &lt;código&gt; para recibir o enviar directamente.</string>
+    <string name="guide_sec_storelinks_title">Recogidas almacenadas (https://getcroc.com)</string>
+    <string name="guide_sec_storelinks_desc">Use el Modo Almacenar para compartir enlaces de descarga que el destinatario puede descargar desde cualquier navegador sin estar conectados a la vez.</string>
+
+    <string name="guide_footer_privacy_note">croc-app es de código abierto y enfocada en la privacidad. Las transferencias son punto a punto y cifradas con PAKE y AES-GCM.</string>
+    <string name="guide_footer_web_button">Visitar croc-app.github.io</string>
 </resources>

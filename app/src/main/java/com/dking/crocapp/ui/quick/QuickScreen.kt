@@ -106,12 +106,12 @@ import kotlin.math.sin
 fun QuickScreen(
     viewModel: QuickViewModel = viewModel(),
     onOpenScanner: (onCodeScanned: (String) -> Unit) -> Unit = {},
-    onNavigateToSettings: () -> Unit = {}
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToGuide: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    var showInfoDialog by remember { mutableStateOf(false) }
 
     val isTransferActive = uiState.transferState is CrocTransferState.Preparing ||
         uiState.transferState is CrocTransferState.WaitingForPeer ||
@@ -138,8 +138,8 @@ fun QuickScreen(
                     Text(stringResource(R.string.nav_quick), fontWeight = FontWeight.Bold)
                 },
                 actions = {
-                    IconButton(onClick = { showInfoDialog = true }) {
-                        Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.quick_info_title))
+                    IconButton(onClick = onNavigateToGuide) {
+                        Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.guide_title))
                     }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.nav_settings))
@@ -151,13 +151,6 @@ fun QuickScreen(
             )
         }
     ) { paddingValues ->
-        if (showInfoDialog) {
-            QuickInfoDialog(
-                receiveLocationLabel = uiState.receiveLocationLabel,
-                onDismiss = { showInfoDialog = false }
-            )
-        }
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -293,69 +286,7 @@ private fun QuickBrandHeader() {
     }
 }
 
-@Composable
-private fun QuickInfoDialog(
-    receiveLocationLabel: String,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = stringResource(R.string.quick_info_title),
-                fontWeight = FontWeight.SemiBold
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = stringResource(R.string.quick_info_description),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = "Secret codes are shared phrases used to pair the sender and receiver. Both sides must use the same code for a transfer.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = buildAnnotatedString {
-                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Send") }
-                            append(" — share files or clipboard text.")
-                        },
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = buildAnnotatedString {
-                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Receive") }
-                            append(" — wait on a code to receive files or clipboard text.")
-                        },
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = buildAnnotatedString {
-                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Quick") }
-                            append(" — fast one-tap flows with your saved defaults.")
-                        },
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-                Text(
-                    text = buildAnnotatedString {
-                        append("Share the code or QR only with the person you want to connect with. Received files are saved to ")
-                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(receiveLocationLabel) }
-                        append(".")
-                    },
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_close))
-            }
-        }
-    )
-}
+
 
 @Composable
 private fun TransferStatusSection(

@@ -416,4 +416,59 @@
     <string name="history_file_not_found">डिवाइस पर फ़ाइल नहीं मिली</string>
     <string name="quick_code_not_set_toast">कृपया पहले सेटिंग्स में एक डिफ़ॉल्ट या त्वरित कोड सेट करें</string>
     <string name="quick_clipboard_empty_toast">क्लिपबोर्ड खाली है</string>
+
+    <!-- ════ Guide & Troubleshooting Screen ════ -->
+    <string name="guide_title">गाइड और समस्या निवारण</string>
+    <string name="guide_hero_subtitle">एन्क्रिप्टेड ट्रांसफ़र, गुप्त कोड और त्रुटि समाधान के लिए व्यापक गाइड।</string>
+    <string name="guide_troubleshooting_badge">समस्या निवारण</string>
+
+    <string name="guide_sec_basics_title">Croc कैसे काम करता है</string>
+    <string name="guide_sec_basics_subtitle">मूल अवधारणाएँ, एन्क्रिप्शन और ट्रांसफ़र तंत्र</string>
+    <string name="guide_sec_basics_pake_title">एंड-टू-एंड PAKE एन्क्रिप्शन</string>
+    <string name="guide_sec_basics_pake_desc">Croc कुंजियाँ बनाने के लिए पासवर्ड प्रमाणित कुंजी विनिमय (PAKE) का उपयोग करता है। रिले सर्वर आपकी फ़ाइलें नहीं पढ़ सकता।</string>
+    <string name="guide_sec_basics_modes_title">प्रत्यक्ष मोड बनाम स्टोर मोड</string>
+    <string name="guide_sec_basics_modes_desc">प्रत्यक्ष मोड दो सक्रिय डिवाइसों के बीच वास्तविक समय में फ़ाइलें भेजता है। स्टोर मोड फ़ाइलों को एन्क्रिप्ट कर getcroc.com पर बाद में लेने के लिए रखता है।</string>
+    <string name="guide_sec_basics_lan_title">स्थानीय LAN गति वृद्धि</string>
+    <string name="guide_sec_basics_lan_desc">यदि दोनों डिवाइस एक ही वाई-फ़ाई पर हैं, तो croc अधिकतम गति के लिए सीधे स्थानीय IP ट्रांसफ़र पर स्विच हो जाता है।</string>
+    <string name="guide_sec_basics_codes_title">गुप्त कोड वाक्यांश</string>
+    <string name="guide_sec_basics_codes_desc">Croc 3-शब्दों वाले वाक्यांशों (उदा. bold-wave-rock) का उपयोग करता है। प्रेषक और प्राप्तकर्ता दोनों को समान कोड का उपयोग करना होगा।</string>
+
+    <string name="guide_sec_troubleshooting_title">सामान्य त्रुटियाँ और समाधान</string>
+    <string name="guide_sec_troubleshooting_subtitle">अक्सर आने वाली समस्याओं के लिए चरणबद्ध समाधान</string>
+    <string name="guide_err_room_full_title">त्रुटि: \"Room is full\" (कक्ष भरा हुआ है)</string>
+    <string name="guide_err_room_full_cause">उसी कोड के साथ कोई अन्य ट्रांसफ़र सक्रिय है, या पिछला सत्र पूरी तरह समाप्त नहीं हुआ है।</string>
+    <string name="guide_err_room_full_solution">10–15 सेकंड प्रतीक्षा करें, या भेजें स्क्रीन पर नया कोड बनाने के लिए रीजेनरेट बटन दबाएँ।</string>
+    <string name="guide_err_pake_title">त्रुटि: \"Could not secure channel\" / PAKE विफल</string>
+    <string name="guide_err_pake_cause">प्रेषक और प्राप्तकर्ता ने अलग कोड दर्ज किया, कोई वर्तनी त्रुटि हुई, या कनेक्शन कट गया।</string>
+    <string name="guide_err_pake_solution">जाँचें कि दोनों डिवाइसों पर हाइफ़न सहित सही कोड दर्ज है, या त्रुटियों से बचने के लिए QR कोड स्कैन करें।</string>
+    <string name="guide_err_legacy_title">\"Older Croc Detected\" / संस्करण असंगति</string>
+    <string name="guide_err_legacy_cause">एक डिवाइस croc v11 (नया प्रोटोकॉल) चला रहा है और दूसरा croc v10 या पुराना चला रहा है।</string>
+    <string name="guide_err_legacy_solution">ट्रांसफ़र कार्ड पर \"पुनः प्रयास करें (Legacy)\" दबाएँ, या सेटिंग्स में \"पहले लीगेसी क्रॉक आज़माएँ\" सक्षम करें।</string>
+    <string name="guide_err_relay_title">त्रुटि: \"Relay connection failed / Timed out\"</string>
+    <string name="guide_err_relay_cause">फ़ायरवॉल, प्रॉक्सी, VPN या अस्थिर इंटरनेट कनेक्शन रिले सर्वर से संचार में बाधा डाल रहा है।</string>
+    <string name="guide_err_relay_solution">इंटरनेट जाँचें। Tor/VPN के लिए सेटिंग्स में SOCKS5 प्रॉक्सी कॉन्फ़िगर करें, या कस्टम रिले का उपयोग करें।</string>
+    <string name="guide_err_file_missing_title">डिवाइस पर फ़ाइल नहीं मिली</string>
+    <string name="guide_err_file_missing_cause">प्राप्त फ़ाइल का नाम बदल दिया गया, हटा दिया गया या croc-app के बाहर स्थानांतरित कर दिया गया।</string>
+    <string name="guide_err_file_missing_solution">फ़ाइल खोजने या पुनर्स्थापित करने के लिए फ़ाइल प्रबंधक में Downloads/croc-received फ़ोल्डर जाँचें।</string>
+
+    <string name="guide_sec_quick_title">त्वरित मोड और 1-टैप ट्रांसफ़र</string>
+    <string name="guide_sec_quick_subtitle">सहेजे गए डिफ़ॉल्ट के साथ दैनिक तेज़ शेयरिंग</string>
+    <string name="guide_sec_quick_setup_title">डिफ़ॉल्ट और त्वरित कोड सेट करना</string>
+    <string name="guide_sec_quick_setup_desc">सेटिंग्स में डिफ़ॉल्ट कोड सेट करें। त्वरित भेजें और प्राप्त करें इस कोड का उपयोग करेंगे ताकि हर बार लिखना न पड़े।</string>
+    <string name="guide_sec_quick_clipboard_title">क्लिपबोर्ड 1-टैप भेजें</string>
+    <string name="guide_sec_quick_clipboard_desc">क्लिपबोर्ड से कॉपी किया गया टेक्स्ट तुरंत भेजने के लिए त्वरित टैब में क्लिपबोर्ड आइकन दबाएँ।</string>
+    <string name="guide_sec_quick_qr_title">QR कोड स्कैनर</string>
+    <string name="guide_sec_quick_qr_desc">प्रेषक का QR कोड स्कैन करके तुरंत डाउनलोड शुरू करने के लिए त्वरित टैब में QR बटन दबाएँ।</string>
+
+    <string name="guide_sec_crossplatform_title">क्रॉस-प्लेटफ़ॉर्म और वेब शेयरिंग</string>
+    <string name="guide_sec_crossplatform_subtitle">Android, Linux, macOS, Windows और ब्राउज़र के बीच कनेक्ट करें</string>
+    <string name="guide_sec_web_title">वेब क्लाइंट (https://croc-app.github.io)</string>
+    <string name="guide_sec_web_desc">उन उपयोगकर्ताओं के साथ फ़ाइलें साझा करें जिनके पास ऐप नहीं है। वे किसी भी आधुनिक ब्राउज़र में वेब क्लाइंट खोलकर प्राप्त कर सकते हैं।</string>
+    <string name="guide_sec_cli_title">कमांड लाइन इंटरफ़ेस (CLI)</string>
+    <string name="guide_sec_cli_desc">कंप्यूटर पर आधिकारिक croc CLI इंस्टॉल करें और सीधे प्राप्त करने या भेजने के लिए चलाएँ: croc &lt;code&gt;।</string>
+    <string name="guide_sec_storelinks_title">संग्रहीत पिकअप (https://getcroc.com)</string>
+    <string name="guide_sec_storelinks_desc">डाउनलोड लिंक साझा करने के लिए स्टोर मोड का उपयोग करें जिसे प्राप्तकर्ता एक ही समय पर ऑनलाइन हुए बिना डाउनलोड कर सकते हैं।</string>
+
+    <string name="guide_footer_privacy_note">croc-app ओपन-सोर्स और गोपनीयता-केंद्रित है। सभी ट्रांसफ़र PAKE और AES-GCM से सुरक्षित हैं।</string>
+    <string name="guide_footer_web_button">croc-app.github.io पर जाएँ</string>
 </resources>
