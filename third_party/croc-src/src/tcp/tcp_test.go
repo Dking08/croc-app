@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	log "github.com/schollz/logger"
+	log "github.com/schollz/croc/v11/src/logger"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -140,7 +140,7 @@ func TestConcurrentRoomAdmissionRespectsWaitingRoomLimit(t *testing.T) {
 
 	start := make(chan struct{})
 	var wg sync.WaitGroup
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		wg.Add(1)
 		go func(room int) {
 			defer wg.Done()
@@ -601,6 +601,8 @@ func TestWrongPassword(t *testing.T) {
 	_, _, _, err := ConnectToTCPServer("127.0.0.1:8385", "wrongpass", "testRoom")
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "bad password")
+	assert.NotContains(t, err.Error(), "wrongpass")
+	assert.NotContains(t, err.Error(), "testRoom")
 }
 
 // A relay password with trailing whitespace should still accept a trimmed client password.

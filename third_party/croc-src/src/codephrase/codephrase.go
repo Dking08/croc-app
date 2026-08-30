@@ -61,6 +61,9 @@ var (
 )
 
 func mustLoadWords(name, contents string, expected int) []string {
+	// Git may check out the embedded text with CRLF on Windows. Normalize only
+	// complete CRLF sequences so other control characters remain invalid.
+	contents = strings.ReplaceAll(contents, "\r\n", "\n")
 	words := strings.Split(strings.TrimSuffix(contents, "\n"), "\n")
 	if len(words) != expected {
 		panic(fmt.Sprintf("%s word list has %d entries; want %d", name, len(words), expected))
@@ -237,8 +240,8 @@ func isLowercaseWord(word string) bool {
 }
 
 func isLowercaseListWord(word string) bool {
-	parts := strings.Split(word, "-")
-	for _, part := range parts {
+	parts := strings.SplitSeq(word, "-")
+	for part := range parts {
 		if !isLowercaseWord(part) {
 			return false
 		}

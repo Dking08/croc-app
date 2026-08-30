@@ -2,6 +2,7 @@ package tcp
 
 import (
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -65,11 +66,44 @@ func WithHandshakeTimeout(timeout time.Duration) serverOptsFunc {
 	}
 }
 
+// WithAdmissionLimits sets sliding-window room admission limits per source IP
+// and per room on this relay port.
+func WithAdmissionLimits(sourceLimit, roomLimit int, window time.Duration) serverOptsFunc {
+	return func(s *server) error {
+		if sourceLimit <= 0 {
+			return fmt.Errorf("source join limit must be positive")
+		}
+		if roomLimit <= 0 {
+			return fmt.Errorf("room join limit must be positive")
+		}
+		if window <= 0 {
+			return fmt.Errorf("join limit window must be positive")
+		}
+		s.joinLimitWindow = window
+		s.sourceJoinLimit = sourceLimit
+		s.roomJoinLimit = roomLimit
+		return nil
+	}
+}
+
 // WithRoomPairedCallback sets a callback invoked after a room's second peer
 // has joined and received confirmation. The callback must not block.
 func WithRoomPairedCallback(callback func()) serverOptsFunc {
 	return func(s *server) error {
 		s.roomPaired = callback
+		return nil
+	}
+}
+
+// WithFastAdmission shares one capability key and replay set across every
+// advertised port of a relay process.
+func WithFastAdmission(capabilities *RelayCapabilitySet) serverOptsFunc {
+	return func(s *server) error {
+		if capabilities == nil {
+			return fmt.Errorf("fast admission capability set is required")
+		}
+		s.fastAdmission = capabilities
+		capabilities.registerPort()
 		return nil
 	}
 }
@@ -89,10 +123,5 @@ func WithRoomTTL(ttl time.Duration) serverOptsFunc {
 }
 
 func containsSlice(s []string, e string) bool {
-	for _, ss := range s {
-		if e == ss {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, e)
 }

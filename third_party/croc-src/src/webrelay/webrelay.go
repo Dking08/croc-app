@@ -22,10 +22,10 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	log "github.com/schollz/croc/v11/src/logger"
 	"github.com/schollz/croc/v11/src/publicrelay"
 	"github.com/schollz/croc/v11/src/store"
 	buildversion "github.com/schollz/croc/v11/src/version"
-	log "github.com/schollz/logger"
 )
 
 const (
@@ -512,6 +512,21 @@ func injectUmamiScript(index []byte, baseURL, websiteID string) []byte {
 func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if r.URL.Path == "/__croc_download__" ||
+		strings.HasPrefix(r.URL.Path, "/__croc_download__/") {
+		// This namespace is handled entirely by the download service worker. If
+		// a request reaches the server, returning the SPA would save index.html
+		// under the offered filename and conceal the interception failure.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(http.StatusNotFound)
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, "streaming download was not intercepted\n")
+		}
 		return
 	}
 

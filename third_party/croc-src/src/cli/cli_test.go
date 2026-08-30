@@ -130,6 +130,62 @@ func TestRelayRejectsNonPositiveHandshakeGuards(t *testing.T) {
 	}
 }
 
+func TestRelayAdmissionLimitConfiguration(t *testing.T) {
+	for _, key := range []string{"CROC_SOURCE_JOIN_LIMIT", "CROC_ROOM_JOIN_LIMIT", "CROC_JOIN_LIMIT_WINDOW"} {
+		unsetEnv(t, key)
+	}
+	t.Run("defaults", func(t *testing.T) {
+		got := runRelayWithCapturedConfig(t, []string{"croc", "relay"})
+		if got.sourceJoinLimit != tcp.DEFAULT_SOURCE_JOIN_LIMIT ||
+			got.roomJoinLimit != tcp.DEFAULT_ROOM_JOIN_LIMIT ||
+			got.joinLimitWindow != tcp.DEFAULT_JOIN_LIMIT_WINDOW {
+			t.Fatalf("unexpected default admission configuration: %+v", got)
+		}
+	})
+	t.Run("flags", func(t *testing.T) {
+		got := runRelayWithCapturedConfig(t, []string{
+			"croc", "relay",
+			"--source-join-limit", "12",
+			"--room-join-limit", "5",
+			"--join-limit-window", "45s",
+		})
+		if got.sourceJoinLimit != 12 || got.roomJoinLimit != 5 || got.joinLimitWindow != 45*time.Second {
+			t.Fatalf("unexpected flag admission configuration: %+v", got)
+		}
+	})
+	t.Run("environment", func(t *testing.T) {
+		t.Setenv("CROC_SOURCE_JOIN_LIMIT", "13")
+		t.Setenv("CROC_ROOM_JOIN_LIMIT", "4")
+		t.Setenv("CROC_JOIN_LIMIT_WINDOW", "30s")
+		got := runRelayWithCapturedConfig(t, []string{"croc", "relay"})
+		if got.sourceJoinLimit != 13 || got.roomJoinLimit != 4 || got.joinLimitWindow != 30*time.Second {
+			t.Fatalf("unexpected environment admission configuration: %+v", got)
+		}
+	})
+}
+
+func TestRelayRejectsNonPositiveAdmissionLimits(t *testing.T) {
+	tests := []struct {
+		arg  string
+		want string
+	}{
+		{arg: "--source-join-limit=0", want: "--source-join-limit must be positive"},
+		{arg: "--room-join-limit=-1", want: "--room-join-limit must be positive"},
+		{arg: "--join-limit-window=0s", want: "--join-limit-window must be positive"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.arg, func(t *testing.T) {
+			for _, key := range []string{"CROC_SOURCE_JOIN_LIMIT", "CROC_ROOM_JOIN_LIMIT", "CROC_JOIN_LIMIT_WINDOW"} {
+				unsetEnv(t, key)
+			}
+			err := newApp().Run([]string{"croc", "relay", tt.arg})
+			if err == nil || err.Error() != tt.want {
+				t.Fatalf("error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func runRelayWithCapturedMaxRooms(t *testing.T, args []string) int {
 	t.Helper()
 	return runRelayWithCapturedConfig(t, args).maxRoomsOpen
@@ -139,6 +195,9 @@ type capturedRelayConfig struct {
 	maxRoomsOpen         int
 	maxPendingHandshakes int
 	handshakeTimeout     time.Duration
+	sourceJoinLimit      int
+	roomJoinLimit        int
+	joinLimitWindow      time.Duration
 }
 
 func runRelayWithCapturedConfig(t *testing.T, args []string) capturedRelayConfig {
@@ -153,6 +212,9 @@ func runRelayWithCapturedConfig(t *testing.T, args []string) capturedRelayConfig
 			got.maxRoomsOpen = ctx.Int("max-rooms-open")
 			got.maxPendingHandshakes = ctx.Int("max-pending-handshakes")
 			got.handshakeTimeout = ctx.Duration("handshake-timeout")
+			got.sourceJoinLimit = ctx.Int("source-join-limit")
+			got.roomJoinLimit = ctx.Int("room-join-limit")
+			got.joinLimitWindow = ctx.Duration("join-limit-window")
 			return nil
 		}
 		if err := app.Run(args); err != nil {
@@ -264,6 +326,120 @@ func TestRevokeIsRootFlag(t *testing.T) {
 		if command.Name == "revoke" {
 			t.Fatal("revoke should not be registered as a subcommand")
 		}
+	}
+}
+
+func TestTransportIsSendOnlyAndDefaultsToAuto(t *testing.T) {
+	app := newApp()
+	var got string
+	var sendHasTransport bool
+	for _, command := range app.Commands {
+		if command.Name == "send" {
+			for _, sendFlag := range command.Flags {
+				if sendFlag.Names()[0] == "transport" {
+					sendHasTransport = true
+					break
+				}
+			}
+			command.Action = func(ctx *cli.Context) error {
+				got = ctx.String("transport")
+				return nil
+			}
+		}
+	}
+	if err := app.Run([]string{"croc", "send"}); err != nil {
+		t.Fatalf("parse default transport: %v", err)
+	}
+	if got != "auto" {
+		t.Fatalf("default transport = %q, want auto", got)
+	}
+	if err := app.Run([]string{"croc", "send", "--transport", "derp"}); err != nil {
+		t.Fatalf("parse --transport derp: %v", err)
+	}
+	if got != "derp" {
+		t.Fatalf("transport = %q, want derp", got)
+	}
+	if !sendHasTransport {
+		t.Fatal("--transport is not registered on the send command")
+	}
+	for _, rootFlag := range app.Flags {
+		if rootFlag.Names()[0] == "transport" {
+			t.Fatal("--transport must not be registered as a root flag")
+		}
+	}
+	if err := newApp().Run([]string{"croc", "--transport", "derp", "code"}); err == nil || !strings.Contains(err.Error(), "flag provided but not defined") {
+		t.Fatalf("receiver-side --transport error = %v", err)
+	}
+}
+
+func TestTransportRejectsInvalidValuesAndIncompatibleCLIOptions(t *testing.T) {
+	type transportErrorTest struct {
+		name string
+		args []string
+		want string
+	}
+	tests := []transportErrorTest{
+		{
+			name: "invalid",
+			args: []string{"croc", "--ignore-stdin", "send", "--transport", "magic", "--text", "hello"},
+			want: `invalid transport "magic" (choose auto, derp, or relay)`,
+		},
+		{
+			name: "local derp",
+			args: []string{"croc", "--local", "--ignore-stdin", "send", "--transport", "derp", "--text", "hello"},
+			want: "--transport must be auto for local-only transfers",
+		},
+		{
+			name: "local relay",
+			args: []string{"croc", "--local", "--ignore-stdin", "send", "--transport", "relay", "--text", "hello"},
+			want: "--transport must be auto for local-only transfers",
+		},
+		{
+			name: "stored derp",
+			args: []string{"croc", "--ignore-stdin", "send", "--transport", "derp", "--store", "unused"},
+			want: "--transport must be auto for stored transfers",
+		},
+		{
+			name: "stored relay",
+			args: []string{"croc", "--ignore-stdin", "send", "--transport", "relay", "--store", "unused"},
+			want: "--transport must be auto for stored transfers",
+		},
+	}
+	if _, downgraded, err := croc.ResolveTransportMode(string(croc.TransportDERP)); err != nil {
+		t.Fatal(err)
+	} else if !downgraded {
+		tests = append(tests, transportErrorTest{
+			name: "qrcode",
+			args: []string{"croc", "--ignore-stdin", "send", "--transport", "derp", "--qrcode", "unused"},
+			want: "--transport derp cannot be combined with --qrcode",
+		})
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := newApp().Run(test.args)
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestSendHashDefaultsToXXHash(t *testing.T) {
+	app := newApp()
+	var algorithm string
+	for _, command := range app.Commands {
+		if command.Name == "send" {
+			command.Action = func(ctx *cli.Context) error {
+				algorithm = ctx.String("hash")
+				return nil
+			}
+		}
+	}
+	if err := app.Run([]string{"croc", "send"}); err != nil {
+		t.Fatal(err)
+	}
+	if algorithm != "xxhash" {
+		t.Fatalf("default hash = %q", algorithm)
 	}
 }
 
@@ -775,6 +951,75 @@ func TestApplyRememberedSendOptionsDisableClipboard(t *testing.T) {
 				return
 			}
 			t.Fatal("send command not found")
+		})
+	}
+}
+
+func TestApplyRememberedSendOptionsTransport(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		args       []string
+		remembered croc.TransportMode
+		want       croc.TransportMode
+	}{
+		{
+			name:       "inherits remembered DERP",
+			args:       []string{"croc", "send"},
+			remembered: croc.TransportDERP,
+			want:       croc.TransportDERP,
+		},
+		{
+			name:       "explicit relay overrides remembered DERP",
+			args:       []string{"croc", "send", "--transport", "relay"},
+			remembered: croc.TransportDERP,
+			want:       croc.TransportRelay,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			app := newApp()
+			for _, command := range app.Commands {
+				if command.Name != "send" {
+					continue
+				}
+				command.Action = func(ctx *cli.Context) error {
+					got, err := croc.ParseTransportMode(ctx.String("transport"))
+					if err != nil {
+						return err
+					}
+					options := croc.Options{Transport: got}
+					applyRememberedSendOptions(ctx, &options, croc.Options{Transport: test.remembered})
+					if options.Transport != test.want {
+						t.Fatalf("Transport = %q, want %q", options.Transport, test.want)
+					}
+					return nil
+				}
+				if err := app.Run(test.args); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			t.Fatal("send command not found")
+		})
+	}
+}
+
+func TestWriteTailcatRelayFallbackWarning(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		quiet      bool
+		downgraded bool
+		want       string
+	}{
+		{name: "downgraded", downgraded: true, want: tailcatRelayFallbackWarning + "\n"},
+		{name: "quiet", quiet: true, downgraded: true},
+		{name: "unchanged"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output strings.Builder
+			writeTailcatRelayFallbackWarning(&output, test.quiet, test.downgraded)
+			if got := output.String(); got != test.want {
+				t.Fatalf("warning output = %q; want %q", got, test.want)
+			}
 		})
 	}
 }
