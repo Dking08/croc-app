@@ -8,8 +8,8 @@ import (
 	"path"
 	"time"
 
+	log "github.com/schollz/croc/v11/src/logger"
 	"github.com/schollz/croc/v11/src/utils"
-	log "github.com/schollz/logger"
 )
 
 // TCP_BUFFER_SIZE is the maximum packet size
@@ -120,7 +120,7 @@ func lookup(address string) (ipaddress string, err error) {
 			result <- r
 		}(dns)
 	}
-	for i := 0; i < len(publicDNS); i++ {
+	for range publicDNS {
 		ipaddress = (<-result).s
 		log.Tracef("Resolved %s to %s", address, ipaddress)
 		if ipaddress != "" {

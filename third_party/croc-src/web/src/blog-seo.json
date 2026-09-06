@@ -1,0 +1,405 @@
+{
+  "site": {
+    "url": "https://getcroc.com",
+    "name": "croc",
+    "locale": "en_US",
+    "language": "en-US",
+    "authorName": "Zackary Scholl",
+    "authorUrl": "https://schollz.com/",
+    "publisherName": "croc",
+    "projectUrl": "https://infinitedigits.co/croc/",
+    "repositoryUrl": "https://github.com/schollz/croc",
+    "logo": "/croc.png"
+  },
+  "index": {
+    "title": "croc field notes: secure file transfer explained",
+    "description": "Notes and release updates from inside croc: terminal sharing, speed tests, live relays, PAKE encryption, browser transfers, temporary storage, and what changed in each version.",
+    "keywords": [
+      "croc blog",
+      "croc release notes",
+      "shared terminal",
+      "encrypted file transfer",
+      "secure file sharing",
+      "password-authenticated key exchange",
+      "file transfer relay"
+    ],
+    "image": "/blog/images/blog-field-notes.webp",
+    "socialImage": "/blog/images/blog-field-notes.jpg",
+    "imageAlt": "An open field notebook containing simple symbols for a relay, code tiles, a key, and a file."
+  },
+  "posts": [
+    {
+      "slug": "croc-v11-4-release-update",
+      "title": "croc v11.4 shares the terminal",
+      "seoTitle": "croc v11.4: Secure Terminal Sharing from CLI and Browser",
+      "description": "croc v11.4 adds secure collaborative terminals, separate read/write and read-only invitations, automatic reconnection, and browser joining.",
+      "kind": "update",
+      "category": "Release notes",
+      "publishedAt": "2026-09-03",
+      "modifiedAt": "2026-09-03",
+      "wordCount": 896,
+      "readingMinutes": 5,
+      "relatedSlugs": [
+        "share-terminal-with-croc-ssh",
+        "croc-v11-3-release-update"
+      ],
+      "keywords": [
+        "croc v11.4",
+        "croc release notes",
+        "croc ssh",
+        "shared terminal",
+        "collaborative terminal",
+        "browser SSH client",
+        "read-only terminal sharing",
+        "remote pair programming"
+      ],
+      "image": "/blog/images/croc-v11-4-release-update.webp",
+      "socialImage": "/blog/images/croc-v11-4-release-update.jpg",
+      "imageAlt": "Three black-and-white panels show native terminal hosting, browser joining, and separate read/write and read-only roles in croc v11.4."
+    },
+    {
+      "slug": "share-terminal-with-croc-ssh",
+      "title": "Share a terminal with croc ssh",
+      "seoTitle": "croc v11.4 SSH: Share a Terminal with a Six-Word Code",
+      "description": "croc ssh turns a six-word invitation into one shared terminal with read/write or read-only access from the CLI or browser.",
+      "category": "Remote terminals",
+      "publishedAt": "2026-09-03",
+      "modifiedAt": "2026-09-03",
+      "wordCount": 1138,
+      "readingMinutes": 6,
+      "relatedSlugs": [
+        "croc-v11-4-release-update",
+        "pake-step-by-step"
+      ],
+      "keywords": [
+        "croc v11.4",
+        "croc ssh",
+        "shared terminal",
+        "collaborative terminal",
+        "tmate alternative",
+        "remote pair programming",
+        "read-only terminal sharing",
+        "browser SSH client",
+        "Tailcat",
+        "PAKE"
+      ],
+      "image": "/blog/images/share-terminal-with-croc-ssh.webp",
+      "socialImage": "/blog/images/share-terminal-with-croc-ssh.jpg",
+      "imageAlt": "Three black-and-white panels show one host shell, a shared PTY, and separate read/write and read-only invitations."
+    },
+    {
+      "slug": "croc-v11-3-release-update",
+      "title": "croc v11.3 goes peer-to-peer",
+      "seoTitle": "croc v11.3: Tailcat WireGuard, DERP, and Relay Fallback",
+      "description": "croc v11.3 adds PAKE-bound Tailcat WireGuard streams, promotes them directly with magicsock, uses DERP as fallback, and retains croc relays.",
+      "kind": "update",
+      "category": "Release notes",
+      "publishedAt": "2026-08-24",
+      "modifiedAt": "2026-08-24",
+      "wordCount": 1450,
+      "readingMinutes": 7,
+      "relatedSlugs": [
+        "croc-v11-release-update",
+        "how-croc-moves-a-file"
+      ],
+      "keywords": [
+        "croc v11.3",
+        "croc release notes",
+        "peer-to-peer file transfer",
+        "DERP file transfer",
+        "WireGuard file transfer",
+        "UDP hole punching",
+        "Tailscale DERP",
+        "command-line file transfer"
+      ],
+      "image": "/blog/images/croc-v11-3-release-update.webp",
+      "socialImage": "/blog/images/croc-v11-3-release-update.jpg",
+      "imageAlt": "Three black-and-white panels show Tailcat direct transport, public DERP fallback, and the established croc relay path."
+    },
+    {
+      "slug": "croc-cli-speed-comparison",
+      "title": "How fast is croc?",
+      "seoTitle": "croc Speed Test: Eight CLI File-Transfer Tools Compared",
+      "description": "I timed eight command-line file-transfer tools between two servers using a 303 MB audio file and a folder of 64 photos.",
+      "category": "Benchmarks",
+      "publishedAt": "2026-08-23",
+      "modifiedAt": "2026-08-23",
+      "wordCount": 1127,
+      "readingMinutes": 6,
+      "relatedSlugs": [
+        "compare-file-transfer-tools",
+        "how-croc-moves-a-file"
+      ],
+      "keywords": [
+        "croc speed test",
+        "CLI file transfer benchmark",
+        "croc vs Magic Wormhole",
+        "croc vs Sendme",
+        "WebWormhole speed",
+        "Floe speed",
+        "AirPipe speed",
+        "derphole speed",
+        "wormhole-william speed",
+        "file transfer protocol",
+        "WebRTC file transfer",
+        "QUIC file transfer",
+        "command-line file transfer"
+      ],
+      "image": "/blog/images/croc-cli-speed-comparison.webp",
+      "socialImage": "/blog/images/croc-cli-speed-comparison.jpg",
+      "imageAlt": "Two terminal windows exchange an audio file across the United States while a stopwatch measures the transfer."
+    },
+    {
+      "slug": "croc-v11-release-update",
+      "title": "From croc v10 to v11",
+      "seoTitle": "croc v11: Features and Fixes from v11.0.0 to v11.1.1",
+      "description": "croc v11 makes the handshake harder to confuse, lets one encrypted stored transfer serve a group, starts the web client faster, and closes several unsafe edge cases.",
+      "kind": "update",
+      "category": "Release notes",
+      "publishedAt": "2026-08-16",
+      "modifiedAt": "2026-08-16",
+      "wordCount": 1113,
+      "readingMinutes": 6,
+      "relatedSlugs": [
+        "share-stored-file-with-group",
+        "pake-step-by-step"
+      ],
+      "keywords": [
+        "croc v11",
+        "croc release notes",
+        "croc v11.1.1",
+        "encrypted file transfer",
+        "multi-recipient file sharing",
+        "PAKE security",
+        "croc web"
+      ],
+      "image": "/blog/images/croc-v11-release-update.webp",
+      "socialImage": "/blog/images/croc-v11-release-update.jpg",
+      "imageAlt": "Three black-and-white panels use a shield, group, and lightning icon to represent the croc v11 release."
+    },
+    {
+      "slug": "why-croc-works-this-way",
+      "title": "Why croc works this way",
+      "description": "croc started with a large documentary, a friend in another country, and the surprisingly difficult question of how to send her the file.",
+      "category": "Origins",
+      "publishedAt": "2026-08-08",
+      "modifiedAt": "2026-08-10",
+      "wordCount": 740,
+      "readingMinutes": 4,
+      "relatedSlugs": [
+        "how-croc-moves-a-file",
+        "what-four-word-code-does"
+      ],
+      "keywords": [
+        "croc file transfer",
+        "secure file sharing",
+        "PAKE",
+        "file transfer relay",
+        "port forwarding"
+      ],
+      "image": "/blog/images/why-croc-works-this-way.webp",
+      "socialImage": "/blog/images/why-croc-works-this-way.jpg",
+      "imageAlt": "Two computers connected by a direct line, with a shared key and confirmation checkmark."
+    },
+    {
+      "slug": "how-croc-moves-a-file",
+      "title": "The relay is not a waiting room",
+      "description": "The croc relay looks a little like an upload server, except it does not wait for the whole file before sending it onward.",
+      "category": "How it works",
+      "publishedAt": "2026-08-08",
+      "modifiedAt": "2026-08-10",
+      "wordCount": 421,
+      "readingMinutes": 3,
+      "relatedSlugs": [
+        "why-croc-works-this-way",
+        "stored-transfer-one-download"
+      ],
+      "keywords": [
+        "file transfer relay",
+        "real-time file transfer",
+        "secure file sharing",
+        "croc",
+        "encrypted file transfer"
+      ],
+      "image": "/blog/images/how-croc-moves-a-file.webp",
+      "socialImage": "/blog/images/how-croc-moves-a-file.jpg",
+      "imageAlt": "Two devices connected through a central relay, with three file packets moving between them."
+    },
+    {
+      "slug": "what-four-word-code-does",
+      "title": "What the three words are doing",
+      "description": "I wanted a croc code to be easy to read aloud. Making three ordinary words secure enough for a file transfer takes a little more work.",
+      "category": "Security",
+      "publishedAt": "2026-08-08",
+      "modifiedAt": "2026-08-10",
+      "wordCount": 475,
+      "readingMinutes": 3,
+      "relatedSlugs": [
+        "pake-step-by-step",
+        "why-croc-works-this-way"
+      ],
+      "keywords": [
+        "croc code phrase",
+        "PAKE",
+        "password-authenticated key exchange",
+        "secure key exchange",
+        "encrypted file transfer"
+      ],
+      "image": "/blog/images/what-four-word-code-does.webp",
+      "socialImage": "/blog/images/what-four-word-code-does.jpg",
+      "imageAlt": "Blank code tiles converge into one cryptographic key."
+    },
+    {
+      "slug": "pake-step-by-step",
+      "title": "PAKE, step by step",
+      "description": "PAKE is the part of croc that turns a small shared phrase into a strong key. Here is the exchange without skipping the interesting bits.",
+      "category": "Security",
+      "publishedAt": "2026-08-08",
+      "modifiedAt": "2026-08-10",
+      "wordCount": 1053,
+      "readingMinutes": 6,
+      "relatedSlugs": [
+        "what-four-word-code-does",
+        "browser-meets-terminal"
+      ],
+      "keywords": [
+        "PAKE explained",
+        "password-authenticated key exchange",
+        "SPAKE2",
+        "mutual key confirmation",
+        "croc encryption"
+      ],
+      "image": "/blog/images/pake-step-by-step.webp",
+      "socialImage": "/blog/images/pake-step-by-step.jpg",
+      "imageAlt": "Two computers exchange messages and independently derive the same cryptographic key."
+    },
+    {
+      "slug": "send-file-from-browser",
+      "title": "Send a file without installing anything",
+      "description": "The browser can join an ordinary croc transfer now. Choose the files, share the code, and keep the tab open until the handoff finishes.",
+      "category": "Start here",
+      "publishedAt": "2026-08-08",
+      "modifiedAt": "2026-08-10",
+      "wordCount": 431,
+      "readingMinutes": 3,
+      "relatedSlugs": [
+        "browser-meets-terminal",
+        "how-croc-moves-a-file"
+      ],
+      "keywords": [
+        "browser file transfer",
+        "send files online",
+        "encrypted file transfer",
+        "no-install file sharing",
+        "croc web"
+      ],
+      "image": "/blog/images/send-file-from-browser.webp",
+      "socialImage": "/blog/images/send-file-from-browser.jpg",
+      "imageAlt": "A web browser sends a file directly to a receiving device."
+    },
+    {
+      "slug": "browser-meets-terminal",
+      "title": "A browser and a terminal can share the same file",
+      "description": "The browser client was meant to join normal croc transfers, not become another file-sharing island with its own links and accounts.",
+      "category": "Field guide",
+      "publishedAt": "2026-08-08",
+      "modifiedAt": "2026-08-10",
+      "wordCount": 439,
+      "readingMinutes": 3,
+      "relatedSlugs": [
+        "send-file-from-browser",
+        "stored-transfer-one-download"
+      ],
+      "keywords": [
+        "browser to terminal transfer",
+        "CLI file transfer",
+        "cross-platform file sharing",
+        "croc web",
+        "encrypted file transfer"
+      ],
+      "image": "/blog/images/browser-meets-terminal.webp",
+      "socialImage": "/blog/images/browser-meets-terminal.jpg",
+      "imageAlt": "A browser window and command-line terminal are connected by a file transfer."
+    },
+    {
+      "slug": "stored-transfer-one-download",
+      "title": "When both computers cannot be online at once",
+      "description": "Direct croc transfers expect both computers to be awake. Stored mode is for the inconvenient times when the people are not.",
+      "category": "Stored transfers",
+      "publishedAt": "2026-08-08",
+      "modifiedAt": "2026-08-11",
+      "wordCount": 540,
+      "readingMinutes": 3,
+      "relatedSlugs": [
+        "share-stored-file-with-group",
+        "browser-meets-terminal"
+      ],
+      "keywords": [
+        "asynchronous file transfer",
+        "encrypted file storage",
+        "limited downloads",
+        "expiring file link",
+        "secure file sharing"
+      ],
+      "image": "/blog/images/stored-transfer-one-download.webp",
+      "socialImage": "/blog/images/stored-transfer-one-download.jpg",
+      "imageAlt": "A locked parcel waits for a limited time and a configured number of verified downloads."
+    },
+    {
+      "slug": "share-stored-file-with-group",
+      "title": "Send one file to a group, on their schedule",
+      "description": "Stored mode can give several people time to retrieve the same encrypted file. Choose a download allowance, choose a deadline, and share one link.",
+      "category": "Stored transfers",
+      "publishedAt": "2026-08-11",
+      "modifiedAt": "2026-08-11",
+      "wordCount": 647,
+      "readingMinutes": 4,
+      "relatedSlugs": [
+        "stored-transfer-one-download",
+        "browser-meets-terminal"
+      ],
+      "keywords": [
+        "send file to multiple people",
+        "encrypted group file sharing",
+        "expiring download link",
+        "limited downloads",
+        "croc stored transfer"
+      ],
+      "image": "/blog/images/share-stored-file-with-group.webp",
+      "socialImage": "/blog/images/share-stored-file-with-group.jpg",
+      "imageAlt": "One locked parcel branches toward three recipient devices while a clock marks the shared download window."
+    },
+    {
+      "slug": "compare-file-transfer-tools",
+      "title": "40 ways to send a file",
+      "seoTitle": "40 Ways to Send a File: croc and 39 Alternatives",
+      "description": "Compare croc with 39 file transfer tools by resume support, account requirements, browser and CLI transfers, encryption, availability, and transfer paths.",
+      "category": "Field guide",
+      "publishedAt": "2026-08-12",
+      "modifiedAt": "2026-08-23",
+      "wordCount": 2347,
+      "readingMinutes": 12,
+      "relatedSlugs": [
+        "browser-meets-terminal",
+        "send-file-from-browser"
+      ],
+      "keywords": [
+        "file transfer tools comparison",
+        "croc alternatives",
+        "resumable file transfer",
+        "browser to CLI file transfer",
+        "secure file transfer",
+        "peer-to-peer file transfer",
+        "cross-platform file sharing",
+        "no account file transfer",
+        "derphole file transfer",
+        "wormhole-william",
+        "Floe file transfer",
+        "AirPipe file transfer"
+      ],
+      "image": "/blog/images/compare-file-transfer-tools.webp",
+      "socialImage": "/blog/images/compare-file-transfer-tools.jpg",
+      "imageAlt": "File transfer tools comparison showing one file connected to browser, CLI, desktop, mobile, cloud, and synchronization routes."
+    }
+  ]
+}
