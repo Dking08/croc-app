@@ -2,10 +2,110 @@ name: CI
 
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  security-regressions:
+    name: Security portability regressions (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '^1.27.0'
+
+      - name: Test portable path, redaction, and PAKE primitives
+        run: go test ./src/receivefs ./src/redact ./src/pakekey
+
+      - name: Test archive and marked-file regressions
+        run: go test ./src/utils -run 'Test(UnzipDirectory|RemoveMarkedFiles|ValidFileName)'
+
+      - name: Test stored receive regressions
+        run: go test ./src/storecrypto ./src/storeclient -run 'Test(ValidateManifest|Stored|Receive)'
+
+      - name: Test relay admission regressions
+        run: go test ./src/tcp -run 'Test(AdmissionLimiter|RoomDenials|RelayAdmissionLimits|CanonicalSource|WithAdmissionLimits|ConnectToTCPServerControlContext)'
+
+      - name: Test SSH sharing protocol and lifecycle regressions
+        run: |
+          go test ./src/sshshare
+          go test ./src/comm -run 'Test(ReceiveWithDeadlineLimit|NewConnectionContext)'
+          go test ./src/message -run 'TestDecodeWithLimit'
+
+      - name: Test malicious peer and historical protocol regressions
+        run: go test ./src/croc -run 'Test(HostilePortable|MarkedArchive|UnmarkedArchive|LocalIPExchange|FailedPakeConfirmation|ClientErrorsRedact)'
+
+  security-race-tests:
+    name: Security race tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '^1.27.0'
+
+      - name: Race-test root-scoped and stored writes
+        run: go test -race ./src/receivefs ./src/redact ./src/storecrypto ./src/storeclient
+
+      - name: Race-test archive and marked-file regressions
+        run: go test -race ./src/utils -run 'Test(UnzipDirectory|RemoveMarkedFiles)'
+
+      - name: Race-test relay admission
+        run: go test -race ./src/tcp -run 'Test(AdmissionLimiter|RoomDenials|RelayAdmissionLimits|CanonicalSource|WithAdmissionLimits|ConnectToTCPServerControlContext)'
+
+      - name: Race-test SSH sharing protocol and lifecycle
+        run: |
+          go test -race ./src/sshshare
+          go test -race ./src/comm -run 'Test(ReceiveWithDeadlineLimit|NewConnectionContext)'
+          go test -race ./src/message -run 'TestDecodeWithLimit'
+
+      - name: Race-test Croc and Tailcat transport lifecycle
+        run: |
+          go test -race ./src/logger ./src/tailcattransport
+          go test -race ./internal/tailcat -run 'HalfClose|ConnBlob|FetchDERPMapMemoryCache|Wire'
+          go test -race ./src/croc -run 'Tailcat|Staged|Transport'
+
+  security-fuzz-smoke:
+    name: Security fuzz smoke tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '^1.27.0'
+
+      - name: Fuzz portable path normalization
+        run: go test ./src/receivefs -run '^$' -fuzz '^FuzzNormalize$' -fuzztime 10s
+
+      - name: Fuzz manifest collision validation
+        run: go test ./src/receivefs -run '^$' -fuzz '^FuzzValidateEntries$' -fuzztime 10s
+
+      - name: Fuzz ZIP parsing and preflight
+        run: go test ./src/utils -run '^$' -fuzz '^FuzzZipPreflight$' -fuzztime 10s
+
   unit-tests:
     name: Go unit tests
     runs-on: ubuntu-24.04
@@ -17,6 +117,11 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version: '^1.27.0'
+
+      - name: Check go fix
+        run: |
+          go fix ./...
+          git diff --exit-code
       
       - name: Display Go version
         run: go version
@@ -24,18 +129,35 @@ jobs:
       - name: Run unit tests
         run: go test -v ./...
 
-      - name: Build files
+      - name: Build pull-request smoke targets
         run: |
           go version
+          COMMON='-buildvcs=false -trimpath -tags netgo,osusergo'
+          RELAY_ONLY='-buildvcs=false -trimpath -tags netgo,osusergo,croc_no_tailcat'
+          SMALL='-s -w -buildid= -extldflags "-static"'
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $COMMON -ldflags "$SMALL" -o croc-linux-amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=386 go build $COMMON -ldflags "$SMALL" -o croc-linux-386
+          GOARM=5 CGO_ENABLED=0 GOOS=linux GOARCH=arm go build $COMMON -ldflags "$SMALL" -o croc-linux-arm5
+          CGO_ENABLED=0 go test -tags croc_no_tailcat ./src/croc ./src/cli ./src/sshshare ./src/tailcattransport
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $RELAY_ONLY -ldflags "$SMALL" -o croc-linux-amd64-relay-only
+          CGO_ENABLED=0 GOOS=dragonfly GOARCH=amd64 go build $COMMON -ldflags "$SMALL" -o croc-dragonfly-amd64
+          CGO_ENABLED=0 GOOS=netbsd GOARCH=386 go build $COMMON -ldflags "$SMALL" -o croc-netbsd-386
+          CGO_ENABLED=0 GOOS=netbsd GOARCH=amd64 go build $COMMON -ldflags "$SMALL" -o croc-netbsd-amd64
+          CGO_ENABLED=0 GOOS=netbsd GOARCH=arm64 go build $COMMON -ldflags "$SMALL" -o croc-netbsd-arm64
+          CGO_ENABLED=0 GOOS=illumos GOARCH=amd64 go test -c -o /tmp/tailcattransport-illumos-amd64.test ./src/tailcattransport
+          CGO_ENABLED=0 GOOS=linux GOARCH=386 go test -c -o /tmp/tailcattransport-linux-386.test ./src/tailcattransport
+          GOARM=5 CGO_ENABLED=0 GOOS=linux GOARCH=arm go test -c -o /tmp/tailcattransport-linux-arm5.test ./src/tailcattransport
+          go test -tags croc_tailcat_bench ./src/croc -run '^$'
+
+      - name: Build remaining platform targets
+        if: github.event_name != 'pull_request'
+        run: |
           COMMON='-buildvcs=false -trimpath -tags netgo,osusergo'
           SMALL='-s -w -buildid= -extldflags "-static"'
           DARWIN='-s -w -buildid= -extldflags "-sectcreate __TEXT __info_plist Info.plist"'
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $COMMON -ldflags "$SMALL" -o croc-windows-amd64.exe
           CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build $COMMON -ldflags "$SMALL" -o croc-windows-arm64.exe
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $COMMON -ldflags "$SMALL" -o croc-linux-amd64
-          CGO_ENABLED=0 GOOS=linux GOARCH=386 go build $COMMON -ldflags "$SMALL" -o croc-linux-386
           CGO_ENABLED=0 GOOS=linux GOARCH=arm go build $COMMON -ldflags "$SMALL" -o croc-linux-arm
-          GOARM=5 CGO_ENABLED=0 GOOS=linux GOARCH=arm go build $COMMON -ldflags "$SMALL" -o croc-linux-arm5
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $COMMON -ldflags "$SMALL" -o croc-linux-arm64
           CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build $COMMON -ldflags "$SMALL" -o croc-linux-riscv64
           CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $COMMON -ldflags "$DARWIN" -o croc-darwin-amd64

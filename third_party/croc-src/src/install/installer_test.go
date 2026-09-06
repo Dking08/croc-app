@@ -98,6 +98,41 @@ func TestInstallerBuildsReleaseAssetURLsFromDynamicVersion(t *testing.T) {
 	}
 }
 
+func TestLinux32BitTargetsRemainInInstallerAndReleaseBuilds(t *testing.T) {
+	contents, err := os.ReadFile("default.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(contents)
+	for _, fragment := range []string{`"armv5l" ) croc_arch="ARMv5"`, `"i386"|"i486"|"i586"|"i686" ) croc_arch="32bit"`} {
+		if !strings.Contains(script, fragment) {
+			t.Fatalf("installer does not map Linux target %q", fragment)
+		}
+	}
+	if strings.Contains(script, "no longer supported") {
+		t.Fatal("installer still rejects Linux 32-bit targets")
+	}
+
+	ci, err := os.ReadFile("../../.github/workflows/ci.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release, err := os.ReadFile("../../.github/workflows/release.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"GOOS=linux GOARCH=386", "GOOS=linux GOARCH=arm go"} {
+		if !strings.Contains(string(ci), required) {
+			t.Fatalf("CI workflow omits restored target %q", required)
+		}
+	}
+	for _, required := range []string{"name: Linux-32bit", "name: Linux-ARM\n", "name: Linux-ARMv5"} {
+		if !strings.Contains(string(release), required) {
+			t.Fatalf("release workflow omits restored artifact %q", required)
+		}
+	}
+}
+
 func runInstallerVersionLookup(t *testing.T, tool, response string, toolStatus int) (string, error) {
 	t.Helper()
 

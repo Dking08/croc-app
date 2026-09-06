@@ -18,6 +18,7 @@ import (
 	"github.com/schollz/croc/v11/src/codephrase"
 	"github.com/schollz/croc/v11/src/comm"
 	"github.com/schollz/croc/v11/src/croc"
+	log "github.com/schollz/croc/v11/src/logger"
 	"github.com/schollz/croc/v11/src/models"
 	"github.com/schollz/croc/v11/src/publicrelay"
 	"github.com/schollz/croc/v11/src/storeclient"
@@ -25,7 +26,6 @@ import (
 	"github.com/schollz/croc/v11/src/termui"
 	"github.com/schollz/croc/v11/src/utils"
 	buildversion "github.com/schollz/croc/v11/src/version"
-	log "github.com/schollz/logger"
 	"github.com/schollz/pake/v3"
 )
 
@@ -34,10 +34,16 @@ var Version = buildversion.Value
 
 // Run will run the command line program
 func Run() (err error) {
+	return RunContext(context.Background())
+}
+
+// RunContext runs the command line program and propagates cancellation to
+// context-aware commands such as croc ssh.
+func RunContext(ctx context.Context) (err error) {
 	// use all of the processors
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	return newApp().Run(os.Args)
+	return newApp().RunContext(ctx, os.Args)
 }
 
 func newApp() *cli.App {
@@ -45,7 +51,7 @@ func newApp() *cli.App {
 	app.Name = "croc"
 	app.Version = Version
 	app.Compiled = time.Now()
-	app.Usage = "easily and securely transfer stuff from one computer to another"
+	app.Usage = "securely transfer files or share a terminal"
 	app.UsageText = `croc [GLOBAL OPTIONS] [COMMAND] [COMMAND OPTIONS] [filename(s) or folder]
 
    USAGE EXAMPLES:
@@ -65,16 +71,23 @@ func newApp() *cli.App {
       croc send --code secret-code file.txt
 
    Receive a file using code:
-      croc secret-code`
+      croc secret-code
+
+   Share a terminal:
+      croc ssh
+
+   Join a shared terminal:
+      CROC_SECRET=six-word-invitation croc ssh`
 	app.Commands = []*cli.Command{
 		{
 			Name:        "send",
 			Usage:       "send file(s), or folder (see options with croc send -h)",
-			Description: "send file(s), or folder, over the relay",
+			Description: "send file(s), or folder",
 			ArgsUsage:   "[filename(s) or folder]",
 			Flags: []cli.Flag{
 				&cli.BoolFlag{Name: "zip", Usage: "zip folder before sending"},
 				&cli.StringFlag{Name: "code", Aliases: []string{"c"}, Usage: "codephrase used to connect to relay (at least 6 characters)"},
+				&cli.StringFlag{Name: "transport", Value: string(croc.TransportAuto), Usage: "sender file data transport (auto, derp, relay)"},
 				&cli.StringFlag{Name: "hash", Value: "xxhash", Usage: "hash algorithm (xxhash, imohash, md5, highway)"},
 				&cli.StringFlag{Name: "text", Aliases: []string{"t"}, Usage: "send some text"},
 				&cli.BoolFlag{Name: "no-local", Usage: "disable local relay when sending"},
@@ -96,6 +109,22 @@ func newApp() *cli.App {
 			Action:   send,
 		},
 		{
+			Name:        "ssh",
+			Usage:       "share or join a secure, collaborative terminal",
+			Description: "start without a code to host; provide a six-word code to join",
+			ArgsUsage:   "[six-word-code]",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "headless", Usage: "host without attaching the local terminal"},
+				&cli.DurationFlag{Name: "duration", Value: 12 * time.Hour, Usage: "maximum hosted session lifetime"},
+				&cli.DurationFlag{Name: "reconnect-window", Value: 2 * time.Minute, Usage: "how long a guest retries after a connection loss"},
+				&cli.BoolFlag{Name: "no-reconnect", Usage: "disable automatic guest reconnection"},
+				&cli.StringFlag{Name: "transport", Value: "auto", Usage: "guest transport (auto, tailcat, relay)"},
+				&cli.StringFlag{Name: "dir", Value: ".", Usage: "working directory for a hosted shell"},
+			},
+			HelpName: "croc ssh",
+			Action:   sshSession,
+		},
+		{
 			Name:        "relay",
 			Usage:       "start your own relay (optional)",
 			Description: "start relay",
@@ -109,6 +138,9 @@ func newApp() *cli.App {
 				&cli.IntFlag{Name: "max-rooms-open", Value: tcp.DEFAULT_MAX_ROOMS_OPEN, Usage: "maximum waiting rooms per relay port", EnvVars: []string{"CROC_MAX_ROOMS_OPEN"}},
 				&cli.IntFlag{Name: "max-pending-handshakes", Value: tcp.DEFAULT_MAX_PENDING_HANDSHAKES, Usage: "maximum incomplete handshakes per relay port", EnvVars: []string{"CROC_MAX_PENDING_HANDSHAKES"}},
 				&cli.DurationFlag{Name: "handshake-timeout", Value: tcp.DEFAULT_HANDSHAKE_TIMEOUT, Usage: "maximum time for an initial relay handshake", EnvVars: []string{"CROC_HANDSHAKE_TIMEOUT"}},
+				&cli.IntFlag{Name: "source-join-limit", Value: tcp.DEFAULT_SOURCE_JOIN_LIMIT, Usage: "maximum room joins per source IP in the admission window", EnvVars: []string{"CROC_SOURCE_JOIN_LIMIT"}},
+				&cli.IntFlag{Name: "room-join-limit", Value: tcp.DEFAULT_ROOM_JOIN_LIMIT, Usage: "maximum joins per room in the admission window", EnvVars: []string{"CROC_ROOM_JOIN_LIMIT"}},
+				&cli.DurationFlag{Name: "join-limit-window", Value: tcp.DEFAULT_JOIN_LIMIT_WINDOW, Usage: "sliding window for relay admission limits", EnvVars: []string{"CROC_JOIN_LIMIT_WINDOW"}},
 			},
 		},
 		{
@@ -480,6 +512,9 @@ func applyRememberedSendOptions(c *cli.Context, options *croc.Options, remembere
 	if !c.IsSet("disable-clipboard") {
 		options.DisableClipboard = remembered.DisableClipboard
 	}
+	if !c.IsSet("transport") && remembered.Transport != "" {
+		options.Transport = remembered.Transport
+	}
 	if !c.IsSet("relay") && strings.HasPrefix(remembered.RelayAddress, "non-default:") {
 		rememberedAddr := strings.TrimPrefix(remembered.RelayAddress, "non-default:")
 		options.RelayAddress = strings.TrimSpace(rememberedAddr)
@@ -490,12 +525,26 @@ func applyRememberedSendOptions(c *cli.Context, options *croc.Options, remembere
 	}
 }
 
+const tailcatRelayFallbackWarning = "Tailcat is unavailable in this build; using the croc relay instead."
+
+func resolveSendTransport(options *croc.Options) (downgraded bool, err error) {
+	options.Transport, downgraded, err = croc.ResolveTransportMode(string(options.Transport))
+	return downgraded, err
+}
+
+func writeTailcatRelayFallbackWarning(output io.Writer, quiet, downgraded bool) {
+	if quiet || !downgraded {
+		return
+	}
+	fmt.Fprintln(output, tailcatRelayFallbackWarning)
+}
+
 // parseRelayPorts splits a comma-separated --ports value, trimming whitespace
 // around each entry and dropping empties. This keeps "9009, 9010," working the
 // same as "9009,9010" instead of producing invalid port strings like " 9010".
 func parseRelayPorts(portsFlag string) []string {
 	var ports []string
-	for _, p := range strings.Split(portsFlag, ",") {
+	for p := range strings.SplitSeq(portsFlag, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			ports = append(ports, p)
 		}
@@ -510,6 +559,13 @@ func send(c *cli.Context) (err error) {
 	setDebugLevel(c)
 	comm.Socks5Proxy = c.String("socks5")
 	comm.HttpProxy = c.String("connect")
+	transport, err := croc.ParseTransportMode(c.String("transport"))
+	if err != nil {
+		return err
+	}
+	if c.Bool("store") && transport != croc.TransportAuto {
+		return errors.New("--transport must be auto for stored transfers")
+	}
 	if c.Bool("store") {
 		return sendStored(c)
 	}
@@ -523,14 +579,14 @@ func send(c *cli.Context) (err error) {
 		transfersParam = 4
 	}
 	excludeStrings := []string{}
-	for _, v := range strings.Split(c.String("exclude"), ",") {
+	for v := range strings.SplitSeq(c.String("exclude"), ",") {
 		v = strings.ToLower(strings.TrimSpace(v))
 		if v != "" {
 			excludeStrings = append(excludeStrings, v)
 		}
 	}
 	excludeFiles := []string{}
-	for _, v := range strings.Split(c.String("exclude-file"), ",") {
+	for v := range strings.SplitSeq(c.String("exclude-file"), ",") {
 		v = utils.NormalizeRelativePath(strings.TrimSpace(v))
 		if v != "" && v != "." {
 			excludeFiles = append(excludeFiles, v)
@@ -573,6 +629,7 @@ func send(c *cli.Context) (err error) {
 		Quiet:             c.Bool("quiet"),
 		DisableClipboard:  c.Bool("disable-clipboard"),
 		ExtendedClipboard: c.Bool("extended-clipboard"),
+		Transport:         transport,
 	}
 	if crocOptions.RelayAddress != models.DEFAULT_RELAY {
 		crocOptions.RelayAddress6 = ""
@@ -589,6 +646,17 @@ func send(c *cli.Context) (err error) {
 		}
 		applyRememberedSendOptions(c, &crocOptions, rememberedOptions)
 	}
+	downgradedTransport, err := resolveSendTransport(&crocOptions)
+	if err != nil {
+		return err
+	}
+	if crocOptions.OnlyLocal && crocOptions.Transport != croc.TransportAuto {
+		return errors.New("--transport must be auto for local-only transfers")
+	}
+	if crocOptions.ShowQrCode && crocOptions.Transport == croc.TransportDERP {
+		return errors.New("--transport derp cannot be combined with --qrcode")
+	}
+	writeTailcatRelayFallbackWarning(os.Stderr, crocOptions.Quiet, downgradedTransport)
 	publicRelayMode := usesPublicRelay(c, crocOptions)
 
 	var fnames []string
@@ -848,6 +916,7 @@ func receive(c *cli.Context) (err error) {
 		Quiet:             c.Bool("quiet"),
 		DisableClipboard:  c.Bool("disable-clipboard"),
 		ExtendedClipboard: c.Bool("extended-clipboard"),
+		Transport:         croc.TransportAuto,
 	}
 	if crocOptions.RelayAddress != models.DEFAULT_RELAY {
 		crocOptions.RelayAddress6 = ""
@@ -1016,6 +1085,18 @@ func relay(c *cli.Context) (err error) {
 	if handshakeTimeout <= 0 {
 		return fmt.Errorf("--handshake-timeout must be positive")
 	}
+	sourceJoinLimit := c.Int("source-join-limit")
+	if sourceJoinLimit <= 0 {
+		return fmt.Errorf("--source-join-limit must be positive")
+	}
+	roomJoinLimit := c.Int("room-join-limit")
+	if roomJoinLimit <= 0 {
+		return fmt.Errorf("--room-join-limit must be positive")
+	}
+	joinLimitWindow := c.Duration("join-limit-window")
+	if joinLimitWindow <= 0 {
+		return fmt.Errorf("--join-limit-window must be positive")
+	}
 	debugString := "info"
 	if c.Bool("debug") {
 		debugString = "debug"
@@ -1044,6 +1125,7 @@ func relay(c *cli.Context) (err error) {
 	}
 
 	var roomPaired func()
+	var roomProtocol func(tcp.RoomProtocol)
 	umamiURL := strings.TrimSpace(os.Getenv("UMAMI_URL"))
 	umamiWebsiteID := strings.TrimSpace(os.Getenv("UMAMI_WEBSITE_ID"))
 	umamiSrc := strings.TrimSpace(os.Getenv("UMAMI_SRC"))
@@ -1054,17 +1136,28 @@ func relay(c *cli.Context) (err error) {
 			log.Warnf("relay analytics disabled: %v", reporterErr)
 		} else {
 			defer reporter.Close()
-			roomPaired = func() {
-				event := "relay-session"
+			eventName := func(event string) string {
 				if umamiSrc != "" {
-					event += "-" + umamiSrc
+					return event + "-" + umamiSrc
 				}
-				reporter.Track(event)
+				return event
+			}
+			roomPaired = func() {
+				reporter.Track(eventName("relay-session"))
+			}
+			roomProtocol = func(protocol tcp.RoomProtocol) {
+				if protocol == tcp.RoomProtocolSSH {
+					reporter.Track(eventName("ssh-rendezvous"))
+				}
 			}
 		}
 	}
 
 	tcpPorts := strings.Join(ports[1:], ",")
+	capabilitySet, capabilityErr := tcp.NewRelayCapabilitySet(min(len(ports)-1, 8))
+	if capabilityErr != nil {
+		return capabilityErr
+	}
 	for i, port := range ports {
 		if i == 0 {
 			continue
@@ -1078,6 +1171,8 @@ func relay(c *cli.Context) (err error) {
 				tcp.WithMaxRoomsOpen(maxRoomsOpen),
 				tcp.WithMaxPendingHandshakes(maxPendingHandshakes),
 				tcp.WithHandshakeTimeout(handshakeTimeout),
+				tcp.WithAdmissionLimits(sourceJoinLimit, roomJoinLimit, joinLimitWindow),
+				tcp.WithFastAdmission(capabilitySet),
 			)
 			if err != nil {
 				panic(err)
@@ -1093,6 +1188,9 @@ func relay(c *cli.Context) (err error) {
 		tcp.WithMaxRoomsOpen(maxRoomsOpen),
 		tcp.WithMaxPendingHandshakes(maxPendingHandshakes),
 		tcp.WithHandshakeTimeout(handshakeTimeout),
+		tcp.WithAdmissionLimits(sourceJoinLimit, roomJoinLimit, joinLimitWindow),
+		tcp.WithFastAdmission(capabilitySet),
 		tcp.WithRoomPairedCallback(roomPaired),
+		tcp.WithRoomProtocolCallback(roomProtocol),
 	)
 }

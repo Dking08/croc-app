@@ -77,6 +77,21 @@ Or open:
 	}
 }
 
+func TestFormatSendInstructionsWithoutBrowserURL(t *testing.T) {
+	const secret = "film-alibi-jet"
+	want := `On the other computer, run:
+  croc film-alibi-jet
+`
+
+	got := formatSendInstructions(secret, "", "", "", false)
+	if got != want {
+		t.Fatalf("instructions differ:\nwant: %q\n got: %q", want, got)
+	}
+	if strings.Contains(got, "Or open:") || strings.Contains(got, "getcroc.com") {
+		t.Fatalf("DERP instructions contain browser receive output: %q", got)
+	}
+}
+
 func TestFormatClipboardTextHasNoStyling(t *testing.T) {
 	const secret = "acid-pink-fostered-succeeding"
 
@@ -103,5 +118,13 @@ func TestFormatClipboardTextHasNoStyling(t *testing.T) {
 				t.Fatalf("clipboard text contains an ANSI escape: %q", got)
 			}
 		})
+	}
+}
+
+func TestFormatExtendedClipboardOmitsSenderTransport(t *testing.T) {
+	got := formatClipboardText("acid-pink-fostered-succeeding", "--relay relay.example:9009 ", true)
+	want := `CROC_SECRET="acid-pink-fostered-succeeding" croc --relay relay.example:9009`
+	if got != want {
+		t.Fatalf("clipboard text = %q; want %q", got, want)
 	}
 }
