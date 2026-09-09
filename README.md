@@ -37,6 +37,17 @@ It is designed to make file and text sharing feel much more natural on Android: 
     </td>
   </tr>
 </table>
+
+
+<div align="left">
+
+```
+com.dking.crocapp
+73:AA:29:BF:43:61:23:E6:76:52:33:D1:1F:05:ED:82:D8:EE:72:D4:D3:F8:D9:A0:0E:D6:A2:70:BE:9A:29:6A
+```
+
+</div>
+  
   <h3><a id="change-log" href="https://github.com/Dking08/croc-app/tree/master/fastlane/metadata/android/en-US/changelogs">News - change logs</a></h3>
 </div>
 
