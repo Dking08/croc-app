@@ -13,7 +13,7 @@
 
 `croc` is a tool that allows any two computers to simply and securely transfer files and folders. AFAIK, _croc_ is the only CLI file-transfer tool that does **all** of the following:
 
-- Allows **any two computers** to transfer data (using a relay)
+- Allows **any two computers** to transfer data (p2p with relay fallback)
 - Provides **end-to-end encryption** (using PAKE)
 - Enables easy **cross-platform** transfers (Windows, Linux, Mac, [Browser](https://getcroc.com))
 - Allows **multiple file** transfers
@@ -62,7 +62,8 @@ sudo port install croc
 
 ### On Windows
 
-You can install the latest release with [Scoop](https://scoop.sh/), [Chocolatey](https://chocolatey.org/), or [Winget](https://learn.microsoft.com/windows/package-manager/):
+You can install the latest release with [Scoop](https://scoop.sh/) or
+[Chocolatey](https://chocolatey.org/):
 
 ```bash
 scoop install croc
@@ -70,10 +71,6 @@ scoop install croc
 
 ```bash
 choco install croc
-```
-
-```bash
-winget install schollz.croc
 ```
 
 ### Using nix-env
@@ -126,14 +123,6 @@ Install with `dnf`:
 
 ```bash
 dnf install croc
-```
-
-### On Gentoo
-
-Install with `portage`:
-
-```bash
-emerge net-misc/croc
 ```
 
 ### On Termux
@@ -372,6 +361,25 @@ You can send files via a proxy by adding `--socks5`:
 ```bash
 croc --socks5 "127.0.0.1:9050" send SOMEFILE
 ```
+
+<p align="center">
+  <strong>Sponsored by <a href="https://sx.org/en/proxy/">SX.org</a>.</strong>
+</p>
+
+### Data transport selection
+
+The native CLI defaults to `--transport auto`. After the normal three-word-code
+PAKE handshake, two compatible native clients create PAKE-bound Tailcat node
+identities and open one or more TCP streams over an in-process Tailscale
+userspace WireGuard network. Magicsock starts through DERP and promotes the
+connection to a direct UDP path whenever NAT traversal succeeds. If the peer is
+a browser, an older client, or Tailcat setup fails, both clients use croc's
+existing relay data ports. The public spelling `--transport derp` is retained;
+in strict mode it requires Tailcat support and disables croc-relay fallback.
+Public DERP is best effort and may apply fairness limits; see Tailscale's
+[DERP reference](https://tailscale.com/docs/reference/derp-servers) and
+[performance guidance](https://tailscale.com/docs/reference/troubleshooting/poor-performance-tailnet).
+
 
 #### Change Encryption Curve
 
