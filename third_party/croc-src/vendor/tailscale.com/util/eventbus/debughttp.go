@@ -34,8 +34,8 @@ func (d *Debugger) RegisterHTTP(td *tsweb.DebugHandler) {
 	td.Handle("bus", "Event bus", dh)
 	td.HandleSilent("bus/monitor", http.HandlerFunc(dh.serveMonitor))
 	td.HandleSilent("bus/style.css", serveStatic("style.css"))
-	td.HandleSilent("bus/htmx.min.js", serveStatic("htmx.min.js.gz"))
-	td.HandleSilent("bus/htmx-websocket.min.js", serveStatic("htmx-websocket.min.js.gz"))
+	td.HandleSilent("bus/htmx.min.js", serveStatic("htmx.min.js"))
+	td.HandleSilent("bus/htmx-websocket.min.js", serveStatic("htmx-websocket.min.js"))
 }
 
 //go:embed assets/*.html
@@ -54,7 +54,7 @@ var templates = sync.OnceValue(func() *template.Template {
 
 //go:generate go run fetch-htmx.go
 
-//go:embed assets/*.css assets/*.min.js.gz
+//go:embed assets/*.css assets/*.min.js
 var static embed.FS
 
 func serveStatic(name string) http.Handler {
