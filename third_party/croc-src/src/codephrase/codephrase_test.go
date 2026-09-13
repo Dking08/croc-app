@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,7 +28,7 @@ func TestVendoredWordList(t *testing.T) {
 	require.Len(t, effWords, 1296)
 	assert.Equal(t, "acid", effWords[0])
 	assert.Equal(t, "zoom", effWords[len(effWords)-1])
-	digest := sha256.Sum256([]byte(effWordList))
+	digest := sha256.Sum256([]byte(strings.ReplaceAll(effWordList, "\r\n", "\n")))
 	assert.Equal(t, "36ecca49e4fa20ca84b176c32f2e9c82f98f446585190e75f9879a95c08247bf", hex.EncodeToString(digest[:]))
 	seen := make(map[string]struct{}, len(effWords))
 	for _, word := range effWords {
@@ -36,6 +37,11 @@ func TestVendoredWordList(t *testing.T) {
 		assert.Falsef(t, duplicate, "duplicate word %q", word)
 		seen[word] = struct{}{}
 	}
+}
+
+func TestLoadWordsAcceptsWindowsLineEndings(t *testing.T) {
+	assert.Equal(t, []string{"acid", "acorn"}, mustLoadWords("test", "acid\r\nacorn\r\n", 2))
+	assert.Panics(t, func() { mustLoadWords("test", "acid\racorn\r", 1) })
 }
 
 func TestGenerate(t *testing.T) {
@@ -50,6 +56,42 @@ func TestGenerate(t *testing.T) {
 	require.Len(t, words, 3)
 	for _, word := range words {
 		assert.Contains(t, effWords, word)
+	}
+}
+
+func TestGenerateAndParseSSH(t *testing.T) {
+	code, err := generateWords(zeroReader{}, SSHCodeWordCount)
+	require.NoError(t, err)
+	assert.Equal(t, "acid-acid-acid-acid-acid-acid", code)
+
+	components, err := ParseSSH(code)
+	require.NoError(t, err)
+	assert.Equal(t, sshRoomName("acid-acid"), components.RoomName)
+	assert.Equal(t, "acid-acid-acid-acid", components.PAKEPassphrase)
+
+	randomCode, err := GenerateSSH()
+	require.NoError(t, err)
+	words, ok := effWordSequence(randomCode, SSHCodeWordCount)
+	require.True(t, ok)
+	assert.Len(t, words, SSHCodeWordCount)
+}
+
+func TestParseSSHSupportsHyphenatedWords(t *testing.T) {
+	components, err := ParseSSH("yo-yo-acid-acorn-acre-acts-ahead")
+	require.NoError(t, err)
+	assert.Equal(t, sshRoomName("yo-yo-acid"), components.RoomName)
+	assert.Equal(t, "acorn-acre-acts-ahead", components.PAKEPassphrase)
+}
+
+func TestParseSSHRejectsOtherCodeShapes(t *testing.T) {
+	for _, code := range []string{
+		"acid-acorn-acre",
+		"acid-acorn-acre-acts-ahead",
+		"acid-acorn-acre-acts-ahead-alien-extra",
+		"acid-acorn-acre-acts-ahead-NOT",
+	} {
+		_, err := ParseSSH(code)
+		assert.Error(t, err, code)
 	}
 }
 
@@ -237,5 +279,10 @@ func TestParseRejectsShortCode(t *testing.T) {
 
 func roomName(selector string) string {
 	digest := sha256.Sum256([]byte(selector + "croc"))
+	return hex.EncodeToString(digest[:])
+}
+
+func sshRoomName(selector string) string {
+	digest := sha256.Sum256([]byte(selector + "croc-ssh-v1"))
 	return hex.EncodeToString(digest[:])
 }

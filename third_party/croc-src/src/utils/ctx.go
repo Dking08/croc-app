@@ -4,16 +4,26 @@ package utils
 import (
 	"context"
 	"crypto/md5"
+	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/minio/highwayhash"
 	"github.com/schollz/progressbar/v3"
+	"github.com/twmb/murmur3"
 )
+
+const (
+	imoHashV2SmallFileLimit int64 = 8 * 1024 * 1024
+	imoHashV2WindowSize     int64 = 256 * 1024
+	imoHashV2WindowCount          = 16
+)
+
+var imoHashV2Domain = []byte("croc-imohash-v2\x00")
 
 // ctxFile wraps os.File with context cancellation support.
 type ctxFile struct {
@@ -114,36 +124,20 @@ func HashFileCtx(ctx context.Context, fname string, algorithm string, showProgre
 	// Create progress bar based on algorithm
 	var bar *progressbar.ProgressBar
 	if shouldShowHashProgress(doShowProgress, fi.Size()) {
-		fnameShort := shortenProgressFilename(fname)
-
-		if algorithm == "imohash" {
-			// Spinner for imohash (indeterminate progress, max = -1)
-			bar = progressbar.NewOptions64(-1,
-				progressbar.OptionSetWriter(os.Stderr),
-				progressbar.OptionShowBytes(false),
-				progressbar.OptionSetDescription(fmt.Sprintf("Sampling %s", fnameShort)),
-				progressbar.OptionClearOnFinish(),
-				progressbar.OptionFullWidth(),
-				progressbar.OptionShowElapsedTimeOnFinish(),
-				progressbar.OptionSpinnerType(14),
-				progressbar.OptionSetSpinnerChangeInterval(100*time.Millisecond),
-			)
+		if algorithm == "imohash" || algorithm == "imohash-v2" {
+			bar = newFileProgress("Sampling", fname, -1)
 		} else {
-			// Regular progress bar for other algorithms
-			bar = progressbar.NewOptions64(fi.Size(),
-				progressbar.OptionSetWriter(os.Stderr),
-				progressbar.OptionShowBytes(true),
-				progressbar.OptionSetDescription(fmt.Sprintf("Hashing %s", fnameShort)),
-				progressbar.OptionClearOnFinish(),
-				progressbar.OptionFullWidth(),
-			)
+			bar = newFileProgress("Hashing", fname, fi.Size())
 		}
+		defer clearUnfinishedProgress(bar)
 	}
 
 	// Dispatch to appropriate hash function
 	switch algorithm {
 	case "imohash":
 		return IMOHashReader(sr, bar)
+	case "imohash-v2":
+		return imoHashV2Reader(sr, bar)
 	case "md5":
 		return MD5HashReader(sr, bar)
 	case "xxhash":
@@ -153,6 +147,66 @@ func HashFileCtx(ctx context.Context, fname string, algorithm string, showProgre
 	default:
 		return nil, fmt.Errorf("unsupported algorithm: %s", algorithm)
 	}
+}
+
+// imoHashV2Offsets returns the ordered sample starts used by imohash-v2. Small
+// files are represented by one complete-file window. Large files use sixteen
+// evenly spaced windows, including the beginning and end of the file.
+func imoHashV2Offsets(size int64) []int64 {
+	if size <= imoHashV2SmallFileLimit {
+		return []int64{0}
+	}
+	last := size - imoHashV2WindowSize
+	offsets := make([]int64, imoHashV2WindowCount)
+	for i := range offsets {
+		offsets[i] = int64(i) * last / int64(imoHashV2WindowCount-1)
+	}
+	return offsets
+}
+
+// imoHashV2Reader computes croc's versioned progressive file digest. The
+// digest commits to the domain, original file size, and every sampled extent
+// before its bytes, so a digest cannot be reinterpreted under another layout.
+func imoHashV2Reader(sr *io.SectionReader, bar *progressbar.ProgressBar) ([]byte, error) {
+	if sr == nil {
+		return nil, errors.New("nil section reader")
+	}
+	if bar != nil {
+		_ = bar.Add(0)
+		defer bar.Finish()
+	}
+
+	size := sr.Size()
+	if size < 0 {
+		return nil, errors.New("negative section size")
+	}
+	h := murmur3.New128()
+	_, _ = h.Write(imoHashV2Domain)
+	var encoded [8]byte
+	binary.LittleEndian.PutUint64(encoded[:], uint64(size))
+	_, _ = h.Write(encoded[:])
+
+	windowSize := imoHashV2WindowSize
+	if size <= imoHashV2SmallFileLimit {
+		windowSize = size
+	}
+	buffer := make([]byte, windowSize)
+	for _, offset := range imoHashV2Offsets(size) {
+		length := max(min(windowSize, size-offset), 0)
+		binary.LittleEndian.PutUint64(encoded[:], uint64(offset))
+		_, _ = h.Write(encoded[:])
+		binary.LittleEndian.PutUint64(encoded[:], uint64(length))
+		_, _ = h.Write(encoded[:])
+		if length == 0 {
+			continue
+		}
+		window := buffer[:length]
+		if _, err := sr.ReadAt(window, offset); err != nil {
+			return nil, err
+		}
+		_, _ = h.Write(window)
+	}
+	return h.Sum(nil), nil
 }
 
 // IMOHashReader returns imohash for a SectionReader.

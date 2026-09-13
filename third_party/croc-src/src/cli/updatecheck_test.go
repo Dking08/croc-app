@@ -331,7 +331,7 @@ func TestTransferVersionNoticeIsDeferredAndHonorsQuiet(t *testing.T) {
 	}
 	latest := fmt.Sprintf("%d.0.0", current.major+1)
 	want := fmt.Sprintf(
-		"A newer croc version is available: v%s (current: v%s).\nRun: curl https://getcroc.com | bash\n",
+		"A newer croc version is available: v%s (current: v%s).\nRun: croc update\n",
 		latest,
 		Version,
 	)
@@ -391,7 +391,7 @@ func TestForcedTransferVersionCheckReportsBeforeTransfer(t *testing.T) {
 			name:       "newer",
 			statusCode: http.StatusOK,
 			body:       `{"tag_name":"v11.2.4"}`,
-			want:       "A newer croc version is available: v11.2.4 (current: v11.2.3).\nRun: curl https://getcroc.com | bash\n",
+			want:       "A newer croc version is available: v11.2.4 (current: v11.2.3).\nRun: croc update\n",
 		},
 		{
 			name:       "unavailable",

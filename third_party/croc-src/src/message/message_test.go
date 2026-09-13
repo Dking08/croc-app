@@ -6,8 +6,9 @@ import (
 	"testing"
 
 	"github.com/schollz/croc/v11/src/comm"
+	"github.com/schollz/croc/v11/src/compress"
 	"github.com/schollz/croc/v11/src/crypt"
-	log "github.com/schollz/logger"
+	log "github.com/schollz/croc/v11/src/logger"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -52,11 +53,27 @@ func TestDecodeRejectsMalformedCompressedMessage(t *testing.T) {
 	assert.Contains(t, err.Error(), "decompress message")
 }
 
+func TestEncodeRejectsOversizedDecompressedMessage(t *testing.T) {
+	_, err := encodeWithLimit(nil, Message{Type: TypeMessage, Message: "too large"}, 8)
+	assert.ErrorIs(t, err, ErrMessageTooLarge)
+
+	_, err = encodeWithLimit(nil, Message{Type: TypeMessage}, len(`{"t":"message"}`))
+	assert.NoError(t, err)
+}
+
+func TestDecodeWithLimitRejectsCompressedExpansion(t *testing.T) {
+	encoded, err := Encode(nil, Message{Type: TypeMessage, Message: "too large"})
+	assert.NoError(t, err)
+	_, err = DecodeWithLimit(nil, encoded, 8)
+	assert.ErrorIs(t, err, compress.ErrDecompressedSizeExceeded)
+}
+
 func TestPakeVersionAndConfirmationRoundTrip(t *testing.T) {
 	want := Message{
-		Type:    TypePAKEConfirm,
-		Version: 2,
-		Bytes:   []byte("confirmation-tag"),
+		Type:     TypePAKEConfirm,
+		Version:  2,
+		Bytes:    []byte("confirmation-tag"),
+		Features: []string{"experimental-tailcat-v1"},
 	}
 	encoded, err := Encode(nil, want)
 	assert.NoError(t, err)

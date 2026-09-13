@@ -22,10 +22,10 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	log "github.com/schollz/croc/v11/src/logger"
 	"github.com/schollz/croc/v11/src/publicrelay"
 	"github.com/schollz/croc/v11/src/store"
 	buildversion "github.com/schollz/croc/v11/src/version"
-	log "github.com/schollz/logger"
 )
 
 const (
@@ -515,6 +515,21 @@ func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.URL.Path == "/__croc_download__" ||
+		strings.HasPrefix(r.URL.Path, "/__croc_download__/") {
+		// This namespace is handled entirely by the download service worker. If
+		// a request reaches the server, returning the SPA would save index.html
+		// under the offered filename and conceal the interception failure.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(http.StatusNotFound)
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, "streaming download was not intercepted\n")
+		}
+		return
+	}
+
 	if r.URL.Path == "/" {
 		w.Header().Set("Vary", "User-Agent")
 	}
@@ -566,7 +581,7 @@ func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write(page)
 		}
 		return
-	} else if requested == "croc-download-sw.js" || requested == "croc-worker.js" {
+	} else if requested == "croc-download-sw.js" || requested == "croc-worker.js" || requested == "croc-ssh-worker.js" {
 		w.Header().Set("Cache-Control", "no-cache")
 	} else if strings.HasPrefix(requested, "assets/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
