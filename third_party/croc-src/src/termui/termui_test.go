@@ -8,6 +8,143 @@ import (
 	"testing"
 )
 
+func TestProgressTheme(t *testing.T) {
+	plain := progressTheme(false)
+	if plain.Saucer != "█" || plain.BarStart != "|" || plain.BarEnd != "|" {
+		t.Fatalf("plain progress theme = %#v; want default bar theme", plain)
+	}
+
+	colored := progressTheme(true)
+	if colored.BarStartFilled != "|[cyan]" {
+		t.Fatalf("colored progress start = %q; want cyan", colored.BarStartFilled)
+	}
+	if colored.SaucerHead != "█[reset]" || colored.BarEndFilled != "[reset]|" {
+		t.Fatalf("colored progress theme does not reset its filled section: %#v", colored)
+	}
+}
+
+func TestProgressDescription(t *testing.T) {
+	t.Setenv("COLUMNS", "100")
+	if got := ProgressDescription("", "  croc.txt  ", false); got != "  croc.txt  " {
+		t.Fatalf("plain progress description = %q", got)
+	}
+	if got := ProgressDescription("Hashing ", "croc.txt", true); got != "Hashing "+Bold+"croc.txt"+Reset {
+		t.Fatalf("styled progress description = %q", got)
+	}
+	if got := ProgressDescription("", "   ", true); got != "   " {
+		t.Fatalf("blank progress description = %q", got)
+	}
+}
+
+func TestFitProgressDescriptionUsesDisplayWidth(t *testing.T) {
+	t.Setenv("COLUMNS", "90")
+	if got := FitProgressDescription("123456789🎉abc"); got != "123456789..." {
+		t.Fatalf("display-width progress description = %q; want %q", got, "123456789...")
+	}
+}
+
+func TestColoredProgressUsesCyanThenGreen(t *testing.T) {
+	var output strings.Builder
+	bar := NewProgress(ProgressConfig{
+		Max:          2,
+		Description:  ProgressDescription("", "croc.txt ", true),
+		Writer:       &output,
+		ColorEnabled: true,
+	})
+	output.Reset()
+	if err := bar.Add(1); err != nil {
+		t.Fatalf("render active progress: %v", err)
+	}
+	active := output.String()
+	if !strings.Contains(active, Cyan) || strings.Contains(active, "[cyan]") {
+		t.Fatalf("active progress is not rendered cyan: %q", active)
+	}
+
+	output.Reset()
+	if err := bar.Finish(); err != nil {
+		t.Fatalf("finish progress: %v", err)
+	}
+	complete := output.String()
+	if !strings.Contains(complete, Green) || strings.Contains(complete, Cyan) {
+		t.Fatalf("completed progress is not exclusively green: %q", complete)
+	}
+}
+
+func TestDeterminateProgressUsesMainTransferFormat(t *testing.T) {
+	var output strings.Builder
+	bar := NewProgress(ProgressConfig{
+		Max:         200,
+		Description: "Hashing croc.txt ",
+		Writer:      &output,
+	})
+	output.Reset()
+	if err := bar.Add(100); err != nil {
+		t.Fatalf("render determinate progress: %v", err)
+	}
+	got := output.String()
+	if !strings.Contains(got, " 50% |██████████          |") {
+		t.Fatalf("determinate progress does not use a 20-cell bar: %q", got)
+	}
+	if !strings.Contains(got, "100/200 B") {
+		t.Fatalf("determinate progress has no byte count: %q", got)
+	}
+}
+
+func TestProgressSpinnerUsesSharedStyling(t *testing.T) {
+	var output strings.Builder
+	bar := NewProgress(ProgressConfig{
+		Max:           -1,
+		Description:   ProgressDescription("Sampling ", "croc.txt", true),
+		Writer:        &output,
+		ColorEnabled:  true,
+		ClearOnFinish: true,
+	})
+	if err := bar.Add(0); err != nil {
+		t.Fatalf("render progress spinner: %v", err)
+	}
+	got := output.String()
+	if !strings.Contains(got, "Sampling "+Bold+"croc.txt"+Reset) || !strings.Contains(got, Cyan) {
+		t.Fatalf("spinner does not use shared styling: %q", got)
+	}
+	if strings.Contains(got, "%") || strings.Contains(got, "/s") {
+		t.Fatalf("spinner contains determinate metadata: %q", got)
+	}
+	if err := bar.Finish(); err != nil {
+		t.Fatalf("finish progress spinner: %v", err)
+	}
+}
+
+func TestHiddenProgressDoesNotRender(t *testing.T) {
+	var output strings.Builder
+	bar := NewProgress(ProgressConfig{Max: 2, Writer: &output, Hidden: true})
+	if err := bar.Finish(); err != nil {
+		t.Fatalf("finish hidden progress: %v", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("hidden progress output = %q; want none", output.String())
+	}
+}
+
+func TestTransientProgressClearsCompletion(t *testing.T) {
+	var output strings.Builder
+	bar := NewProgress(ProgressConfig{
+		Max:           2,
+		Description:   "Checking croc.txt ",
+		Writer:        &output,
+		ClearOnFinish: true,
+	})
+	if err := bar.Add(1); err != nil {
+		t.Fatalf("render transient progress: %v", err)
+	}
+	output.Reset()
+	if err := bar.Finish(); err != nil {
+		t.Fatalf("finish transient progress: %v", err)
+	}
+	if strings.Contains(output.String(), "100%") {
+		t.Fatalf("transient progress retained completion: %q", output.String())
+	}
+}
+
 func TestShouldUseColor(t *testing.T) {
 	tests := []struct {
 		name         string

@@ -7,17 +7,19 @@ import (
 	"net"
 	"sync"
 
-	log "github.com/schollz/logger"
+	log "github.com/schollz/croc/v11/src/logger"
 )
 
 // stop manages graceful shutdown of the TCP server
 type stop struct {
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx        context.Context
+	cancel     context.CancelFunc
+	cancelOnce sync.Once
 	// Track connections
-	server net.Listener
-	wg     sync.WaitGroup
-	gui    bool
+	serverMu sync.RWMutex
+	server   net.Listener
+	wg       sync.WaitGroup
+	gui      bool
 }
 
 // newStop creates a new stop manager
@@ -33,11 +35,22 @@ func newStop(ctx context.Context) *stop {
 
 // Cancel initiate graceful shutdown
 func (s *stop) Cancel() {
-	log.Trace("tcp Cancel")
-	if s.cancel != nil {
+	s.cancelOnce.Do(func() {
+		log.Trace("tcp Cancel")
 		s.cancel()
-		s.cancel = nil
-	}
+	})
+}
+
+func (s *stop) setServer(server net.Listener) {
+	s.serverMu.Lock()
+	s.server = server
+	s.serverMu.Unlock()
+}
+
+func (s *stop) getServer() net.Listener {
+	s.serverMu.RLock()
+	defer s.serverMu.RUnlock()
+	return s.server
 }
 
 func RunCtx(ctx context.Context, debugLevel, host, port, password string, banner ...string) error {
@@ -46,9 +59,7 @@ func RunCtx(ctx context.Context, debugLevel, host, port, password string, banner
 
 func WithCtx(ctx context.Context) serverOptsFunc {
 	return func(s *server) error {
-		if s.stop.cancel != nil {
-			s.stop.cancel()
-		}
+		s.stop.Cancel()
 		s.stop = newStop(ctx)
 		s.stop.gui = true
 		return nil

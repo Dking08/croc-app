@@ -680,14 +680,12 @@ main() {
       "amd64" ) croc_arch="64bit";;
     "aarch64" ) croc_arch="ARM64";;
       "arm64" ) croc_arch="ARM64";;
-     "armv7l" ) croc_arch="ARM";;
-     "armv8l" ) croc_arch="ARM";;
-     "armv9l" ) croc_arch="ARM";;
-       "i686" ) croc_arch="32bit";;
+     "armv5l" ) croc_arch="ARMv5";;
+     "armv6l"|"armv7l"|"armv8l"|"armv9l" ) croc_arch="ARM";;
+       "i386"|"i486"|"i586"|"i686" ) croc_arch="32bit";;
     "riscv64" ) croc_arch="RISCV64";;
             * ) croc_arch="unknown";;
   esac
-
   croc_file="${croc_bin_name}_v${croc_version}_${croc_os}-${croc_arch}.${croc_dl_ext}"
   croc_checksum_file="${croc_bin_name}_v${croc_version}_checksums.txt"
   croc_url="${croc_base_url}/v${croc_version}/${croc_file}"
@@ -794,6 +792,11 @@ main() {
 
   if [[ "${install_file_rcode}" == "0" ]] ; then
     print_message "== Installed ${croc_bin_name} to ${prefix}/" "ok"
+    if "${prefix}/${croc_bin_name}" update --register-installer >/dev/null 2>&1; then
+      print_message "== Registered this standalone installation for safe self-updates" "ok"
+    else
+      print_message "== Could not register this installation for self-updates" "warn"
+    fi
   elif [[ "${install_file_rcode}" == "1" ]]; then
     print_message "== Failed to install ${croc_bin_name}" "error"
     exit 1

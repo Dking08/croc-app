@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark light" />
+    <script data-croc-theme-bootstrap>
+      (() => {
+        let theme;
+        try {
+          const stored = localStorage.getItem("croc-web-theme");
+          if (stored === "light" || stored === "dark") theme = stored;
+        } catch {
+          // Use the system preference when storage is unavailable.
+        }
+        if (!theme) {
+          theme = window.matchMedia?.("(prefers-color-scheme: light)").matches
+            ? "light"
+            : "dark";
+        }
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+        document
+          .querySelector('meta[name="theme-color"]')
+          ?.setAttribute("content", theme === "dark" ? "#121411" : "#f2f1ec");
+      })();
+    </script>
+    <!-- ROUTE_SEO_START -->
+    <meta name="application-name" content="croc web" />
+    <meta name="author" content="Zackary Scholl" />
+    <meta
+      name="keywords"
+      content="croc, encrypted file transfer, secure file sharing, peer-to-peer file transfer, PAKE"
+    />
+    <meta
+      name="robots"
+      content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta
+      name="description"
+      content="Fast, simple, and secure file transfer between any two computers. Send and receive end-to-end encrypted files with croc from your browser."
+    />
+    <link rel="canonical" href="https://getcroc.com/" />
+    <link rel="image_src" href="https://getcroc.com/croc.png" />
+    <!-- WASM_PRELOAD_START -->
+    <link
+      rel="preload"
+      href="/croc.wasm"
+      as="fetch"
+      type="application/wasm"
+      crossorigin
+    />
+    <!-- WASM_PRELOAD_END -->
+    <meta itemprop="image" content="https://getcroc.com/croc.png" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="croc" />
+    <meta property="og:url" content="https://getcroc.com/" />
+    <meta
+      property="og:title"
+      content="croc — fast, simple, secure file transfer"
+    />
+    <meta
+      property="og:description"
+      content="Fast, simple, and secure file transfer between any two computers. End-to-end encrypted with croc PAKE."
+    />
+    <meta property="og:image" content="https://getcroc.com/croc.png" />
+    <meta
+      property="og:image:secure_url"
+      content="https://getcroc.com/croc.png"
+    />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1731" />
+    <meta property="og:image:height" content="909" />
+    <meta
+      property="og:image:alt"
+      content="croc encrypted file transfer between browser and terminal"
+    />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="croc — fast, simple, secure file transfer"
+    />
+    <meta
+      name="twitter:description"
+      content="Fast, simple, and secure file transfer between any two computers. End-to-end encrypted with croc PAKE."
+    />
+    <meta name="twitter:image" content="https://getcroc.com/croc.png" />
+    <meta
+      name="twitter:image:alt"
+      content="croc encrypted file transfer between browser and terminal"
+    />
+
+    <script type="application/ld+json" data-croc-home="true">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "@id": "https://getcroc.com/#application",
+        "name": "croc web",
+        "alternateName": "croc",
+        "url": "https://getcroc.com/",
+        "description": "Fast, simple, and secure file transfer between any two computers. Send and receive end-to-end encrypted files with croc from your browser.",
+        "image": "https://getcroc.com/croc.png",
+        "applicationCategory": "UtilitiesApplication",
+        "applicationSubCategory": "File transfer",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires a modern web browser with WebAssembly and WebSocket support.",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": 0,
+          "priceCurrency": "USD"
+        },
+        "downloadUrl": "https://github.com/schollz/croc/releases/latest",
+        "softwareHelp": "https://infinitedigits.co/croc/",
+        "license": "https://github.com/schollz/croc/blob/main/LICENSE",
+        "featureList": [
+          "End-to-end encryption using password-authenticated key exchange",
+          "Real-time relay transfers without port forwarding",
+          "Multiple-file sending and receiving",
+          "Cross-platform croc CLI interoperability"
+        ],
+        "subjectOf": {
+          "@type": "SoftwareSourceCode",
+          "name": "croc source code",
+          "codeRepository": "https://github.com/schollz/croc",
+          "license": "https://github.com/schollz/croc/blob/main/LICENSE",
+          "programmingLanguage": ["Go", "TypeScript"]
+        },
+        "author": {
+          "@type": "Person",
+          "name": "Zackary Scholl",
+          "url": "https://schollz.com/"
+        },
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": 4.94,
+          "bestRating": 5,
+          "worstRating": 1,
+          "ratingCount": 50,
+          "reviewCount": 50
+        },
+        "review": [
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "ioricloud" },
+            "datePublished": "2023-04-14",
+            "reviewBody": "I use croc here a lot. Awesome binary for me",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "gazeebo" },
+            "datePublished": "2023-02-12",
+            "reviewBody": "Croc's my most used transfer tool",
+            "reviewRating": { "@type": "Rating", "ratingValue": 4 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "BelugaBilliam" },
+            "datePublished": "2023-11-29",
+            "reviewBody": "Croc for easy file transfer, Linux compatible and it's quicker than ftp/SFTP",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "StartupTree" },
+            "datePublished": "2020-09-18",
+            "reviewBody": "I've been using Croc recently and it's been rock solid, and exactly what I'd been looking for. Thanks to the author.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "ntoshev" },
+            "datePublished": "2021-03-12",
+            "reviewBody": "croc is my favourite way of transferring files between computers I control. Its UX feels more polished than Magic Wormhole.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "alexeldeib" },
+            "datePublished": "2022-06-24",
+            "reviewBody": "Yeah, I switched from magic wormhole to croc for simplicity/snappiness over magic wormhole. Static binaries!",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "njt" },
+            "datePublished": "2022-11-03",
+            "reviewBody": "Croc had some features (transfer directories and resumable transfers) that sold me on it. I largely switched to croc, though it did not preserve timestamps.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 4 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "Deozaan" },
+            "datePublished": "2021-10-10",
+            "reviewBody": "I used Croc for the first time today. It worked perfectly. Thanks again for mentioning it!",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "poetaster" },
+            "datePublished": "2026-01-13",
+            "reviewBody": "It's nice. Faster than magic wormhole, too. It can copy whole folders.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "Tôi_là_người_thật" },
+            "datePublished": "2026-08-10",
+            "reviewBody": "cái này mới chuẩn này — this one is the real deal",
+            "reviewRating": { "@type": "Rating", "ratingValue": 4 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "justusthane" },
+            "datePublished": "2026-07-12",
+            "reviewBody": "I've found croc to be more reliable than MW in across different network architectures",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "ikeashark" },
+            "datePublished": "2025-10",
+            "reviewBody": "100% endorse croc",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "janandonly" },
+            "datePublished": "2025-03-12",
+            "reviewBody": "I like https://github.com/schollz/croc",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "hoppyhoppy2" },
+            "datePublished": "2024-08-17",
+            "reviewBody": "A similar project with some nice features that I use is croc",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "robviren" },
+            "datePublished": "2024-02-15",
+            "reviewBody": "I have gotten a lot of use out of croc.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "robviren" },
+            "datePublished": "2024-02-15",
+            "reviewBody": "Super pain free.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "robviren" },
+            "datePublished": "2024-02-15",
+            "reviewBody": "sends stuff pretty easily.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "poopsmithe" },
+            "datePublished": "2024-02-15",
+            "reviewBody": "croc is like a better magic-wormhole",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "poopsmithe" },
+            "datePublished": "2024-02-15",
+            "reviewBody": "croc does it automatically.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "dain" },
+            "datePublished": "2024-02-15",
+            "reviewBody": "Transfer is encrypted, no account needed.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "ytch" },
+            "datePublished": "2024-02-15",
+            "reviewBody": "I like it too.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "ytch" },
+            "datePublished": "2024-02-15",
+            "reviewBody": "Croc is easy to install/use in almost all network environments.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "outime" },
+            "datePublished": "2023-10-19",
+            "reviewBody": "I use croc quite a lot",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "outime" },
+            "datePublished": "2023-10-19",
+            "reviewBody": "good when sender and receiver are on different networks.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "pepa65" },
+            "datePublished": "2023-09-23",
+            "reviewBody": "when I discovered croc, I switched to that",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "pepa65" },
+            "datePublished": "2023-09-23",
+            "reviewBody": "it has been very reliable.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "jrootabega" },
+            "datePublished": "2022-10-25",
+            "reviewBody": "I think croc is a superior solution here.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "jrootabega" },
+            "datePublished": "2022-10-25",
+            "reviewBody": "Encrypted transfer. Automatic local peer detection. Human speakable commands.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "bzmrgonz" },
+            "datePublished": "2022-07-10",
+            "reviewBody": "croc is a more friendly solution",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "bzmrgonz" },
+            "datePublished": "2022-07-10",
+            "reviewBody": "In any event, quick and easy.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "ntoshev" },
+            "datePublished": "2021-03-12",
+            "reviewBody": "croc is my favourite way of transferring files between computers I control.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "ntoshev" },
+            "datePublished": "2021-03-12",
+            "reviewBody": "a bit more polished.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "ntoshev" },
+            "datePublished": "2021-03-12",
+            "reviewBody": "it offers the best possible UX.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "tptacek" },
+            "datePublished": "2021-05-24",
+            "reviewBody": "I'm a huge fan of croc!",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "tptacek" },
+            "datePublished": "2021-05-24",
+            "reviewBody": "there's so much more to love about it.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "smusamashah" },
+            "datePublished": "2021-05-24",
+            "reviewBody": "On Android, you can install croc in Termux",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "jtbayly" },
+            "datePublished": "2020-09-18",
+            "reviewBody": "I switched to croc… to send large files.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "jtbayly" },
+            "datePublished": "2020-09-18",
+            "reviewBody": "Works great across macOS and Windows.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "jtbayly" },
+            "datePublished": "2020-09-18",
+            "reviewBody": "quick for large files",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "greenbush" },
+            "datePublished": "2020-06-27",
+            "reviewBody": "I've been using croc for a few months and it works perfectly",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "terrywang" },
+            "datePublished": "2020-06-27",
+            "reviewBody": "I've been using croc… it's fast and reliable.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "terrywang" },
+            "datePublished": "2020-06-27",
+            "reviewBody": "Personally I think it's better than magic-wormhole",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "BusTrainBus" },
+            "datePublished": "2020-09-03",
+            "reviewBody": "Croc is fantastic because it solves a problem that no other tool does.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "BusTrainBus" },
+            "datePublished": "2020-09-03",
+            "reviewBody": "Magic Wormhole stumbles at the first hurdle (installability).",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "StartupTree" },
+            "datePublished": "2020-09-18",
+            "reviewBody": "Croc has binaries for windows available for download",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "StartupTree" },
+            "datePublished": "2020-09-18",
+            "reviewBody": "With croc the clients are first party.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "fredley" },
+            "datePublished": "2020-09-18",
+            "reviewBody": "It works on Windows",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "fredley" },
+            "datePublished": "2020-09-18",
+            "reviewBody": "I can connect with most people in the world.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "anotherhue" },
+            "datePublished": "2024-03-10",
+            "reviewBody": "I used to use MW but switched to croc",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          },
+          {
+            "@type": "Review",
+            "author": { "@type": "Person", "name": "anotherhue" },
+            "datePublished": "2024-03-10",
+            "reviewBody": "the single binary was easier to deploy.",
+            "reviewRating": { "@type": "Rating", "ratingValue": 5 }
+          }
+        ],
+        "sameAs": [
+          "https://github.com/schollz/croc",
+          "https://infinitedigits.co/croc/"
+        ]
+      }
+    </script>
+
+    <title>croc — fast, simple, secure file transfer</title>
+    <!-- ROUTE_SEO_END -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="/config.js"></script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

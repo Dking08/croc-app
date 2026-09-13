@@ -15,8 +15,11 @@ import (
 )
 
 const (
-	effWordCount   = 1296
-	roomHashSuffix = "croc"
+	effWordCount         = 1296
+	roomHashSuffix       = "croc"
+	sshRoomHashSuffix    = "croc-ssh-v1"
+	SSHCodeWordCount     = 6
+	sshCodeRoomWordCount = 2
 )
 
 // Format identifies how a croc code is divided into its room and PAKE parts.
@@ -52,6 +55,15 @@ type Components struct {
 	Format         Format
 }
 
+// SSHComponents contains the rendezvous and PAKE inputs for a croc SSH
+// invitation. SSH codes deliberately use more entropy than file-transfer
+// codes: two words select an unguessable relay room and four words remain in
+// the PAKE password.
+type SSHComponents struct {
+	RoomName       string
+	PAKEPassphrase string
+}
+
 //go:embed wordlists/eff-short-wordlist-1.txt
 var effWordList string
 
@@ -61,6 +73,9 @@ var (
 )
 
 func mustLoadWords(name, contents string, expected int) []string {
+	// Git may check out the embedded text with CRLF on Windows. Normalize only
+	// complete CRLF sequences so other control characters remain invalid.
+	contents = strings.ReplaceAll(contents, "\r\n", "\n")
 	words := strings.Split(strings.TrimSuffix(contents, "\n"), "\n")
 	if len(words) != expected {
 		panic(fmt.Sprintf("%s word list has %d entries; want %d", name, len(words), expected))
@@ -89,6 +104,11 @@ func makeWordSet(words []string) map[string]struct{} {
 // Generate returns a cryptographically random three-word EFF code.
 func Generate() (string, error) {
 	return generate(rand.Reader)
+}
+
+// GenerateSSH returns a cryptographically random six-word SSH invitation.
+func GenerateSSH() (string, error) {
+	return generateWords(rand.Reader, SSHCodeWordCount)
 }
 
 // GenerateForRelay returns a normal three-word EFF code assigned to relayIndex
@@ -133,7 +153,14 @@ func RelayIndex(code string, relayCount int) (int, error) {
 }
 
 func generate(reader io.Reader) (string, error) {
-	words := make([]string, 3)
+	return generateWords(reader, 3)
+}
+
+func generateWords(reader io.Reader, count int) (string, error) {
+	if count <= 0 {
+		return "", errors.New("code word count must be positive")
+	}
+	words := make([]string, count)
 	for i := range words {
 		index, err := rand.Int(reader, big.NewInt(int64(len(effWords))))
 		if err != nil {
@@ -142,6 +169,22 @@ func generate(reader io.Reader) (string, error) {
 		words[i] = effWords[index.Int64()]
 	}
 	return strings.Join(words, "-"), nil
+}
+
+// ParseSSH resolves a six-word SSH invitation into its relay room and PAKE
+// password. Only words from croc's embedded EFF list are accepted, which keeps
+// parsing unambiguous even though one list entry ("yo-yo") contains a hyphen.
+func ParseSSH(secret string) (SSHComponents, error) {
+	words, ok := effWordSequence(secret, SSHCodeWordCount)
+	if !ok {
+		return SSHComponents{}, fmt.Errorf("invalid SSH code: expected %d EFF words", SSHCodeWordCount)
+	}
+	roomSelector := strings.Join(words[:sshCodeRoomWordCount], "-")
+	digest := sha256.Sum256([]byte(roomSelector + sshRoomHashSuffix))
+	return SSHComponents{
+		RoomName:       hex.EncodeToString(digest[:]),
+		PAKEPassphrase: strings.Join(words[sshCodeRoomWordCount:], "-"),
+	}, nil
 }
 
 // Parse resolves a croc code into the relay room and PAKE passphrase used by
@@ -181,15 +224,22 @@ func Parse(secret string) (Components, error) {
 // threeEFFWords recognizes generated codes even though the EFF list contains
 // the word "yo-yo", which uses the same hyphen as croc's word separator.
 func threeEFFWords(secret string) ([]string, bool) {
+	return effWordSequence(secret, 3)
+}
+
+func effWordSequence(secret string, count int) ([]string, bool) {
+	if count <= 0 {
+		return nil, false
+	}
 	parts := strings.Split(secret, "-")
-	if len(parts) < 3 || len(parts) > 6 {
+	if len(parts) < count || len(parts) > count*2 {
 		return nil, false
 	}
 
-	words := make([]string, 0, 3)
+	words := make([]string, 0, count)
 	var parse func(int) bool
 	parse = func(start int) bool {
-		if len(words) == 3 {
+		if len(words) == count {
 			return start == len(parts)
 		}
 		for end := start + 1; end <= len(parts); end++ {
@@ -237,8 +287,8 @@ func isLowercaseWord(word string) bool {
 }
 
 func isLowercaseListWord(word string) bool {
-	parts := strings.Split(word, "-")
-	for _, part := range parts {
+	parts := strings.SplitSeq(word, "-")
+	for part := range parts {
 		if !isLowercaseWord(part) {
 			return false
 		}
