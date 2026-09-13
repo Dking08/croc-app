@@ -57,6 +57,7 @@ jobs:
         run: |
           go mod tidy
           go mod vendor
+          python3 ../../tools/prepare-croc-vendor.py
           go build ./...   # fail fast if upstream broke the build
 
       - name: Scan for F-Droid disallowed file types

@@ -48,17 +48,22 @@ RUN yes | sdkmanager --licenses > /dev/null && \
         "platform-tools"
 
 # ── 3. Exact Go version (must match F-Droid's srclibs pin) ───────────────────
-# Build Go from source so this container matches F-Droid's go@go1.25.3 srclib.
-ENV GO_VERSION=1.25.3
+# Build both stages from source. Go 1.27 needs Go >= 1.24.6; the first
+# stage keeps this working with Debian trixie's older bootstrap compiler.
+# F-Droid builds also need their Go srclib pin updated to go1.27.1.
+ENV GO_BOOTSTRAP_VERSION=1.25.3
+ENV GO_VERSION=1.27.1
 
-RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.src.tar.gz" \
-        -o /tmp/go-src.tar.gz && \
-    tar -C /usr/local -xzf /tmp/go-src.tar.gz && \
-    mv /usr/local/go /usr/local/go-${GO_VERSION} && \
-    rm /tmp/go-src.tar.gz && \
-    cd /usr/local/go-${GO_VERSION}/src && \
-    unset GOROOT && \
-    ./make.bash
+RUN set -eu; \
+    for go_version in "$GO_BOOTSTRAP_VERSION" "$GO_VERSION"; do \
+        curl -fsSL "https://go.dev/dl/go${go_version}.src.tar.gz" \
+            -o /tmp/go-src.tar.gz; \
+        tar -C /usr/local -xzf /tmp/go-src.tar.gz; \
+        mv /usr/local/go /usr/local/go-${go_version}; \
+        rm /tmp/go-src.tar.gz; \
+        (cd /usr/local/go-${go_version}/src && unset GOROOT && ./make.bash); \
+        export GOROOT_BOOTSTRAP=/usr/local/go-${go_version}; \
+    done
 
 ENV GOROOT=/usr/local/go-${GO_VERSION}
 ENV GOPATH=/root/go
