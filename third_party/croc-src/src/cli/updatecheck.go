@@ -269,7 +269,7 @@ func writeTransferVersionNotice(c *internalcli.Context, checker transferVersionC
 	if newerRelease(result.latestVersion, checker.currentVersion) {
 		_, _ = fmt.Fprintf(
 			writer,
-			"A newer croc version is available: v%s (current: v%s).\nRun: curl https://getcroc.com | bash\n",
+			"A newer croc version is available: v%s (current: v%s).\nRun: croc update\n",
 			result.latestVersion,
 			checker.currentVersion,
 		)

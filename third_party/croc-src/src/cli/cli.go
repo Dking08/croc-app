@@ -18,6 +18,7 @@ import (
 	"github.com/schollz/croc/v11/src/codephrase"
 	"github.com/schollz/croc/v11/src/comm"
 	"github.com/schollz/croc/v11/src/croc"
+	log "github.com/schollz/croc/v11/src/logger"
 	"github.com/schollz/croc/v11/src/models"
 	"github.com/schollz/croc/v11/src/publicrelay"
 	"github.com/schollz/croc/v11/src/storeclient"
@@ -25,7 +26,6 @@ import (
 	"github.com/schollz/croc/v11/src/termui"
 	"github.com/schollz/croc/v11/src/utils"
 	buildversion "github.com/schollz/croc/v11/src/version"
-	log "github.com/schollz/logger"
 	"github.com/schollz/pake/v3"
 )
 
@@ -34,10 +34,20 @@ var Version = buildversion.Value
 
 // Run will run the command line program
 func Run() (err error) {
+	return RunContext(context.Background())
+}
+
+// RunContext runs the command line program and propagates cancellation to
+// context-aware commands such as croc ssh.
+func RunContext(ctx context.Context) (err error) {
 	// use all of the processors
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	return newApp().Run(os.Args)
+	err = newApp().RunContext(ctx, os.Args)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	return err
 }
 
 func newApp() *cli.App {
@@ -45,7 +55,7 @@ func newApp() *cli.App {
 	app.Name = "croc"
 	app.Version = Version
 	app.Compiled = time.Now()
-	app.Usage = "easily and securely transfer stuff from one computer to another"
+	app.Usage = "securely transfer files or share a terminal"
 	app.UsageText = `croc [GLOBAL OPTIONS] [COMMAND] [COMMAND OPTIONS] [filename(s) or folder]
 
    USAGE EXAMPLES:
@@ -65,16 +75,26 @@ func newApp() *cli.App {
       croc send --code secret-code file.txt
 
    Receive a file using code:
-      croc secret-code`
+      croc secret-code
+
+   Store files for later download:
+      croc store --downloads 3 --expiration 3d file.txt
+
+   Share a terminal:
+      croc ssh
+
+   Join a shared terminal:
+      CROC_SECRET=six-word-invitation croc ssh`
 	app.Commands = []*cli.Command{
 		{
 			Name:        "send",
 			Usage:       "send file(s), or folder (see options with croc send -h)",
-			Description: "send file(s), or folder, over the relay",
+			Description: "send file(s), or folder",
 			ArgsUsage:   "[filename(s) or folder]",
-			Flags: []cli.Flag{
+			Flags: append([]cli.Flag{
 				&cli.BoolFlag{Name: "zip", Usage: "zip folder before sending"},
 				&cli.StringFlag{Name: "code", Aliases: []string{"c"}, Usage: "codephrase used to connect to relay (at least 6 characters)"},
+				&cli.StringFlag{Name: "transport", Value: string(croc.TransportAuto), Usage: "sender file data transport (auto, derp, relay)"},
 				&cli.StringFlag{Name: "hash", Value: "xxhash", Usage: "hash algorithm (xxhash, imohash, md5, highway)"},
 				&cli.StringFlag{Name: "text", Aliases: []string{"t"}, Usage: "send some text"},
 				&cli.BoolFlag{Name: "no-local", Usage: "disable local relay when sending"},
@@ -85,15 +105,52 @@ func newApp() *cli.App {
 				&cli.BoolFlag{Name: "qrcode", Aliases: []string{"qr"}, Usage: "show the web receive URL as a qrcode"},
 				&cli.StringFlag{Name: "exclude", Value: "", Usage: "exclude files if they contain any of the comma separated strings"},
 				&cli.StringFlag{Name: "exclude-file", Value: "", Usage: "exclude files matching any of the comma separated relative paths exactly"},
-				&cli.StringFlag{Name: "socks5", Value: "", Usage: "add a socks5 proxy", EnvVars: []string{"SOCKS5_PROXY"}},
+				&cli.StringFlag{Name: "socks5", Value: "", Usage: "SOCKS5 proxy address (relay DNS is resolved by the proxy)", EnvVars: []string{"SOCKS5_PROXY"}},
 				&cli.StringFlag{Name: "connect", Value: "", Usage: "add a http proxy", EnvVars: []string{"HTTP_PROXY"}},
 				&cli.BoolFlag{Name: "store", Usage: "upload encrypted files for a finite lifetime or a limited number of verified downloads"},
-				&cli.IntFlag{Name: "store-downloads", Value: 1, Usage: "number of verified downloads allowed in stored mode"},
-				&cli.StringFlag{Name: "store-expiration", Value: "1d", Usage: "stored lifetime after upload (for example 90m, 12h, 3d, or 2w)"},
-				&cli.StringFlag{Name: "store-url", Value: "https://getcroc.com", Usage: "stored-transfer service origin", EnvVars: []string{"CROC_STORE_URL"}},
-			},
+			}, storedUploadFlags("store-")...),
 			HelpName: "croc send",
 			Action:   send,
+		},
+		{
+			Name:        "store",
+			Usage:       "upload encrypted files for later download",
+			Description: "store regular files with a download limit and expiration",
+			ArgsUsage:   "[filename(s)]",
+			Flags: append(storedUploadFlags(""),
+				&cli.BoolFlag{Name: "qrcode", Aliases: []string{"qr"}, Usage: "show the web receive URL as a qrcode"},
+			),
+			HelpName: "croc store",
+			Action:   send,
+		},
+		{
+			Name:        "ssh",
+			Usage:       "share or join a secure, collaborative terminal",
+			Description: "start without a code to host; provide a six-word code to join",
+			ArgsUsage:   "[six-word-code]",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "headless", Usage: "host without attaching the local terminal"},
+				&cli.DurationFlag{Name: "duration", Value: 12 * time.Hour, Usage: "maximum hosted session lifetime"},
+				&cli.DurationFlag{Name: "reconnect-window", Value: 2 * time.Minute, Usage: "how long a guest retries after a connection loss"},
+				&cli.BoolFlag{Name: "no-reconnect", Usage: "disable automatic guest reconnection"},
+				&cli.StringFlag{Name: "transport", Value: "auto", Usage: "guest transport (auto, tailcat, relay)"},
+				&cli.StringFlag{Name: "dir", Value: ".", Usage: "working directory for a hosted shell"},
+			},
+			HelpName: "croc ssh",
+			Action:   sshSession,
+		},
+		{
+			Name:        "update",
+			Aliases:     []string{"upgrade"},
+			Usage:       "check for and safely install a newer croc release",
+			Description: "self-update official standalone installs; show package-manager guidance for other installs",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "check", Usage: "check for a newer release without installing it"},
+				&cli.BoolFlag{Name: "yes", Usage: "install without prompting when self-update is safe"},
+				&cli.BoolFlag{Name: "register-installer", Hidden: true},
+			},
+			HelpName: "croc update",
+			Action:   updateCommand,
 		},
 		{
 			Name:        "relay",
@@ -109,6 +166,9 @@ func newApp() *cli.App {
 				&cli.IntFlag{Name: "max-rooms-open", Value: tcp.DEFAULT_MAX_ROOMS_OPEN, Usage: "maximum waiting rooms per relay port", EnvVars: []string{"CROC_MAX_ROOMS_OPEN"}},
 				&cli.IntFlag{Name: "max-pending-handshakes", Value: tcp.DEFAULT_MAX_PENDING_HANDSHAKES, Usage: "maximum incomplete handshakes per relay port", EnvVars: []string{"CROC_MAX_PENDING_HANDSHAKES"}},
 				&cli.DurationFlag{Name: "handshake-timeout", Value: tcp.DEFAULT_HANDSHAKE_TIMEOUT, Usage: "maximum time for an initial relay handshake", EnvVars: []string{"CROC_HANDSHAKE_TIMEOUT"}},
+				&cli.IntFlag{Name: "source-join-limit", Value: tcp.DEFAULT_SOURCE_JOIN_LIMIT, Usage: "maximum room joins per source IP in the admission window", EnvVars: []string{"CROC_SOURCE_JOIN_LIMIT"}},
+				&cli.IntFlag{Name: "room-join-limit", Value: tcp.DEFAULT_ROOM_JOIN_LIMIT, Usage: "maximum joins per room in the admission window", EnvVars: []string{"CROC_ROOM_JOIN_LIMIT"}},
+				&cli.DurationFlag{Name: "join-limit-window", Value: tcp.DEFAULT_JOIN_LIMIT_WINDOW, Usage: "sliding window for relay admission limits", EnvVars: []string{"CROC_JOIN_LIMIT_WINDOW"}},
 			},
 		},
 		{
@@ -150,7 +210,7 @@ func newApp() *cli.App {
 		&cli.StringFlag{Name: "relay6", Value: models.DEFAULT_RELAY6, Usage: "ipv6 address of the relay", EnvVars: []string{"CROC_RELAY6"}},
 		&cli.StringFlag{Name: "out", Value: ".", Usage: "specify an output folder to receive the file"},
 		&cli.StringFlag{Name: "pass", Value: models.DEFAULT_PASSPHRASE, Usage: "password for the relay", EnvVars: []string{"CROC_PASS"}},
-		&cli.StringFlag{Name: "socks5", Value: "", Usage: "add a socks5 proxy", EnvVars: []string{"SOCKS5_PROXY"}},
+		&cli.StringFlag{Name: "socks5", Value: "", Usage: "SOCKS5 proxy address (relay DNS is resolved by the proxy)", EnvVars: []string{"SOCKS5_PROXY"}},
 		&cli.StringFlag{Name: "connect", Value: "", Usage: "add a http proxy", EnvVars: []string{"HTTP_PROXY"}},
 		&cli.StringFlag{Name: "throttleUpload", Value: "", Usage: "throttle the upload speed e.g. 500k"},
 	}
@@ -190,7 +250,10 @@ access the shared secret and receive the files instead of the intended
 recipient.
 
 Do you wish to continue to DISABLE the classic mode? (y/N) `, colorEnabled))
-				choice, _ := utils.GetInput("")
+				choice, inputErr := utils.GetInputContext(c.Context, "")
+				if inputErr != nil {
+					return inputErr
+				}
 				choice = strings.ToLower(choice)
 				if choice == "y" || choice == "yes" {
 					os.Remove(classicFile)
@@ -216,7 +279,10 @@ multi-user system, this could allow other local users to access the
 shared secret and receive the files instead of the intended recipient.
 
 Do you wish to continue to enable the classic mode? (y/N) `, colorEnabled))
-				choice, _ := utils.GetInput("")
+				choice, inputErr := utils.GetInputContext(c.Context, "")
+				if inputErr != nil {
+					return inputErr
+				}
 				choice = strings.ToLower(choice)
 				if choice == "y" || choice == "yes" {
 					fmt.Print("\nClassic mode ENABLED.\n\n")
@@ -241,7 +307,7 @@ Do you wish to continue to enable the classic mode? (y/N) `, colorEnabled))
 				fnames = append(fnames, "'"+basename+"'")
 			}
 			promptMessage := fmt.Sprintf("Did you mean to send %s? (Y/n) ", strings.Join(fnames, ", "))
-			choice, errInput := utils.GetInput(promptMessage)
+			choice, errInput := utils.GetInputContext(c.Context, promptMessage)
 			if errInput != nil {
 				return fmt.Errorf("could not read confirmation (use 'croc send' to send without one): %w", errInput)
 			}
@@ -264,7 +330,7 @@ func setDebugLevel(c *cli.Context) {
 		log.SetLevel("debug")
 		log.Debug("debug mode on")
 		// print the public IP address
-		ip, err := utils.PublicIP()
+		ip, err := utils.PublicIPContext(c.Context)
 		if err == nil {
 			log.Debugf("public IP address: %s", ip)
 		} else {
@@ -359,10 +425,10 @@ func assignPublicRelayForCode(options *croc.Options) error {
 	return assignPublicRelay(options, relayIndex)
 }
 
-func selectBestPublicRelay(probe publicrelay.Probe) (int, error) {
+func selectBestPublicRelay(ctx context.Context, probe publicrelay.Probe) (int, error) {
 	relays := publicrelay.Relays()
 	best, duration, err := publicrelay.SelectFirst(
-		context.Background(),
+		ctx,
 		relays,
 		publicrelay.ProbeTimeout,
 		probe,
@@ -423,7 +489,10 @@ func clearBestPublicRelayOnSendError(generatedPublicCode bool, err error) {
 	}
 }
 
-func selectPublicRelay(probe publicrelay.Probe) (int, error) {
+func selectPublicRelay(ctx context.Context, probe publicrelay.Probe) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	relays := publicrelay.Relays()
 	if relayIndex, err := loadBestPublicRelay(relays); err == nil {
 		return relayIndex, nil
@@ -431,8 +500,11 @@ func selectPublicRelay(probe publicrelay.Probe) (int, error) {
 		log.Debugf("ignoring invalid public relay cache: %v", err)
 	}
 
-	relayIndex, err := selectBestPublicRelay(probe)
+	relayIndex, err := selectBestPublicRelay(ctx, probe)
 	if err != nil {
+		return 0, err
+	}
+	if err = ctx.Err(); err != nil {
 		return 0, err
 	}
 	if err = saveBestPublicRelay(relays[relayIndex]); err != nil {
@@ -480,6 +552,9 @@ func applyRememberedSendOptions(c *cli.Context, options *croc.Options, remembere
 	if !c.IsSet("disable-clipboard") {
 		options.DisableClipboard = remembered.DisableClipboard
 	}
+	if !c.IsSet("transport") && remembered.Transport != "" {
+		options.Transport = remembered.Transport
+	}
 	if !c.IsSet("relay") && strings.HasPrefix(remembered.RelayAddress, "non-default:") {
 		rememberedAddr := strings.TrimPrefix(remembered.RelayAddress, "non-default:")
 		options.RelayAddress = strings.TrimSpace(rememberedAddr)
@@ -490,12 +565,26 @@ func applyRememberedSendOptions(c *cli.Context, options *croc.Options, remembere
 	}
 }
 
+const tailcatRelayFallbackWarning = "Tailcat is unavailable in this build; using the croc relay instead."
+
+func resolveSendTransport(options *croc.Options) (downgraded bool, err error) {
+	options.Transport, downgraded, err = croc.ResolveTransportMode(string(options.Transport))
+	return downgraded, err
+}
+
+func writeTailcatRelayFallbackWarning(output io.Writer, quiet, downgraded bool) {
+	if quiet || !downgraded {
+		return
+	}
+	fmt.Fprintln(output, tailcatRelayFallbackWarning)
+}
+
 // parseRelayPorts splits a comma-separated --ports value, trimming whitespace
 // around each entry and dropping empties. This keeps "9009, 9010," working the
 // same as "9009,9010" instead of producing invalid port strings like " 9010".
 func parseRelayPorts(portsFlag string) []string {
 	var ports []string
-	for _, p := range strings.Split(portsFlag, ",") {
+	for p := range strings.SplitSeq(portsFlag, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			ports = append(ports, p)
 		}
@@ -510,7 +599,15 @@ func send(c *cli.Context) (err error) {
 	setDebugLevel(c)
 	comm.Socks5Proxy = c.String("socks5")
 	comm.HttpProxy = c.String("connect")
-	if c.Bool("store") {
+	transport, err := croc.ParseTransportMode(c.String("transport"))
+	if err != nil {
+		return err
+	}
+	stored := c.Bool("store") || (c.Command != nil && c.Command.Name == "store")
+	if stored && transport != croc.TransportAuto {
+		return errors.New("--transport must be auto for stored transfers")
+	}
+	if stored {
 		return sendStored(c)
 	}
 
@@ -523,14 +620,14 @@ func send(c *cli.Context) (err error) {
 		transfersParam = 4
 	}
 	excludeStrings := []string{}
-	for _, v := range strings.Split(c.String("exclude"), ",") {
+	for v := range strings.SplitSeq(c.String("exclude"), ",") {
 		v = strings.ToLower(strings.TrimSpace(v))
 		if v != "" {
 			excludeStrings = append(excludeStrings, v)
 		}
 	}
 	excludeFiles := []string{}
-	for _, v := range strings.Split(c.String("exclude-file"), ",") {
+	for v := range strings.SplitSeq(c.String("exclude-file"), ",") {
 		v = utils.NormalizeRelativePath(strings.TrimSpace(v))
 		if v != "" && v != "." {
 			excludeFiles = append(excludeFiles, v)
@@ -573,6 +670,7 @@ func send(c *cli.Context) (err error) {
 		Quiet:             c.Bool("quiet"),
 		DisableClipboard:  c.Bool("disable-clipboard"),
 		ExtendedClipboard: c.Bool("extended-clipboard"),
+		Transport:         transport,
 	}
 	if crocOptions.RelayAddress != models.DEFAULT_RELAY {
 		crocOptions.RelayAddress6 = ""
@@ -589,12 +687,23 @@ func send(c *cli.Context) (err error) {
 		}
 		applyRememberedSendOptions(c, &crocOptions, rememberedOptions)
 	}
+	downgradedTransport, err := resolveSendTransport(&crocOptions)
+	if err != nil {
+		return err
+	}
+	if crocOptions.OnlyLocal && crocOptions.Transport != croc.TransportAuto {
+		return errors.New("--transport must be auto for local-only transfers")
+	}
+	if crocOptions.ShowQrCode && crocOptions.Transport == croc.TransportDERP {
+		return errors.New("--transport derp cannot be combined with --qrcode")
+	}
+	writeTailcatRelayFallbackWarning(os.Stderr, crocOptions.Quiet, downgradedTransport)
 	publicRelayMode := usesPublicRelay(c, crocOptions)
 
 	var fnames []string
 	stat, _ := os.Stdin.Stat()
 	if ((stat.Mode() & os.ModeCharDevice) == 0) && !c.Bool("ignore-stdin") {
-		fnames, err = getStdin()
+		fnames, err = getStdinContext(c.Context)
 		if err != nil {
 			return
 		}
@@ -650,7 +759,7 @@ Or you can go back to the classic croc behavior by enabling classic mode:
 	if len(crocOptions.SharedSecret) == 0 {
 		if publicRelayMode {
 			var relayIndex int
-			relayIndex, err = selectPublicRelay(tcp.MeasureServerLatencyContext)
+			relayIndex, err = selectPublicRelay(c.Context, tcp.MeasureServerLatencyContext)
 			if err != nil {
 				return err
 			}
@@ -669,7 +778,7 @@ Or you can go back to the classic croc behavior by enabling classic mode:
 			return fmt.Errorf("could not select public relay: %w", err)
 		}
 	}
-	minimalFileInfos, emptyFoldersToTransfer, totalNumberFolders, err := croc.GetFilesInfoWithExactExclusions(fnames, crocOptions.ZipFolder, crocOptions.GitIgnore, crocOptions.Exclude, crocOptions.ExcludeFile)
+	minimalFileInfos, emptyFoldersToTransfer, totalNumberFolders, err := croc.GetFilesInfoWithExactExclusionsContext(c.Context, fnames, crocOptions.ZipFolder, crocOptions.GitIgnore, crocOptions.Exclude, crocOptions.ExcludeFile)
 	if err != nil {
 		return
 	}
@@ -677,6 +786,9 @@ Or you can go back to the classic croc behavior by enabling classic mode:
 		minimalFileInfosInclude := []croc.FileInfo{}
 		emptyFoldersToTransferInclude := []croc.FileInfo{}
 		for _, f := range minimalFileInfos {
+			if err = c.Context.Err(); err != nil {
+				return err
+			}
 			exclude := false
 			for _, exclusion := range crocOptions.Exclude {
 				if strings.Contains(path.Join(strings.ToLower(f.FolderRemote), strings.ToLower(f.Name)), exclusion) {
@@ -689,6 +801,9 @@ Or you can go back to the classic croc behavior by enabling classic mode:
 			}
 		}
 		for _, f := range emptyFoldersToTransfer {
+			if err = c.Context.Err(); err != nil {
+				return err
+			}
 			exclude := false
 			for _, exclusion := range crocOptions.Exclude {
 				if strings.Contains(path.Join(strings.ToLower(f.FolderRemote), strings.ToLower(f.Name)), exclusion) {
@@ -713,7 +828,7 @@ Or you can go back to the classic croc behavior by enabling classic mode:
 		emptyFoldersToTransfer = emptyFoldersToTransferInclude
 	}
 
-	cr, err := croc.New(crocOptions)
+	cr, err := croc.NewCtx(c.Context, crocOptions)
 	if err != nil {
 		return
 	}
@@ -726,19 +841,44 @@ Or you can go back to the classic croc behavior by enabling classic mode:
 }
 
 func getStdin() (fnames []string, err error) {
+	return getStdinContext(context.Background())
+}
+
+func getStdinContext(ctx context.Context) (fnames []string, err error) {
+	return copyStdinContext(ctx, os.Stdin)
+}
+
+func copyStdinContext(ctx context.Context, input io.Reader) (fnames []string, err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	f, err := os.CreateTemp(".", "croc-stdin-")
 	if err != nil {
 		return
 	}
-	_, err = io.Copy(f, os.Stdin)
-	if err != nil {
-		return
+	name := f.Name()
+	copyDone := make(chan error, 1)
+	go func() {
+		_, copyErr := io.Copy(f, input)
+		copyDone <- copyErr
+	}()
+	select {
+	case <-ctx.Done():
+		_ = f.Close()
+		_ = os.Remove(name)
+		return nil, ctx.Err()
+	case err = <-copyDone:
+		if err != nil {
+			_ = f.Close()
+			_ = os.Remove(name)
+			return nil, err
+		}
 	}
-	err = f.Close()
-	if err != nil {
-		return
+	if err = f.Close(); err != nil {
+		_ = os.Remove(name)
+		return nil, err
 	}
-	fnames = []string{f.Name()}
+	fnames = []string{name}
 	return
 }
 
@@ -848,6 +988,7 @@ func receive(c *cli.Context) (err error) {
 		Quiet:             c.Bool("quiet"),
 		DisableClipboard:  c.Bool("disable-clipboard"),
 		ExtendedClipboard: c.Bool("extended-clipboard"),
+		Transport:         croc.TransportAuto,
 	}
 	if crocOptions.RelayAddress != models.DEFAULT_RELAY {
 		crocOptions.RelayAddress6 = ""
@@ -947,7 +1088,7 @@ Run croc with no argument and paste the link at the prompt, or use:
 		}
 	}
 	if crocOptions.SharedSecret == "" {
-		crocOptions.SharedSecret, err = utils.GetInput("Enter receive code: ")
+		crocOptions.SharedSecret, err = utils.GetInputContext(c.Context, "Enter receive code: ")
 		if err != nil {
 			return fmt.Errorf("could not read receive code: %w", err)
 		}
@@ -966,7 +1107,7 @@ Run croc with no argument and paste the link at the prompt, or use:
 		}
 	}
 
-	cr, err := croc.New(crocOptions)
+	cr, err := croc.NewCtx(c.Context, crocOptions)
 	if err != nil {
 		return
 	}
@@ -1016,6 +1157,18 @@ func relay(c *cli.Context) (err error) {
 	if handshakeTimeout <= 0 {
 		return fmt.Errorf("--handshake-timeout must be positive")
 	}
+	sourceJoinLimit := c.Int("source-join-limit")
+	if sourceJoinLimit <= 0 {
+		return fmt.Errorf("--source-join-limit must be positive")
+	}
+	roomJoinLimit := c.Int("room-join-limit")
+	if roomJoinLimit <= 0 {
+		return fmt.Errorf("--room-join-limit must be positive")
+	}
+	joinLimitWindow := c.Duration("join-limit-window")
+	if joinLimitWindow <= 0 {
+		return fmt.Errorf("--join-limit-window must be positive")
+	}
 	debugString := "info"
 	if c.Bool("debug") {
 		debugString = "debug"
@@ -1044,6 +1197,7 @@ func relay(c *cli.Context) (err error) {
 	}
 
 	var roomPaired func()
+	var roomProtocol func(tcp.RoomProtocol)
 	umamiURL := strings.TrimSpace(os.Getenv("UMAMI_URL"))
 	umamiWebsiteID := strings.TrimSpace(os.Getenv("UMAMI_WEBSITE_ID"))
 	umamiSrc := strings.TrimSpace(os.Getenv("UMAMI_SRC"))
@@ -1054,17 +1208,28 @@ func relay(c *cli.Context) (err error) {
 			log.Warnf("relay analytics disabled: %v", reporterErr)
 		} else {
 			defer reporter.Close()
-			roomPaired = func() {
-				event := "relay-session"
+			eventName := func(event string) string {
 				if umamiSrc != "" {
-					event += "-" + umamiSrc
+					return event + "-" + umamiSrc
 				}
-				reporter.Track(event)
+				return event
+			}
+			roomPaired = func() {
+				reporter.Track(eventName("relay-session"))
+			}
+			roomProtocol = func(protocol tcp.RoomProtocol) {
+				if protocol == tcp.RoomProtocolSSH {
+					reporter.Track(eventName("ssh-rendezvous"))
+				}
 			}
 		}
 	}
 
 	tcpPorts := strings.Join(ports[1:], ",")
+	capabilitySet, capabilityErr := tcp.NewRelayCapabilitySet(min(len(ports)-1, 8))
+	if capabilityErr != nil {
+		return capabilityErr
+	}
 	for i, port := range ports {
 		if i == 0 {
 			continue
@@ -1078,6 +1243,9 @@ func relay(c *cli.Context) (err error) {
 				tcp.WithMaxRoomsOpen(maxRoomsOpen),
 				tcp.WithMaxPendingHandshakes(maxPendingHandshakes),
 				tcp.WithHandshakeTimeout(handshakeTimeout),
+				tcp.WithAdmissionLimits(sourceJoinLimit, roomJoinLimit, joinLimitWindow),
+				tcp.WithFastAdmission(capabilitySet),
+				tcp.WithCtx(c.Context),
 			)
 			if err != nil {
 				panic(err)
@@ -1093,6 +1261,10 @@ func relay(c *cli.Context) (err error) {
 		tcp.WithMaxRoomsOpen(maxRoomsOpen),
 		tcp.WithMaxPendingHandshakes(maxPendingHandshakes),
 		tcp.WithHandshakeTimeout(handshakeTimeout),
+		tcp.WithAdmissionLimits(sourceJoinLimit, roomJoinLimit, joinLimitWindow),
+		tcp.WithFastAdmission(capabilitySet),
+		tcp.WithCtx(c.Context),
 		tcp.WithRoomPairedCallback(roomPaired),
+		tcp.WithRoomProtocolCallback(roomProtocol),
 	)
 }

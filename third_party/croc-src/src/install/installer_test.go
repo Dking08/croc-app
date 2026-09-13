@@ -88,6 +88,7 @@ func TestInstallerBuildsReleaseAssetURLsFromDynamicVersion(t *testing.T) {
 		`croc_checksum_file="${croc_bin_name}_v${croc_version}_checksums.txt"`,
 		`croc_url="${croc_base_url}/v${croc_version}/${croc_file}"`,
 		`croc_checksum_url="${croc_base_url}/v${croc_version}/${croc_checksum_file}"`,
+		`"${prefix}/${croc_bin_name}" update --register-installer`,
 	} {
 		if !strings.Contains(script, fragment) {
 			t.Fatalf("installer does not contain URL construction %q", fragment)
@@ -95,6 +96,41 @@ func TestInstallerBuildsReleaseAssetURLsFromDynamicVersion(t *testing.T) {
 	}
 	if regexp.MustCompile(`croc_version="[0-9]+\.[0-9]+\.[0-9]+"`).MatchString(script) {
 		t.Fatal("installer still contains a hardcoded croc version")
+	}
+}
+
+func TestLinux32BitTargetsRemainInInstallerAndReleaseBuilds(t *testing.T) {
+	contents, err := os.ReadFile("default.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(contents)
+	for _, fragment := range []string{`"armv5l" ) croc_arch="ARMv5"`, `"i386"|"i486"|"i586"|"i686" ) croc_arch="32bit"`} {
+		if !strings.Contains(script, fragment) {
+			t.Fatalf("installer does not map Linux target %q", fragment)
+		}
+	}
+	if strings.Contains(script, "no longer supported") {
+		t.Fatal("installer still rejects Linux 32-bit targets")
+	}
+
+	ci, err := os.ReadFile("../../.github/workflows/ci.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release, err := os.ReadFile("../../.github/workflows/release.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"GOOS=linux GOARCH=386", "GOOS=linux GOARCH=arm go"} {
+		if !strings.Contains(string(ci), required) {
+			t.Fatalf("CI workflow omits restored target %q", required)
+		}
+	}
+	for _, required := range []string{"name: Linux-32bit", "name: Linux-ARM\n", "name: Linux-ARMv5"} {
+		if !strings.Contains(string(release), required) {
+			t.Fatalf("release workflow omits restored artifact %q", required)
+		}
 	}
 }
 

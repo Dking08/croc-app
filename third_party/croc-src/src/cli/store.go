@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,14 +13,24 @@ import (
 
 	"github.com/rivo/uniseg"
 	"github.com/schollz/croc/v11/internal/cli"
-	"github.com/schollz/croc/v11/src/comm"
 	"github.com/schollz/croc/v11/src/croc"
 	storeapi "github.com/schollz/croc/v11/src/store"
 	"github.com/schollz/croc/v11/src/storeclient"
 	"github.com/schollz/croc/v11/src/storecrypto"
 	"github.com/schollz/croc/v11/src/termui"
 	"github.com/schollz/croc/v11/src/utils"
+	"github.com/schollz/progressbar/v3"
 )
+
+// storedUploadFlags keeps defaults and service configuration shared between
+// croc store and the original croc send --store command.
+func storedUploadFlags(prefix string) []cli.Flag {
+	return []cli.Flag{
+		&cli.IntFlag{Name: prefix + "downloads", Value: 1, Usage: "number of verified downloads allowed in stored mode"},
+		&cli.StringFlag{Name: prefix + "expiration", Value: "1d", Usage: "stored lifetime after upload (for example 90m, 12h, 3d, or 2w)"},
+		&cli.StringFlag{Name: prefix + "url", Value: "https://getcroc.com", Usage: "stored-transfer service origin", EnvVars: []string{"CROC_STORE_URL"}},
+	}
+}
 
 type storeReceipt struct {
 	ID          string    `json:"id"`
@@ -122,30 +131,42 @@ func removeStoreReceipt(id string) error {
 	return writeStoreReceipts(filtered)
 }
 
-func storedCallbacks(quiet bool) storeclient.Callbacks {
+func storedCallbacks(quiet bool, operation string) storeclient.Callbacks {
 	output, colorEnabled := termui.Output(os.Stderr)
-	return newStyledStoredCallbacks(output, quiet, colorEnabled)
+	return newStyledStoredCallbacks(output, quiet, colorEnabled, operation)
 }
 
-func newStoredCallbacks(output io.Writer, quiet bool) storeclient.Callbacks {
-	return newStyledStoredCallbacks(output, quiet, false)
+func newStoredCallbacks(output io.Writer, quiet bool, operation string) storeclient.Callbacks {
+	return newStyledStoredCallbacks(output, quiet, false, operation)
 }
 
-func newStyledStoredCallbacks(output io.Writer, quiet, colorEnabled bool) storeclient.Callbacks {
+func newStyledStoredCallbacks(output io.Writer, quiet, colorEnabled bool, operation string) storeclient.Callbacks {
 	lastStatus := ""
 	lineWidth := 0
+	var bar *progressbar.ProgressBar
+	progressFinished := false
+
+	clearLine := func() {
+		if lineWidth == 0 {
+			return
+		}
+		fmt.Fprintf(output, "\r%s\r", strings.Repeat(" ", lineWidth))
+		lineWidth = 0
+	}
 	render := func(value string) {
-		if lineWidth > 0 {
-			fmt.Fprintf(output, "\r%s\r", strings.Repeat(" ", lineWidth))
-		} else {
+		if lineWidth == 0 {
 			fmt.Fprint(output, "\r")
 		}
+		clearLine()
 		fmt.Fprint(output, value)
 		lineWidth = uniseg.StringWidth(termui.Plain(value))
 	}
 	return storeclient.Callbacks{
 		Status: func(value string) {
 			if quiet || value == lastStatus {
+				return
+			}
+			if bar != nil && !progressFinished && strings.HasPrefix(value, operation+" ") {
 				return
 			}
 			lastStatus = value
@@ -155,18 +176,29 @@ func newStyledStoredCallbacks(output io.Writer, quiet, colorEnabled bool) storec
 			if quiet || value.TotalSize == 0 {
 				return
 			}
-			percent := float64(value.TotalBytes) / float64(value.TotalSize) * 100
-			progressStyle := termui.Cyan
-			if value.TotalBytes >= value.TotalSize {
-				progressStyle = termui.Green
+			if bar == nil {
+				clearLine()
+				progressName := fmt.Sprintf("%d files", value.FileCount)
+				if value.FileCount == 1 {
+					progressName = value.FileName
+				}
+				description := termui.ProgressDescription(operation+" ", progressName, colorEnabled)
+				bar = termui.NewProgress(termui.ProgressConfig{
+					Max:          value.TotalSize,
+					Description:  description,
+					Writer:       output,
+					ColorEnabled: colorEnabled,
+					Throttle:     100 * time.Millisecond,
+					OnCompletion: func() {
+						progressFinished = true
+						fmt.Fprintln(output)
+					},
+				})
 			}
-			render(fmt.Sprintf(
-				"%s — %s (%s / %s)",
-				termui.Filename(value.FileName, colorEnabled),
-				termui.Color(fmt.Sprintf("%.1f%%", percent), progressStyle, colorEnabled),
-				utils.ByteCountDecimal(value.TotalBytes),
-				utils.ByteCountDecimal(value.TotalSize),
-			))
+
+			current := max(value.TotalBytes, 0)
+			current = min(current, value.TotalSize)
+			_ = bar.Set64(current)
 		},
 	}
 }
@@ -229,29 +261,30 @@ func sendStored(c *cli.Context) error {
 	if stat != nil && (stat.Mode()&os.ModeCharDevice) == 0 && !c.Bool("ignore-stdin") {
 		return errors.New("stored mode does not accept stdin; pass regular file paths")
 	}
+	prefix, command := "store-", "croc send --store"
+	if c.Command != nil && c.Command.Name == "store" {
+		prefix, command = "", "croc store"
+	}
 	paths := c.Args().Slice()
 	if len(paths) == 0 {
-		return errors.New("must specify file: croc send --store [filename(s)]")
+		return fmt.Errorf("must specify file: %s [filename(s)]", command)
 	}
-	downloads := c.Int("store-downloads")
+	downloads := c.Int(prefix + "downloads")
 	if downloads < 1 {
-		return errors.New("--store-downloads must be positive")
+		return fmt.Errorf("--%sdownloads must be positive", prefix)
 	}
-	expiration, err := storeapi.ParseExpiration(c.String("store-expiration"), false)
+	expiration, err := storeapi.ParseExpiration(c.String(prefix+"expiration"), false)
 	if err != nil {
-		return fmt.Errorf("invalid --store-expiration: %w", err)
+		return fmt.Errorf("invalid --%sexpiration: %w", prefix, err)
 	}
-
-	comm.Socks5Proxy = c.String("socks5")
-	comm.HttpProxy = c.String("connect")
 
 	client := new(storeclient.Client)
 	result, err := client.UploadWithOptions(
-		context.Background(),
-		strings.TrimSpace(c.String("store-url")),
+		c.Context,
+		strings.TrimSpace(c.String(prefix+"url")),
 		paths,
 		storeclient.UploadOptions{Downloads: downloads, Expiration: expiration},
-		storedCallbacks(c.Bool("quiet")),
+		storedCallbacks(c.Bool("quiet"), "Uploading"),
 	)
 	if !c.Bool("quiet") {
 		fmt.Fprintln(os.Stderr)
@@ -298,9 +331,6 @@ func sendStored(c *cli.Context) error {
 }
 
 func receiveStored(c *cli.Context, value string) error {
-	comm.Socks5Proxy = c.String("socks5")
-	comm.HttpProxy = c.String("connect")
-
 	share, err := storecrypto.ParseShare(value)
 	if err != nil {
 		return err
@@ -309,7 +339,7 @@ func receiveStored(c *cli.Context, value string) error {
 		return errors.New("--stdout is not supported for stored transfers")
 	}
 	client := new(storeclient.Client)
-	manifest, expires, err := client.Inspect(context.Background(), share)
+	manifest, expires, err := client.Inspect(c.Context, share)
 	if err != nil {
 		return err
 	}
@@ -345,7 +375,7 @@ func receiveStored(c *cli.Context, value string) error {
 			if c.Bool("yes") {
 				return fmt.Errorf("destination already exists (use --overwrite): %s", destination)
 			}
-			choice, inputErr := utils.GetInput(fmt.Sprintf(
+			choice, inputErr := utils.GetInputContext(c.Context, fmt.Sprintf(
 				"Replace %s? (y/N) ",
 				termui.Filename(destination, colorEnabled),
 			))
@@ -355,7 +385,7 @@ func receiveStored(c *cli.Context, value string) error {
 		}
 	}
 	if !c.Bool("yes") {
-		choice, inputErr := utils.GetInput("Receive these files? (Y/n) ")
+		choice, inputErr := utils.GetInputContext(c.Context, "Receive these files? (Y/n) ")
 		if inputErr != nil {
 			return inputErr
 		}
@@ -365,11 +395,11 @@ func receiveStored(c *cli.Context, value string) error {
 		}
 	}
 	err = client.Receive(
-		context.Background(),
+		c.Context,
 		share,
 		manifest,
 		output,
-		storedCallbacks(c.Bool("quiet")),
+		storedCallbacks(c.Bool("quiet"), "Downloading"),
 	)
 	if !c.Bool("quiet") {
 		fmt.Fprintln(os.Stderr)
@@ -379,8 +409,6 @@ func receiveStored(c *cli.Context, value string) error {
 
 func revokeStored(c *cli.Context, transferID string) error {
 	setDebugLevel(c)
-	comm.Socks5Proxy = c.String("socks5")
-	comm.HttpProxy = c.String("connect")
 	id := strings.TrimSpace(transferID)
 	if id == "" || c.Args().Present() {
 		return errors.New("usage: croc --revoke [transfer-id]")
@@ -404,7 +432,7 @@ func revokeStored(c *cli.Context, transferID string) error {
 		ID:        receipt.ID,
 		MasterKey: make([]byte, storecrypto.KeySize),
 	}
-	err = new(storeclient.Client).Revoke(context.Background(), share, receipt.UploadToken)
+	err = new(storeclient.Client).Revoke(c.Context, share, receipt.UploadToken)
 	var httpErr *storeclient.HTTPError
 	if err != nil && !(errors.As(err, &httpErr) &&
 		(httpErr.StatusCode == http.StatusGone || httpErr.StatusCode == http.StatusNotFound)) {

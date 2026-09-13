@@ -1,0 +1,189 @@
+import { describe, expect, it } from "vitest";
+import { normalizeOutgoingFileName, validateSenderInfo } from "./metadata";
+import type { SenderInfoWire } from "./types";
+
+function sender(
+  files: SenderInfoWire["FilesToTransfer"],
+  folders: SenderInfoWire["EmptyFoldersToTransfer"] = null,
+): SenderInfoWire {
+  return {
+    FilesToTransfer: files,
+    EmptyFoldersToTransfer: folders,
+    TotalNumberFolders: folders?.length ?? 0,
+    MachineID: "sender",
+    Ask: false,
+    SendingText: false,
+    NoCompress: false,
+    HashAlgorithm: "xxhash",
+  };
+}
+
+describe("incoming croc metadata", () => {
+  it("normalizes Unicode separators in outgoing filenames for Go compatibility", () => {
+    expect(
+      normalizeOutgoingFileName("Screenshot 2026-07-22 at 8.59.57\u202fAM.png"),
+    ).toBe("Screenshot 2026-07-22 at 8.59.57 AM.png");
+    expect(normalizeOutgoingFileName("two\u00a0spaces.txt")).toBe("two spaces.txt");
+    expect(() => normalizeOutgoingFileName("hidden\u200bmark.txt")).toThrow(
+      /non-printable/i,
+    );
+    expect(normalizeOutgoingFileName("e\u0301.txt")).toBe("é.txt");
+    for (const name of ["CON.txt", "file.txt:stream", "trailing."]) {
+      expect(() => normalizeOutgoingFileName(name)).toThrow();
+    }
+  });
+
+  it("normalizes safe nested paths", () => {
+    const offer = validateSenderInfo(
+      sender([
+        {
+          n: "hello.txt",
+          fr: "docs/notes/",
+          s: 5,
+          h: "AQID",
+        },
+      ], [{ fr: "empty/folder/" }]),
+    );
+    expect(offer.files[0]).toMatchObject({
+      name: "hello.txt",
+      folder: "docs/notes",
+      path: "docs/notes/hello.txt",
+      size: 5,
+    });
+    expect(offer.emptyFolders).toEqual(["empty/folder"]);
+  });
+
+  it("only honors per-file compression after capability negotiation", () => {
+    const legacy = validateSenderInfo(
+      sender([{ n: "archive.zip", fr: ".", s: 1, h: "AA==", c: false }]),
+    );
+    expect(legacy.files[0].compressed).toBe(true);
+    expect(legacy.perFileCompression).toBe(false);
+
+    const modernInfo = sender([
+      { n: "archive.zip", fr: ".", s: 1, h: "AA==", c: false },
+    ]);
+    modernInfo.Features = ["per-file-compression-v1"];
+    const modern = validateSenderInfo(modernInfo);
+    expect(modern.files[0].compressed).toBe(false);
+    expect(modern.perFileCompression).toBe(true);
+  });
+
+  it("accepts one bounded text payload and marks the offer as text", () => {
+    const text = sender([{ n: "croc-stdin-123", fr: ".", s: 12, h: "AA==" }]);
+    text.SendingText = true;
+
+    expect(validateSenderInfo(text)).toMatchObject({
+      kind: "text",
+      totalSize: 12,
+      files: [{ path: "croc-stdin-123", size: 12 }],
+    });
+  });
+
+  it.each([
+    ["../escape", "file.txt"],
+    ["/absolute", "file.txt"],
+    ["C:\\absolute", "file.txt"],
+    ["\\\\server\\share", "file.txt"],
+    [".ssh", "authorized_keys"],
+    [".SSH", "authorized_keys"],
+    [".Ssh", "authorized_keys"],
+    ["safe/.GIT/hooks", "post-checkout"],
+    [".", ".gnupg"],
+    [".", "CON.txt"],
+    [".", "COM¹.log"],
+    [".", "file.txt:stream"],
+    [".", "trailing."],
+    [".", "../file.txt"],
+  ])("rejects unsafe path %s/%s", (folder, name) => {
+    expect(() =>
+      validateSenderInfo(sender([{ n: name, fr: folder, s: 1, h: "AA==" }])),
+    ).toThrow();
+  });
+
+  it("allows names that only contain sensitive substrings", () => {
+    expect(() =>
+      validateSenderInfo(
+        sender([{ n: "my.git", fr: ".ssh-backup", s: 1, h: "AA==" }]),
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects portable destination collisions", () => {
+    for (const files of [
+      [
+        { n: "same.txt", fr: "./", s: 1, h: "AA==" },
+        { n: "same.txt", fr: ".", s: 1, h: "AA==" },
+      ],
+      [
+        { n: "README", fr: ".", s: 1, h: "AA==" },
+        { n: "readme", fr: ".", s: 1, h: "AA==" },
+      ],
+      [
+        { n: "é.txt", fr: ".", s: 1, h: "AA==" },
+        { n: "e\u0301.txt", fr: ".", s: 1, h: "AA==" },
+      ],
+    ]) {
+      expect(() => validateSenderInfo(sender(files))).toThrow(/duplicate/i);
+    }
+  });
+
+  it("rejects destinations beneath files and file-directory collisions", () => {
+    expect(() =>
+      validateSenderInfo(
+        sender([
+          { n: "parent", fr: ".", s: 1, h: "AA==" },
+          { n: "child", fr: "parent", s: 1, h: "AA==" },
+        ]),
+      ),
+    ).toThrow(/non-directory/i);
+
+    expect(() =>
+      validateSenderInfo(
+        sender([{ n: "parent", fr: ".", s: 1, h: "AA==" }], [
+          { fr: "parent" },
+        ]),
+      ),
+    ).toThrow(/duplicate/i);
+  });
+
+  it("rejects symlinks, malformed text offers, unsupported hashes, and unsafe sizes", () => {
+    expect(() =>
+      validateSenderInfo(sender([{ n: "link", sy: "../target", s: 0 }])),
+    ).toThrow(/symlink/i);
+
+    for (const text of [
+      sender([]),
+      sender([{ n: "croc-stdin-empty", s: 0, h: "AA==" }]),
+      sender([
+        { n: "croc-stdin-one", s: 1, h: "AA==" },
+        { n: "croc-stdin-two", s: 1, h: "AA==" },
+      ]),
+      sender(
+        [{ n: "croc-stdin-folder", s: 1, h: "AA==" }],
+        [{ fr: "folder" }],
+      ),
+      {
+        ...sender([{ n: "croc-stdin-folder-count", s: 1, h: "AA==" }]),
+        TotalNumberFolders: 1,
+      },
+      sender([{ n: "croc-stdin-large", s: 1024 * 1024 + 1, h: "AA==" }]),
+      sender([{ n: ".bashrc", fr: ".", s: 1, h: "AA==" }]),
+      sender([{ n: "croc-stdin-nested", fr: "safe", s: 1, h: "AA==" }]),
+      sender([{ n: "croc-stdin-archive", s: 1, h: "AA==", tf: true }]),
+    ]) {
+      text.SendingText = true;
+      expect(() => validateSenderInfo(text)).toThrow(/text/i);
+    }
+
+    const md5 = sender([]);
+    md5.HashAlgorithm = "md5";
+    expect(() => validateSenderInfo(md5)).toThrow(/md5/i);
+
+    expect(() =>
+      validateSenderInfo(
+        sender([{ n: "huge", fr: ".", s: Number.MAX_VALUE, h: "AA==" }]),
+      ),
+    ).toThrow(/size/i);
+  });
+});

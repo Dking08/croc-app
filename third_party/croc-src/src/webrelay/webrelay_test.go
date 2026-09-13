@@ -28,8 +28,9 @@ func testSite() fstest.MapFS {
 		"croc-download-sw.js": {
 			Data: []byte("self.addEventListener('fetch', () => {})"),
 		},
-		"assets/app.js":  {Data: []byte("console.log('croc')")},
-		"assets/app.css": {Data: []byte("body { color: black; }")},
+		"croc-ssh-worker.js": {Data: []byte("self.addEventListener('message', () => {})")},
+		"assets/app.js":      {Data: []byte("console.log('croc')")},
+		"assets/app.css":     {Data: []byte("body { color: black; }")},
 	}
 }
 
@@ -127,17 +128,35 @@ func TestServesSiteAndRuntimeConfig(t *testing.T) {
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.Equal(t, "public, max-age=31536000, immutable", recorder.Header().Get("Cache-Control"))
 
-	recorder = httptest.NewRecorder()
-	handler.ServeHTTP(
-		recorder,
-		httptest.NewRequest(http.MethodGet, "/croc-download-sw.js", nil),
-	)
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.Equal(t, "no-cache", recorder.Header().Get("Cache-Control"))
+	for _, asset := range []string{"croc-download-sw.js", "croc-ssh-worker.js"} {
+		recorder = httptest.NewRecorder()
+		handler.ServeHTTP(
+			recorder,
+			httptest.NewRequest(http.MethodGet, "/"+asset, nil),
+		)
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, "no-cache", recorder.Header().Get("Cache-Control"))
+	}
 
 	recorder = httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/missing.js", nil))
 	assert.Equal(t, http.StatusNotFound, recorder.Code)
+
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		recorder = httptest.NewRecorder()
+		handler.ServeHTTP(
+			recorder,
+			httptest.NewRequest(method, "/__croc_download__/test-id", nil),
+		)
+		assert.Equal(t, http.StatusNotFound, recorder.Code)
+		assert.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
+		assert.Equal(t, "text/plain; charset=utf-8", recorder.Header().Get("Content-Type"))
+		assert.Equal(t, "nosniff", recorder.Header().Get("X-Content-Type-Options"))
+		assert.NotContains(t, recorder.Body.String(), `id="root"`)
+		if method == http.MethodHead {
+			assert.Empty(t, recorder.Body.String())
+		}
+	}
 
 	recorder = httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/config.js", nil))

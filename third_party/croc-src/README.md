@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://getcroc.com"><img src="web/public/croc.jpg" width="408px" border="0" alt="croc"></a>
+  <a href="https://getcroc.com"><img src="web/src/assets/croc.jpg" width="408px" border="0" alt="croc"></a>
   <br>
   <a href="https://github.com/schollz/croc/releases/latest"><img src="https://img.shields.io/github/v/release/schollz/croc" alt="Version"></a>
   <a href="https://github.com/schollz/croc/actions/workflows/ci.yml"><img src="https://github.com/schollz/croc/actions/workflows/ci.yml/badge.svg" alt="Build Status"></a>
@@ -9,11 +9,21 @@
   <strong>This project’s future depends on community support. <a href="https://github.com/sponsors/schollz">Become a sponsor today</a>.</strong>
 </p>
 
+<p align="center">
+Supporting organizations:
+</p>
+<p align="center">
+<a href="https://sx.org/c/CROC">
+<img width="728" height="90" alt="CROC_728х90" src="https://github.com/user-attachments/assets/04553f49-3e4e-467b-91c3-e869750118a2" />
+</a>
+</p>
+
+
 ## About
 
 `croc` is a tool that allows any two computers to simply and securely transfer files and folders. AFAIK, _croc_ is the only CLI file-transfer tool that does **all** of the following:
 
-- Allows **any two computers** to transfer data (using a relay)
+- Allows **any two computers** to transfer data (p2p with relay fallback)
 - Provides **end-to-end encryption** (using PAKE)
 - Enables easy **cross-platform** transfers (Windows, Linux, Mac, [Browser](https://getcroc.com))
 - Allows **multiple file** transfers
@@ -42,8 +52,13 @@ curl https://getcroc.com | bash
 
 When the CLI sends or receives a transfer, it checks for a newer croc release at
 most once every 24 hours. The check runs in the background and any update notice
-is shown after the transfer finishes. Network and release-service failures are
-ignored; `--quiet` suppresses the notice.
+is shown after the transfer finishes. Run `croc update --check` at any time to
+check explicitly. Installations made by the command above can use `croc update`
+(`croc upgrade` is an alias) to verify and install a stable release when the
+executable is user-writable; pass `--yes` to skip confirmation.
+Package-managed and other installations are never overwritten; the command
+prints the appropriate upgrade guidance instead. Network and release-service
+failures in background checks are ignored; `--quiet` suppresses the notice.
 
 ### On macOS
 
@@ -62,7 +77,8 @@ sudo port install croc
 
 ### On Windows
 
-You can install the latest release with [Scoop](https://scoop.sh/), [Chocolatey](https://chocolatey.org/), or [Winget](https://learn.microsoft.com/windows/package-manager/):
+You can install the latest release with [Scoop](https://scoop.sh/) or
+[Chocolatey](https://chocolatey.org/):
 
 ```bash
 scoop install croc
@@ -70,10 +86,6 @@ scoop install croc
 
 ```bash
 choco install croc
-```
-
-```bash
-winget install schollz.croc
 ```
 
 ### Using nix-env
@@ -118,22 +130,6 @@ Install with `pacman`:
 
 ```bash
 pacman -S croc
-```
-
-### On Fedora
-
-Install with `dnf`:
-
-```bash
-dnf install croc
-```
-
-### On Gentoo
-
-Install with `portage`:
-
-```bash
-emerge net-misc/croc
 ```
 
 ### On Termux
@@ -218,6 +214,39 @@ croc code-phrase
 
 The code phrase is used to establish password-authenticated key agreement ([PAKE](https://en.wikipedia.org/wiki/Password-authenticated_key_agreement)) which generates a secret key for the sender and recipient to use for end-to-end encryption.
 
+### Share a terminal with `croc ssh`
+
+On Linux, macOS, FreeBSD, or OpenBSD, start a shared terminal with:
+
+```bash
+croc ssh
+```
+
+The host receives separate six-word invitations for read/write and read-only
+participants. On Unix, a participant keeps the invitation out of the process
+list by joining with the command croc prints:
+
+```bash
+CROC_SECRET='six-word-invitation' croc ssh
+```
+
+Everyone sees one persistent terminal. Multiple read/write participants may
+type; read-only participants receive the same output but their input is
+discarded. 
+
+This does not expose an SSH daemon or require an account, public IP, inbound
+port, or SSH key setup. The invitation authenticates an ephemeral Tailcat
+WireGuard path and pins an ephemeral SSH host key. Tailcat uses DERP when it
+cannot establish a direct path; if Tailcat itself is unavailable, the client
+reauthenticates and carries the pinned SSH stream over the ordinary croc relay.
+Remote commands, forwarding, and SFTP are disabled. Anyone who receives an
+invitation has the role printed beside it until the host stops, so treat both
+invitations as secrets. 
+
+See the
+[SSH sharing design and security guide](src/docs/SSH_SHARING.md) for protocol,
+reconnection, platform, relay, and threat-model details.
+
 ### Customizations & Options
 
 #### Encrypted temporary storage
@@ -226,10 +255,13 @@ When an immediate peer-to-peer transfer is inconvenient, `croc` can upload
 regular files as client-side encrypted ciphertext:
 
 ```bash
-croc send --store [file1] [file2]
-croc send --store --store-downloads 3 [file1] [file2]
-croc send --store --store-expiration 3d [file1] [file2]
+croc store [file1] [file2]
+croc store --downloads 3 --expiration 3d [file1] [file2]
+croc store --url https://files.example.com [file1] [file2]
 ```
+
+The original `croc send --store` syntax remains supported, with
+`--store-downloads`, `--store-expiration`, and `--store-url` settings.
 
 The command prints a browser link and a CLI token. The transfer expires after
 the selected lifetime, measured from successful upload completion, or after
@@ -258,7 +290,8 @@ croc --revoke [transfer-id]
 ```
 
 Stored mode is opt-in and separate from croc's normal live relay transfers. A
-self-hosted service can be selected with `--store-url` or `CROC_STORE_URL`.
+self-hosted service can be selected with `croc store --url` (or
+`croc send --store --store-url`) or `CROC_STORE_URL`.
 See [the stored-transfer design and operator guide](src/docs/STORED_TRANSFERS.md)
 for protocol, privacy, limits, and deployment details.
 
@@ -373,6 +406,36 @@ You can send files via a proxy by adding `--socks5`:
 croc --socks5 "127.0.0.1:9050" send SOMEFILE
 ```
 
+Relay hostnames are resolved by the proxy, so the client does not need a
+working DNS server to reach the relay. Bare `host:port`, `socks5://host:port`,
+and `socks5h://host:port` all use proxy-side relay DNS. Use an IP address for
+the proxy itself when local DNS is unavailable. Set `--socks5` on both peers
+(or use the `SOCKS5_PROXY` environment variable).
+
+For a network that only permits proxy traffic, use `--transport relay` on the
+sender to use the SOCKS5-capable relay transport for file data. The browser
+client uses the browser's proxy settings for its WebSocket gateway connection;
+the native CLI flag does not configure the browser.
+
+<p align="center">
+  <strong>Sponsored by <a href="https://sx.org/en/proxy/">SX.org</a>.</strong>
+</p>
+
+### Data transport selection
+
+The native CLI defaults to `--transport auto`. After the normal three-word-code
+PAKE handshake, two compatible native clients create PAKE-bound Tailcat node
+identities and open one or more TCP streams over an in-process Tailscale
+userspace WireGuard network. Magicsock starts through DERP and promotes the
+connection to a direct UDP path whenever NAT traversal succeeds. If the peer is
+a browser, an older client, or Tailcat setup fails, both clients use croc's
+existing relay data ports. The public spelling `--transport derp` is retained;
+in strict mode it requires Tailcat support and disables croc-relay fallback.
+Public DERP is best effort and may apply fairness limits; see Tailscale's
+[DERP reference](https://tailscale.com/docs/reference/derp-servers) and
+[performance guidance](https://tailscale.com/docs/reference/troubleshooting/poor-performance-tailnet).
+
+
 #### Change Encryption Curve
 
 To choose a different elliptic curve for encryption, use the `--curve` flag:
@@ -451,8 +514,8 @@ docker run -d -p 9010-9011:9010-9011 -e CROC_PORTS='9010,9011' -e CROC_PASS='YOU
 
 #### Web client
 
-The React/Vite client in [`web/`](web/) can send and receive multiple files
-with normal croc CLI peers. The production client and its WebAssembly protocol
+The React/Vite client in [`web/`](web/) can send and receive multiple files and
+join `croc ssh` sessions hosted by normal CLI peers. The production client and its WebAssembly protocol
 runtime are bundled only in the standalone `croc-web` server, keeping generated
 assets and web-server code out of the cross-platform `croc` binary. Linux
 amd64 builds of `croc-web` are published separately with each release. It
