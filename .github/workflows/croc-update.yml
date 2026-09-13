@@ -118,10 +118,14 @@ jobs:
           sed -i -E "s/private const val BINARY_VERSION = \"[^\"]+\"/private const val BINARY_VERSION = \"${NEW_VER}\"/g" app/src/main/java/com/dking/crocapp/croc/CrocBinaryManager.kt
           sed -i -E '/^[[:space:]]*private const val DOWNLOAD_URL =/,/Linux-ARM64\.tar\.gz/ s|https://github\.com/schollz/croc/releases/download/v[^/]+/croc_v[^_]+_Linux-ARM64\.tar\.gz|https://github.com/schollz/croc/releases/download/v'"${NEW_VER}"'/croc_v'"${NEW_VER}"'_Linux-ARM64.tar.gz|' app/src/main/java/com/dking/crocapp/croc/CrocBinaryManager.kt
 
-          NEW_SHA=$(curl -sL "https://github.com/schollz/croc/releases/download/v${NEW_VER}/croc_v${NEW_VER}_Linux-ARM64.tar.gz" | sha256sum | awk '{print $1}')
-          if [ -n "$NEW_SHA" ] && [ "${#NEW_SHA}" -eq 64 ]; then
-            sed -i -E "/^[[:space:]]*private const val CURRENT_SHA256 =/,/\"[a-f0-9]{64}\"/ s/\"[a-f0-9]{64}\"/\"${NEW_SHA}\"/" app/src/main/java/com/dking/crocapp/croc/CrocBinaryManager.kt
+          TMP_TAR=$(mktemp)
+          if curl -f -sL "https://github.com/schollz/croc/releases/download/v${NEW_VER}/croc_v${NEW_VER}_Linux-ARM64.tar.gz" -o "$TMP_TAR" && [ -s "$TMP_TAR" ]; then
+            NEW_SHA=$(sha256sum "$TMP_TAR" | awk '{print $1}')
+            if [ -n "$NEW_SHA" ] && [ "${#NEW_SHA}" -eq 64 ]; then
+              sed -i -E "/^[[:space:]]*private const val CURRENT_SHA256 =/,/\"[a-f0-9]{64}\"/ s/\"[a-f0-9]{64}\"/\"${NEW_SHA}\"/" app/src/main/java/com/dking/crocapp/croc/CrocBinaryManager.kt
+            fi
           fi
+          rm -f "$TMP_TAR"
 
           # 4. Update CrocProcess.kt comments / docstrings
           sed -i -E "s/\* croc v?[0-9.]+ global flags:/\* croc v${NEW_VER} global flags:/g" app/src/main/java/com/dking/crocapp/croc/CrocProcess.kt
@@ -176,35 +180,95 @@ jobs:
             echo "found=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Open PR
+      - name: Create 2-commit branch and open Pull Request
         id: create_pr
         if: steps.current.outputs.version != steps.latest.outputs.version
-        uses: peter-evans/create-pull-request@v8
-        with:
-          commit-message: "chore: bump croc ${{ steps.current.outputs.version }} → ${{ steps.latest.outputs.version }}"
-          branch: bot/croc-${{ steps.latest.outputs.version }}
-          title: "Bump croc ${{ steps.current.outputs.version }} → ${{ steps.latest.outputs.version }}"
-          body: |
-            Auto-detected new croc release: https://github.com/schollz/croc/releases/tag/${{ steps.latest.outputs.version }}
-            - Replaced `third_party/croc-src` with the tagged upstream source
-            - Ran `go mod tidy && go mod vendor`
-            - `go build ./...` passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NEW_TAG="${{ steps.latest.outputs.version }}"
+          OLD_TAG="${{ steps.current.outputs.version }}"
+          BRANCH="bot/croc-${NEW_TAG}"
 
-            **Files updated with the new version string:**
-            ```
-            ${{ steps.bump_version.outputs.changed_files }}
-            ```
-            ${{ steps.stale_check.outputs.found == 'true' && format('
-            ⚠️ **These files still contain the old version string and were NOT updated by this workflow — bump them manually:**
-            ```
-            {0}
-            ```', steps.stale_check.outputs.files) || '' }}
-            ${{ steps.fdroid_scan.outputs.found == 'true' && format('
-            ⚠️ **F-Droid disallowed file types detected — review before merging:**
-            ```
-            {0}
-            ```', steps.fdroid_scan.outputs.flagged) || '' }}
-          labels: dependencies, automated
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Switch to/create the PR branch from master
+          git checkout -B "$BRANCH"
+
+          # 1. Commit 1: Version string bumps across the app
+          git add app/ third_party/CROC_VERSION
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: bump croc version strings ${OLD_TAG} → ${NEW_TAG}"
+          fi
+
+          # 2. Commit 2: Vendored croc source dump
+          git add third_party/croc-src
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: update vendored croc source to ${NEW_TAG}"
+          fi
+
+          # Push branch
+          git push -u origin "$BRANCH" --force
+
+          # Compose PR body using temporary file to safely handle newlines
+          {
+            echo "Auto-detected new croc release: https://github.com/schollz/croc/releases/tag/${{ steps.latest.outputs.version }}"
+            echo "- Replaced \`third_party/croc-src\` with the tagged upstream source"
+            echo "- Ran \`go mod tidy && go mod vendor\`"
+            echo "- \`go build ./...\` passed"
+            echo ""
+            echo "**Files updated with the new version string:**"
+            echo '```'
+            echo "${{ steps.bump_version.outputs.changed_files }}"
+            echo '```'
+          } > /tmp/pr_body.txt
+
+          if [ "${{ steps.stale_check.outputs.found }}" = "true" ]; then
+            {
+              echo ""
+              echo "⚠️ **These files still contain the old version string and were NOT updated by this workflow — bump them manually:**"
+              echo '```'
+              echo "${{ steps.stale_check.outputs.files }}"
+              echo '```'
+            } >> /tmp/pr_body.txt
+          fi
+
+          if [ "${{ steps.fdroid_scan.outputs.found }}" = "true" ]; then
+            {
+              echo ""
+              echo "⚠️ **F-Droid disallowed file types detected — review before merging:**"
+              echo '```'
+              echo "${{ steps.fdroid_scan.outputs.flagged }}"
+              echo '```'
+            } >> /tmp/pr_body.txt
+          fi
+
+          PR_TITLE="Bump croc ${OLD_TAG} → ${NEW_TAG}"
+
+          # Create or update PR using GitHub CLI
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --json url --jq '.[0].url // empty' 2>/dev/null || true)
+          if [ -z "$EXISTING_PR" ]; then
+            PR_URL=$(gh pr create \
+              --base master \
+              --head "$BRANCH" \
+              --title "$PR_TITLE" \
+              --body-file /tmp/pr_body.txt \
+              --label "dependencies,automated" 2>/dev/null || \
+              gh pr create \
+              --base master \
+              --head "$BRANCH" \
+              --title "$PR_TITLE" \
+              --body-file /tmp/pr_body.txt)
+          else
+            gh pr edit "$EXISTING_PR" \
+              --title "$PR_TITLE" \
+              --body-file /tmp/pr_body.txt
+            PR_URL="$EXISTING_PR"
+          fi
+
+          rm -f /tmp/pr_body.txt
+          echo "pull-request-url=$PR_URL" >> "$GITHUB_OUTPUT"
 
       - name: Job summary
         if: always()
@@ -221,7 +285,7 @@ jobs:
             elif [ "${{ steps.vendor.outcome }}" != "success" ]; then
               echo "❌ New version \`${{ steps.latest.outputs.version }}\` found, but \`go mod vendor\` / \`go build\` failed — upstream may have broken something. Needs a manual look."
             elif [ "${{ steps.create_pr.outcome }}" != "success" ]; then
-              echo "❌ New version \`${{ steps.latest.outputs.version }}\` found and validated, but PR creation failed — check the \"Open PR\" step logs."
+              echo "❌ New version \`${{ steps.latest.outputs.version }}\` found and validated, but PR creation failed — check the \"Create 2-commit branch and open Pull Request\" step logs."
             elif [ "${{ steps.fdroid_scan.outputs.found }}" == "true" ] && [ "${{ steps.stale_check.outputs.found }}" == "true" ]; then
               echo "⚠️ **Updated** croc \`${{ steps.current.outputs.version }}\` → \`${{ steps.latest.outputs.version }}\` — but F-Droid-disallowed files were found AND stale version strings remain in files not covered by the sed script."
               echo ""
