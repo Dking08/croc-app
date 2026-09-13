@@ -93,7 +93,7 @@ class CrocProcess(
 
     /**
      * Build common global flags from preferences.
-     * Only includes flags that actually exist in croc v11.5.2.1 and v10.6.0.
+     * Only includes flags that actually exist in croc v11.5.2 and v10.6.0.
      */
     private fun buildGlobalFlags(prefs: UserPreferencesRepository.CrocPreferences): List<String> {
         val relayAddress = resolveRelayAddress(prefs.relayAddress)

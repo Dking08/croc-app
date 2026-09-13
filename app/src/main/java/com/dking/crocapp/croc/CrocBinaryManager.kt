@@ -56,12 +56,12 @@ class CrocBinaryManager(private val context: Context) {
         private const val DOWNLOAD_URL =
             "https://github.com/schollz/croc/releases/download/v11.5.2/croc_v11.5.2_Linux-ARM64.tar.gz"
         private const val CURRENT_SHA256 =
-            "1626c4a5ce73da171146e0f336ca40118c0a2b4b617421aa53f6addc54de6459"
+            "fdfcf43db90c677a6c730b6167f847e629ec65bd8ba8ee413b2ddb4a9a27998b"
 
         private const val LEGACY_BINARY_NAME = "croc_legacy"
         private const val LEGACY_BINARY_VERSION = "10.6.0"
         private const val LEGACY_DOWNLOAD_URL =
-            "https://github.com/schollz/croc/releases/download/v11.5.2/croc_v11.5.2_Linux-ARM64.tar.gz"
+            "https://github.com/schollz/croc/releases/download/v10.6.0/croc_v10.6.0_Linux-ARM64.tar.gz"
         private const val LEGACY_SHA256 =
             "ee950b1dcd1f284b3f2223d3ebac2767d1b3406f58c978c8854ddb88fe75a121"
 
