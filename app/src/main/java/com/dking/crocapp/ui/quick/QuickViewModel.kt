@@ -144,6 +144,8 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
                             )
                         }
                         saveToHistory(historyState, receivedFiles)
+                        currentOutputDir?.deleteRecursively()
+                        currentOutputDir = null
                     }
                     is CrocTransferState.LegacyFallbackAvailable -> {
                         _uiState.update {
@@ -303,7 +305,9 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
             crocProcess.reset()
             kotlinx.coroutines.delay(50)
 
-            val outputDir = File(
+            // Reuse existing outputDir if retrying an uncompleted transfer so croc can resume partial files
+            val existingDir = currentOutputDir?.takeIf { it.exists() && it.walkTopDown().any { f -> f.isFile } }
+            val outputDir = existingDir ?: File(
                 getApplication<CrocApp>().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
                 "croc-received/${System.currentTimeMillis()}"
             ).apply { mkdirs() }
@@ -324,6 +328,8 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
 
     fun switchToLegacyForNextReceive() {
         crocProcess.reset()
+        currentOutputDir?.deleteRecursively()
+        currentOutputDir = null
         _uiState.update {
             it.copy(
                 activeEngine = CrocEngine.LEGACY,
@@ -364,6 +370,8 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissResult() {
         crocProcess.reset()
+        currentOutputDir?.deleteRecursively()
+        currentOutputDir = null
         viewModelScope.launch {
             val defaultEngine = if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
                 CrocEngine.LEGACY
