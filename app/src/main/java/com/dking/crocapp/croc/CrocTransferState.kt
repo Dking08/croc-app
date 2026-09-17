@@ -28,8 +28,9 @@ sealed class CrocTransferState {
          *  This is used for the sweep-gradient border around cards. */
         val fileCountProgress: Float
             get() {
+                if (totalBytes > 0) return progress
                 if (totalFiles <= 0) return 0f
-                return ((currentFile - 1f) + currentFilePercent / 100f) / totalFiles
+                return (((currentFile - 1f) + currentFilePercent / 100f) / totalFiles).coerceIn(0f, 1f)
             }
 
         /** Byte-based overall progress (0..1) for the linear progress bar. */

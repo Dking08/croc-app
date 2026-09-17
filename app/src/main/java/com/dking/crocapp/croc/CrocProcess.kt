@@ -1,6 +1,7 @@
 package com.dking.crocapp.croc
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.util.Log
 import com.dking.crocapp.data.preferences.UserPreferencesRepository
 import kotlinx.coroutines.Dispatchers
@@ -133,6 +134,19 @@ class CrocProcess(
         }
     }
 
+    private fun getSystemDnsServers(): List<String> {
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return emptyList()
+            val activeNetwork = cm.activeNetwork ?: return emptyList()
+            val linkProps = cm.getLinkProperties(activeNetwork) ?: return emptyList()
+            linkProps.dnsServers.mapNotNull { it.hostAddress }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to get system DNS servers", e)
+            emptyList()
+        }
+    }
+
     private fun resolveRelayAddress(relayAddress: String): String {
         if (relayAddress.isBlank()) return relayAddress
 
@@ -142,7 +156,6 @@ class CrocProcess(
 
         return try {
             val resolved = InetAddress.getAllByName(host)
-                .sortedBy { if (it is Inet4Address) 0 else 1 }
                 .firstOrNull()
                 ?: return relayAddress
 
@@ -418,9 +431,13 @@ class CrocProcess(
                     }
                 }
 
+                val systemDns = getSystemDnsServers()
                 val env = buildMap {
                     put("HOME", homeDir.absolutePath)
                     put("TMPDIR", tmpDir.absolutePath)
+                    if (systemDns.isNotEmpty()) {
+                        put("CROC_DNS", systemDns.joinToString(","))
+                    }
                 }
 
                 val process = binaryManager.startProcess(
@@ -550,9 +567,13 @@ class CrocProcess(
         engine: CrocEngine,
         initialFileNames: List<String> = emptyList()
     ): ProcessResult {
+        val systemDns = getSystemDnsServers()
         val env = buildMap {
             put("HOME", homeDir.absolutePath)
             put("TMPDIR", tmpDir.absolutePath)
+            if (systemDns.isNotEmpty()) {
+                put("CROC_DNS", systemDns.joinToString(","))
+            }
             putAll(extraEnv)
         }
         currentProcess = binaryManager.startProcess(
@@ -768,17 +789,36 @@ class CrocProcess(
                     continue
                 }
 
-                // File preparation / hashing detection (e.g. "Hashing 1/3: filename.txt" or "Hashing filename.txt...")
+                // File preparation / hashing detection (e.g. "Hashing 1/3: filename.txt" or "Hashing filename.txt... 50% |...| (114/229 MB)")
                 if (l.contains("Hashing")) {
                     val hashingName = when {
                         ":" in l -> l.substringAfter(":").trim()
                         l.contains("Hashing ") -> l.substringAfter("Hashing ").substringBefore("...").substringBefore("%").trim()
                         else -> ""
                     }.removeSuffix("...").trim()
-                    if (hashingName.isNotBlank() && hashingName !in fileNames) {
-                        fileNames.add(hashingName)
-                        currentFileName = hashingName
+
+                    // If size information is present in the hashing line, pre-populate fileSizeMap
+                    sizeInProgressRegex.find(l)?.let { sizeMatch ->
+                        val totalNum = sizeMatch.groupValues[3].toDoubleOrNull() ?: 0.0
+                        val totalUnit = sizeMatch.groupValues[4]
+                        val fileTotalBytes = parseSize(totalNum, totalUnit)
+                        if (fileTotalBytes > 0L) {
+                            val matchedFile = if (initialFileNames.isNotEmpty()) {
+                                fileNames.firstOrNull { it.startsWith(hashingName) || hashingName.startsWith(it) }
+                                    ?: fileNames.firstOrNull()
+                            } else {
+                                hashingName.ifBlank { null }
+                            }
+                            if (matchedFile != null) {
+                                fileSizeMap[matchedFile] = fileTotalBytes
+                                if (totalBytes == 0L) {
+                                    totalBytes = fileTotalBytes
+                                }
+                            }
+                        }
                     }
+                    // Stay in Preparing state during hashing; do not treat hashing as active transfer
+                    continue
                 }
 
                 // Progress line: "filename... 42% |████   | (42/100 kB, 1.2 MB/s) 1/3" or "Uploading file.txt... 45% |...|"
@@ -786,6 +826,9 @@ class CrocProcess(
                 if (progressMatch != null) {
                     val match = progressMatch
                     val rawName = match.groupValues[1].trim()
+                    if (rawName.startsWith("Hashing", ignoreCase = true)) {
+                        continue
+                    }
                     val percent = match.groupValues[2].toIntOrNull() ?: 0
                     val sizeSection = match.groupValues[3]
                     val currentFileNum = match.groupValues[4].toIntOrNull()
@@ -809,7 +852,10 @@ class CrocProcess(
                         val existingFullName = fileNames.firstOrNull { it.startsWith(unElided) || it == cleanedName }
                         currentFileName = existingFullName ?: unElided.ifBlank { cleanedName }
                         if (currentFileName.isNotBlank() && currentFileName !in fileNames) {
-                            fileNames.add(currentFileName)
+                            // In send mode, do not add unknown phantom files
+                            if (initialFileNames.isEmpty()) {
+                                fileNames.add(currentFileName)
+                            }
                         }
                     }
 
@@ -850,12 +896,21 @@ class CrocProcess(
                     }
                     val bytesTransferred = completedBytes + currentFileTransferred
 
-                    val effectiveTotalFiles = totalFilesFromProgress.coerceAtLeast(fileNames.size).coerceAtLeast(1)
-                    val effectiveCurrentFile = if (currentFileNum != null) currentFileNum else (fileNames.indexOf(currentFileName) + 1).coerceAtLeast(1)
+                    val effectiveTotalFiles = if (initialFileNames.isNotEmpty()) {
+                        initialFileNames.size
+                    } else {
+                        totalFilesFromProgress.coerceAtLeast(fileNames.size).coerceAtLeast(1)
+                    }
+                    val effectiveCurrentFile = if (currentFileNum != null) {
+                        currentFileNum
+                    } else {
+                        val idx = fileNames.indexOf(currentFileName)
+                        if (idx >= 0) idx + 1 else 1
+                    }.coerceIn(1, effectiveTotalFiles)
 
                     _state.value = CrocTransferState.Transferring(
                         fileName = currentFileName,
-                        currentFile = effectiveCurrentFile.coerceAtLeast(1),
+                        currentFile = effectiveCurrentFile,
                         totalFiles = effectiveTotalFiles,
                         currentFilePercent = percent,
                         bytesTransferred = bytesTransferred.coerceAtMost(totalBytes.coerceAtLeast(1)),
@@ -945,17 +1000,25 @@ class CrocProcess(
                 }
 
                 // Fallback: simple percent match for lines we didn't parse above
-                Regex("(\\d+)%").find(l)?.let { match ->
-                    val percent = match.groupValues[1].toIntOrNull() ?: 0
-                    _state.value = CrocTransferState.Transferring(
-                        fileName = currentFileName,
-                        currentFile = fileNames.indexOf(currentFileName).coerceAtLeast(0) + 1,
-                        totalFiles = totalFilesFromProgress.coerceAtLeast(fileNames.size).coerceAtLeast(1),
-                        currentFilePercent = percent,
-                        bytesTransferred = totalBytes * percent / 100,
-                        totalBytes = totalBytes.coerceAtLeast(1),
-                        peerIp = peerIp
-                    )
+                if (!l.contains("Hashing")) {
+                    Regex("(\\d+)%").find(l)?.let { match ->
+                        val percent = match.groupValues[1].toIntOrNull() ?: 0
+                        val effectiveTotalFiles = if (initialFileNames.isNotEmpty()) {
+                            initialFileNames.size
+                        } else {
+                            totalFilesFromProgress.coerceAtLeast(fileNames.size).coerceAtLeast(1)
+                        }
+                        val effectiveCurrentFile = (fileNames.indexOf(currentFileName) + 1).coerceIn(1, effectiveTotalFiles)
+                        _state.value = CrocTransferState.Transferring(
+                            fileName = currentFileName,
+                            currentFile = effectiveCurrentFile,
+                            totalFiles = effectiveTotalFiles,
+                            currentFilePercent = percent,
+                            bytesTransferred = totalBytes * percent / 100,
+                            totalBytes = totalBytes.coerceAtLeast(1),
+                            peerIp = peerIp
+                        )
+                    }
                 }
             }
 

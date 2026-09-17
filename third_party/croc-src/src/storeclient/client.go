@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/schollz/croc/v11/src/comm"
+	"github.com/schollz/croc/v11/src/models"
 	"github.com/schollz/croc/v11/src/receivefs"
 	"github.com/schollz/croc/v11/src/storecrypto"
 )
@@ -142,28 +143,14 @@ func (c *Client) httpClient() *http.Client {
 		return c.HTTP
 	}
 
-	dialer := &net.Dialer{
+	baseDialer := &net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
-		Resolver: &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{Timeout: 3 * time.Second}
-				// On Android and minimal Linux environments without /etc/resolv.conf, query public DNS servers
-				for _, dnsIP := range []string{"1.1.1.1:53", "8.8.8.8:53", "9.9.9.9:53", "1.0.0.1:53", "8.8.4.4:53"} {
-					conn, err := d.DialContext(ctx, "udp", dnsIP)
-					if err == nil {
-						return conn, nil
-					}
-				}
-				return d.DialContext(ctx, network, address)
-			},
-		},
 	}
 
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           dialer.DialContext,
+		DialContext:           models.FallbackDialContext(baseDialer.DialContext),
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
