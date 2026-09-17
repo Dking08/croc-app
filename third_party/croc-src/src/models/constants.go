@@ -95,6 +95,10 @@ func ResolveHostFallback(ctx context.Context, host string) ([]string, error) {
 		if err == nil && len(ips) > 0 {
 			return ips, nil
 		}
+		var dnsErr *net.DNSError
+		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+			return nil, err
+		}
 		lastErr = err
 	}
 	if lastErr == nil {
@@ -148,21 +152,6 @@ func FallbackDialContext(origDial func(context.Context, string, string) (net.Con
 func InitDNS() {
 	if runtime.GOOS == "android" || os.Getenv("CROC_DNS") != "" || INTERNAL_DNS {
 		INTERNAL_DNS = true
-
-		net.DefaultResolver = &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				servers := GetDNSServers()
-				d := net.Dialer{Timeout: 3 * time.Second}
-				for _, s := range servers {
-					c, err := d.DialContext(ctx, "udp", s)
-					if err == nil {
-						return c, nil
-					}
-				}
-				return d.DialContext(ctx, network, address)
-			},
-		}
 
 		initDNSOnce.Do(func() {
 			if t, ok := http.DefaultTransport.(*http.Transport); ok {
