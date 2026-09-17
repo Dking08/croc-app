@@ -256,6 +256,11 @@
     <string name="settings_encryption">Cifrado</string>
     <string name="settings_pake_curve_label">Curva PAKE</string>
     <string name="settings_transfer_options_label">Opciones de Transferencia</string>
+    <string name="settings_transfer_transport_label">Transporte de Datos</string>
+    <string name="settings_transfer_transport_desc">Mecanismo de transporte para transferencias (croc v11+): Automático usa WireGuard directo o Tailscale DERP con respaldo a relé. DERP fuerza relé de malla; Relé usa relé TCP clásico.</string>
+    <string name="transport_auto">Automático (Directo / DERP / Relé)</string>
+    <string name="transport_derp">DERP (Relé Tailscale)</string>
+    <string name="transport_relay">Relé (Relé TCP)</string>
     <string name="settings_disable_compression_label">Deshabilitar compresión</string>
     <string name="settings_disable_compression_full_desc">Transferir archivos sin compresión</string>
     <string name="settings_upload_speed_limit">Límite de velocidad de subida</string>

@@ -256,6 +256,11 @@
     <string name="settings_encryption">एन्क्रिप्शन</string>
     <string name="settings_pake_curve_label">PAKE कर्व</string>
     <string name="settings_transfer_options_label">ट्रांसफ़र विकल्प</string>
+    <string name="settings_transfer_transport_label">डेटा ट्रांसपोर्ट</string>
+    <string name="settings_transfer_transport_desc">ट्रांसफ़र के लिए ट्रांसपोर्ट तंत्र (croc v11+): ऑटो डायरेक्ट वायरगार्ड या टेलस्केल DERP के साथ रिले फ़ॉलबैक का उपयोग करता है। DERP मेश रिले पर जोर देता है; रिले क्लासिक TCP रिले का उपयोग करता है।</string>
+    <string name="transport_auto">ऑटो (डायरेक्ट / DERP / रिले)</string>
+    <string name="transport_derp">DERP (टेलस्केल रिले)</string>
+    <string name="transport_relay">रिले (TCP रिले)</string>
     <string name="settings_disable_compression_label">कम्प्रेशन बंद करें</string>
     <string name="settings_disable_compression_full_desc">बिना कम्प्रेशन के फ़ाइलें ट्रांसफ़र करें</string>
     <string name="settings_upload_speed_limit">अपलोड स्पीड सीमा</string>

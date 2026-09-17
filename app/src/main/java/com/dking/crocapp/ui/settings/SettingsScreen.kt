@@ -674,6 +674,32 @@ fun SettingsScreen(
 
                     // Transfer
                     SettingsSection(icon = Icons.Rounded.Speed, title = stringResource(R.string.settings_transfer_options_label)) {
+                        val transportAutoLabel = stringResource(R.string.transport_auto)
+                        val transportDerpLabel = stringResource(R.string.transport_derp)
+                        val transportRelayLabel = stringResource(R.string.transport_relay)
+                        DropdownSetting(
+                            label = stringResource(R.string.settings_transfer_transport_label),
+                            value = prefs.transferTransport,
+                            options = listOf("auto", "derp", "relay"),
+                            displayTransform = {
+                                when (it) {
+                                    "derp" -> transportDerpLabel
+                                    "relay" -> transportRelayLabel
+                                    else -> transportAutoLabel
+                                }
+                            },
+                            onValueChange = { viewModel.updateTransferTransport(it) }
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.settings_transfer_transport_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
                         DropdownSetting(
                             label = stringResource(R.string.settings_hash_algorithm),
                             value = prefs.hashAlgorithm,

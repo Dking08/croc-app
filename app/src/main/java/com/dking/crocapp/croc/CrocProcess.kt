@@ -187,6 +187,9 @@ class CrocProcess(
                     if (!prefs.forceLocal) {
                         add("--no-local")
                     }
+                    if (engine == CrocEngine.CURRENT && !prefs.forceLocal && prefs.transferTransport.isNotBlank() && prefs.transferTransport != "auto") {
+                        add("--transport"); add(prefs.transferTransport)
+                    }
                     // Multiplexing & transfer streams
                     if (prefs.disableMultiplexing) {
                         add("--no-multi")
@@ -213,7 +216,8 @@ class CrocProcess(
                     prefs = prefs,
                     opName = "Send",
                     code = code,
-                    engine = engine
+                    engine = engine,
+                    initialFileNames = filePaths.map { File(it).name }
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Send failed", e)
@@ -236,6 +240,9 @@ class CrocProcess(
                     if (!prefs.forceLocal) {
                         add("--no-local")
                     }
+                    if (engine == CrocEngine.CURRENT && !prefs.forceLocal && prefs.transferTransport.isNotBlank() && prefs.transferTransport != "auto") {
+                        add("--transport"); add(prefs.transferTransport)
+                    }
                     if (prefs.disableMultiplexing) {
                         add("--no-multi")
                     } else if (prefs.transferPorts.isNotBlank() && prefs.transferPorts != "4") {
@@ -255,7 +262,8 @@ class CrocProcess(
                     prefs = prefs,
                     opName = "SendText",
                     code = code,
-                    engine = engine
+                    engine = engine,
+                    initialFileNames = listOf("text")
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "SendText failed", e)
@@ -365,16 +373,15 @@ class CrocProcess(
                     if (prefs.httpProxy.isNotBlank()) {
                         add("--connect"); add(prefs.httpProxy)
                     }
-                    add("send")
-                    add("--store")
+                    add("store")
                     if (expiration.isNotBlank()) {
-                        add("--store-expiration"); add(expiration)
+                        add("--expiration"); add(expiration)
                     }
                     if (downloads > 0) {
-                        add("--store-downloads"); add(downloads.toString())
+                        add("--downloads"); add(downloads.toString())
                     }
                     if (!effectiveStoreUrl.isNullOrBlank()) {
-                        add("--store-url"); add(effectiveStoreUrl)
+                        add("--url"); add(effectiveStoreUrl)
                     }
                     addAll(filePaths)
                 }
@@ -387,7 +394,8 @@ class CrocProcess(
                     prefs = prefs,
                     opName = "SendStore",
                     code = null,
-                    engine = CrocEngine.CURRENT
+                    engine = CrocEngine.CURRENT,
+                    initialFileNames = filePaths.map { File(it).name }
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "SendStore failed", e)
@@ -457,11 +465,12 @@ class CrocProcess(
         prefs: UserPreferencesRepository.CrocPreferences,
         opName: String,
         code: String?,
-        engine: CrocEngine
+        engine: CrocEngine,
+        initialFileNames: List<String> = emptyList()
     ) {
         Log.d(TAG, "$opName ($engine) command: ${redactCommandForLog(baseCommand)}")
 
-        var result = runCommand(baseCommand, workDir, waitingState, extraEnv, engine)
+        var result = runCommand(baseCommand, workDir, waitingState, extraEnv, engine, initialFileNames)
 
         if (result.isLegacyFallback) {
             val effectiveRoom = if (!code.isNullOrBlank()) code else result.announcedCode.ifBlank { "" }
@@ -476,7 +485,7 @@ class CrocProcess(
             val retryCommand = baseCommand.toMutableList()
             addInternalDnsFlag(retryCommand)
             Log.w(TAG, "$opName ($engine) retry with --internal-dns: ${redactCommandForLog(retryCommand)}")
-            result = runCommand(retryCommand, workDir, waitingState, extraEnv, engine)
+            result = runCommand(retryCommand, workDir, waitingState, extraEnv, engine, initialFileNames)
 
             if (result.isLegacyFallback) {
                 val effectiveRoom = if (!code.isNullOrBlank()) code else result.announcedCode.ifBlank { "" }
@@ -538,7 +547,8 @@ class CrocProcess(
         workDir: File,
         waitingState: CrocTransferState,
         extraEnv: Map<String, String>,
-        engine: CrocEngine
+        engine: CrocEngine,
+        initialFileNames: List<String> = emptyList()
     ): ProcessResult {
         val env = buildMap {
             put("HOME", homeDir.absolutePath)
@@ -552,7 +562,7 @@ class CrocProcess(
             engine = engine
         )
         _state.value = waitingState
-        return parseOutput(currentProcess!!)
+        return parseOutput(currentProcess!!, initialFileNames)
     }
 
     private fun redactCommandForLog(command: List<String>): String {
@@ -654,13 +664,13 @@ class CrocProcess(
         }
     }
 
-    private suspend fun parseOutput(process: Process): ProcessResult {
+    private suspend fun parseOutput(process: Process, initialFileNames: List<String> = emptyList()): ProcessResult {
         val reader = BufferedReader(InputStreamReader(process.inputStream))
-        val fileNames = mutableListOf<String>()
+        val fileNames = initialFileNames.toMutableList()
         var totalBytes = 0L
-        var currentFileName = ""
+        var currentFileName = fileNames.firstOrNull() ?: ""
         var peerIp = ""
-        var totalFilesFromProgress = 0
+        var totalFilesFromProgress = fileNames.size
         val outputTail = ArrayDeque<String>()
         var isTextTransfer = false
         var capturingText = false
@@ -675,14 +685,13 @@ class CrocProcess(
         var nextIsBrowserLink = false
         var nextIsCliToken = false
 
-        // Regex patterns for the latest and v10.6.0 output format
-        // Matches: "Sending (->1.2.3.4:9009)" or "Receiving (<-1.2.3.4:9009)"
-        val peerIpRegex = Regex("""(?:->|<-)(\d+\.\d+\.\d+\.\d+)""")
-        // Matches progress lines: "filename... 42% |...| (size) N/M" or "file.txt 42% |...| (size)"
-        // Filename may or may not be truncated with "..."
-        val progressLineRegex = Regex("""^\s*(.+?)\s+(\d+)%\s*\|.*\|\s*\((.+?)\)\s*(?:(\d+)/(\d+))?""")
-        // Matches size: "(42/100 kB" or "(85/85 kB, 6.1 MB/s)"
-        val sizeInProgressRegex = Regex("""(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)\s*(\w+)""")
+        // Regex patterns for the latest (v11.5.2) and legacy (v10.6.0) output formats
+        // Matches: "Sending (->1.2.3.4:9009)", "Receiving (<-1.2.3.4:9009)", or "Sending (10.0.0.1->1.2.3.4)"
+        val peerIpRegex = Regex("""(?:->|<-)([0-9a-fA-F:.]+)""")
+        // Matches progress lines: "filename... 42% |...| (size) N/M" or "Uploading file.txt... 42% |...| (size)"
+        val progressLineRegex = Regex("""^\s*(.+?)\s+(\d+)%\s*\|.*?\|\s*\((.+?)\)\s*(?:(\d+)/(\d+))?""")
+        // Matches size: "(42/100 kB)", "(450 kB / 1.0 MB, 1.2 MB/s)", or "(23/23 B)"
+        val sizeInProgressRegex = Regex("""(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?\s*/\s*(\d+(?:\.\d+)?)\s*([a-zA-Z]+)""")
         // Matches old format: Sending 'filename' (100 kB)
         val oldSendingRegex = Regex("""'([^']+)'""")
         val oldSizeRegex = Regex("""\((\d+(?:\.\d+)?)\s*(\w+)\)""")
@@ -738,7 +747,8 @@ class CrocProcess(
                 // Peer connection line: "Sending (->IP:PORT)" or "Receiving (<-IP:PORT)"
                 if (l.contains("Sending") || l.contains("Receiving")) {
                     peerIpRegex.find(l)?.let { match ->
-                        peerIp = match.groupValues[1]
+                        val rawIp = match.groupValues[1]
+                        peerIp = if (rawIp.contains(":") && !rawIp.contains("::")) rawIp.substringBefore(":") else rawIp
                     }
                     // If this is a text transfer, start capturing text after the Receiving line
                     if (isTextTransfer && l.contains("Receiving")) {
@@ -758,39 +768,69 @@ class CrocProcess(
                     continue
                 }
 
-                // Progress line: "filename... 42% |████   | (42/100 kB, 1.2 MB/s) 1/3"
+                // File preparation / hashing detection (e.g. "Hashing 1/3: filename.txt" or "Hashing filename.txt...")
+                if (l.contains("Hashing")) {
+                    val hashingName = when {
+                        ":" in l -> l.substringAfter(":").trim()
+                        l.contains("Hashing ") -> l.substringAfter("Hashing ").substringBefore("...").substringBefore("%").trim()
+                        else -> ""
+                    }.removeSuffix("...").trim()
+                    if (hashingName.isNotBlank() && hashingName !in fileNames) {
+                        fileNames.add(hashingName)
+                        currentFileName = hashingName
+                    }
+                }
+
+                // Progress line: "filename... 42% |████   | (42/100 kB, 1.2 MB/s) 1/3" or "Uploading file.txt... 45% |...|"
                 val progressMatch = progressLineRegex.find(l)
                 if (progressMatch != null) {
                     val match = progressMatch
-                    val truncatedName = match.groupValues[1].trim()
+                    val rawName = match.groupValues[1].trim()
                     val percent = match.groupValues[2].toIntOrNull() ?: 0
                     val sizeSection = match.groupValues[3]
                     val currentFileNum = match.groupValues[4].toIntOrNull()
                     val totalFileNum = match.groupValues[5].toIntOrNull()
 
-                    // Update filename (use truncated name as display)
-                    if (truncatedName.isNotBlank()) {
-                        currentFileName = truncatedName
+                    var cleanedName = rawName
+                    if (cleanedName.startsWith("Uploading ", ignoreCase = true)) {
+                        cleanedName = cleanedName.substring(10).trim()
+                    } else if (cleanedName.startsWith("Downloading ", ignoreCase = true)) {
+                        cleanedName = cleanedName.substring(12).trim()
                     }
 
-                    // Parse per-file size from "(current/total unit)"
+                    val multiFilesMatch = Regex("""^(\d+)\s+files""").find(cleanedName)
+                    if (multiFilesMatch != null) {
+                        val totalCount = multiFilesMatch.groupValues[1].toIntOrNull()
+                        if (totalCount != null && totalCount > 0) {
+                            totalFilesFromProgress = totalCount
+                        }
+                    } else {
+                        val unElided = cleanedName.removeSuffix("...").trim()
+                        val existingFullName = fileNames.firstOrNull { it.startsWith(unElided) || it == cleanedName }
+                        currentFileName = existingFullName ?: unElided.ifBlank { cleanedName }
+                        if (currentFileName.isNotBlank() && currentFileName !in fileNames) {
+                            fileNames.add(currentFileName)
+                        }
+                    }
+
+                    // Parse per-file size from "(current/total unit)" or "(currentUnit / totalUnit)"
                     sizeInProgressRegex.find(sizeSection)?.let { sizeMatch ->
-                        val fileTotal = sizeMatch.groupValues[2].toDoubleOrNull() ?: 0.0
-                        val unit = sizeMatch.groupValues[3]
-                        val fileTotalBytes = parseSize(fileTotal, unit)
+                        val curNum = sizeMatch.groupValues[1].toDoubleOrNull() ?: 0.0
+                        val curUnitGroup = sizeMatch.groupValues[2]
+                        val totalNum = sizeMatch.groupValues[3].toDoubleOrNull() ?: 0.0
+                        val totalUnit = sizeMatch.groupValues[4]
+                        val curUnit = if (curUnitGroup.isNotBlank()) curUnitGroup else totalUnit
+
+                        val fileTotalBytes = parseSize(totalNum, totalUnit)
                         fileSizeMap[currentFileName] = fileTotalBytes
+                        if (fileTotalBytes > 0L && totalBytes == 0L) {
+                            totalBytes = fileTotalBytes
+                        }
                     }
 
                     // Update file count from N/M suffix
                     if (totalFileNum != null && totalFileNum > 0) {
                         totalFilesFromProgress = totalFileNum
-                    }
-
-                    // Track filenames from progress lines (100% = file done)
-                    if (percent == 100 && currentFileName.isNotBlank()) {
-                        if (currentFileName !in fileNames) {
-                            fileNames.add(currentFileName)
-                        }
                     }
 
                     // Compute cumulative total bytes from all known file sizes
@@ -799,16 +839,19 @@ class CrocProcess(
                         totalBytes = cumulativeTotal
                     }
 
-                    // Compute bytes transferred:
-                    // sum of completed files + current file progress
+                    // Compute bytes transferred
                     val completedBytes = fileNames.filter { it != currentFileName }
                         .sumOf { fileSizeMap[it] ?: 0L }
                     val currentFileSize = fileSizeMap[currentFileName] ?: 0L
-                    val currentFileTransferred = (currentFileSize * percent / 100)
+                    val currentFileTransferred = if (currentFileSize > 0) {
+                        (currentFileSize * percent / 100)
+                    } else {
+                        (totalBytes * percent / 100)
+                    }
                     val bytesTransferred = completedBytes + currentFileTransferred
 
                     val effectiveTotalFiles = totalFilesFromProgress.coerceAtLeast(fileNames.size).coerceAtLeast(1)
-                    val effectiveCurrentFile = if (currentFileNum != null) currentFileNum else fileNames.indexOf(currentFileName) + 1
+                    val effectiveCurrentFile = if (currentFileNum != null) currentFileNum else (fileNames.indexOf(currentFileName) + 1).coerceAtLeast(1)
 
                     _state.value = CrocTransferState.Transferring(
                         fileName = currentFileName,
@@ -893,33 +936,12 @@ class CrocProcess(
                     isStoreTransfer = true
                 }
 
-                // Store upload progress line: "photo.jpg — 45.0% (450 kB / 1.0 MB)"
-                val storeProgressRegex = Regex("""^(.+?)\s+—\s+(\d+(?:\.\d+)?)%\s*\((.+?)\s*/\s*(.+?)\)""")
-                val storeProgressMatch = storeProgressRegex.find(l)
-                if (storeProgressMatch != null) {
-                    val sName = storeProgressMatch.groupValues[1].trim()
-                    val sPercent = storeProgressMatch.groupValues[2].toDoubleOrNull()?.toInt() ?: 0
-                    if (sName.isNotBlank()) currentFileName = sName
-                    if (currentFileName !in fileNames) fileNames.add(currentFileName)
-
-                    val curSizeStr = storeProgressMatch.groupValues[3].trim()
-                    val totSizeStr = storeProgressMatch.groupValues[4].trim()
-                    val curParts = curSizeStr.split(" ")
-                    val totParts = totSizeStr.split(" ")
-                    val curB = if (curParts.size >= 2) parseSize(curParts[0].toDoubleOrNull() ?: 0.0, curParts[1]) else 0L
-                    val totB = if (totParts.size >= 2) parseSize(totParts[0].toDoubleOrNull() ?: 0.0, totParts[1]) else 0L
-                    if (totB > 0) totalBytes = totB
-
-                    _state.value = CrocTransferState.Transferring(
-                        fileName = currentFileName,
-                        currentFile = fileNames.indexOf(currentFileName).coerceAtLeast(0) + 1,
-                        totalFiles = fileNames.size.coerceAtLeast(1),
-                        currentFilePercent = sPercent,
-                        bytesTransferred = curB,
-                        totalBytes = totalBytes.coerceAtLeast(curB),
-                        peerIp = peerIp
-                    )
-                    continue
+                // File count completion marker printed by croc: " 1/3" or "1/3"
+                Regex("""^\s*(\d+)/(\d+)\s*$""").find(l)?.let { m ->
+                    val total = m.groupValues[2].toIntOrNull()
+                    if (total != null && total > 0) {
+                        totalFilesFromProgress = total
+                    }
                 }
 
                 // Fallback: simple percent match for lines we didn't parse above
