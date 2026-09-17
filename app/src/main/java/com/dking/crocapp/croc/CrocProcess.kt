@@ -40,6 +40,60 @@ class CrocProcess(
 ) {
     companion object {
         private const val TAG = "CrocProcess"
+
+        internal fun hasCliUsageExit(outputTail: List<String>): Boolean {
+            return outputTail.any {
+                val line = it.lowercase()
+                "on unix systems, to receive with croc you either need" in line ||
+                        "on unix systems, to send with a custom code phrase" in line
+            }
+        }
+
+        internal fun formatErrorMessage(exitCode: Int, outputTail: List<String>): String {
+            if (hasCliUsageExit(outputTail)) {
+                return "Transfer failed: croc rejected the command syntax and printed usage help."
+            }
+            if (outputTail.any { "no files transferred" in it.lowercase() }) {
+                return "Transfer failed: no files were transferred."
+            }
+            if (exitCode == 0) {
+                return "Transfer failed: croc exited without starting a file transfer."
+            }
+
+            val fullOutput = outputTail.joinToString("\n").lowercase()
+
+            if ("admission" in fullOutput && "limit" in fullOutput) {
+                return "Transfer failed: Public relay rate limit reached. Please wait a minute and retry."
+            }
+            if ("could not secure channel" in fullOutput) {
+                return "Transfer failed: Could not secure channel. Check the code phrase on both devices and retry."
+            }
+            if ("flate: corrupt input" in fullOutput || "problem with decoding" in fullOutput) {
+                return "Transfer failed: Network data corrupted during peer handshake. Please retry."
+            }
+            if ("room is full" in fullOutput) {
+                return "Transfer failed: Room is already in use. Please generate a fresh code phrase."
+            }
+            if ("bad password" in fullOutput) {
+                return "Transfer failed: Incorrect relay password."
+            }
+
+            val usefulLine = outputTail
+                .asReversed()
+                .firstOrNull { line ->
+                    val trimmed = line.trim()
+                    trimmed.isNotBlank() &&
+                            !trimmed.startsWith("close decompressor:", ignoreCase = true) &&
+                            !trimmed.startsWith("flate:", ignoreCase = true)
+                }
+                ?.trim()
+
+            return if (usefulLine.isNullOrBlank()) {
+                "Transfer failed (exit code $exitCode)"
+            } else {
+                "Transfer failed: $usefulLine"
+            }
+        }
     }
 
     private val _state = MutableStateFlow<CrocTransferState>(CrocTransferState.Idle)
@@ -47,7 +101,7 @@ class CrocProcess(
 
     private var currentProcess: Process? = null
 
-    private data class ProcessResult(
+    internal data class ProcessResult(
         val exitCode: Int,
         val fileNames: List<String>,
         val totalBytes: Long,
@@ -97,7 +151,11 @@ class CrocProcess(
      * Only includes flags that actually exist in croc v11.5.2 and v10.6.0.
      */
     private fun buildGlobalFlags(prefs: UserPreferencesRepository.CrocPreferences): List<String> {
-        val relayAddress = resolveRelayAddress(prefs.relayAddress)
+        // When a proxy is configured (SOCKS5 or HTTP CONNECT), do not pre-resolve the relay
+        // address to an IP literal. Remote DNS resolution must happen on the proxy to prevent
+        // local DNS leaks and allow proxy-side routing.
+        val hasProxy = prefs.socks5Proxy.isNotBlank() || prefs.httpProxy.isNotBlank()
+        val relayAddress = if (hasProxy) prefs.relayAddress else resolveRelayAddress(prefs.relayAddress)
 
         return buildList {
             if (prefs.useInternalDns) add("--internal-dns")
@@ -308,7 +366,9 @@ class CrocProcess(
                     }
                     if (!isStore) {
                         if (prefs.relayAddress.isNotBlank()) {
-                            add("--relay"); add(resolveRelayAddress(prefs.relayAddress))
+                            val hasProxy = prefs.socks5Proxy.isNotBlank() || prefs.httpProxy.isNotBlank()
+                            val relay = if (hasProxy) prefs.relayAddress else resolveRelayAddress(prefs.relayAddress)
+                            add("--relay"); add(relay)
                         }
                         if (prefs.relay6Address.isNotBlank()) {
                             add("--relay6"); add(prefs.relay6Address)
@@ -626,35 +686,12 @@ class CrocProcess(
         command.add(index, "--internal-dns")
     }
 
-    private fun errorMessageFor(result: ProcessResult): String {
-        if (hasCliUsageExit(result)) {
-            return "Transfer failed: croc rejected the command syntax and printed usage help."
-        }
-        if (result.outputTail.any { "no files transferred" in it.lowercase() }) {
-            return "Transfer failed: no files were transferred."
-        }
-        if (result.exitCode == 0) {
-            return "Transfer failed: croc exited without starting a file transfer."
-        }
-
-        val usefulLine = result.outputTail
-            .asReversed()
-            .firstOrNull { it.isNotBlank() }
-            ?.trim()
-
-        return if (usefulLine.isNullOrBlank()) {
-            "Transfer failed (exit code ${result.exitCode})"
-        } else {
-            "Transfer failed: $usefulLine"
-        }
+    internal fun errorMessageFor(result: ProcessResult): String {
+        return formatErrorMessage(result.exitCode, result.outputTail)
     }
 
     private fun hasCliUsageExit(result: ProcessResult): Boolean {
-        return result.outputTail.any {
-            val line = it.lowercase()
-            "on unix systems, to receive with croc you either need" in line ||
-                    "on unix systems, to send with a custom code phrase" in line
-        }
+        return hasCliUsageExit(result.outputTail)
     }
 
     private fun isSuccessfulTransfer(result: ProcessResult): Boolean {
@@ -747,6 +784,12 @@ class CrocProcess(
                     val code = l.substringAfter("Code is:").trim()
                     announcedCode = code
                     _state.value = CrocTransferState.WaitingForPeer(code)
+                    continue
+                }
+
+                // Interruption & live secure retry announcement
+                if (l.contains("detected a transfer interruption") || l.contains("Retrying securely")) {
+                    _state.value = CrocTransferState.WaitingForPeer("Connection interrupted. Retrying securely...")
                     continue
                 }
 

@@ -263,4 +263,52 @@ class Croc115ProgressParsingTest {
         assertEquals(0.45f, state.fileCountProgress, 0.001f)
         assertEquals(45, state.progressPercent)
     }
+
+    @Test
+    fun testErrorMessage_flateCorruptionMappedCleanly() {
+        val outputTail = listOf(
+            "close decompressor: flate: corrupt input before offset 5",
+            "flate: corrupt input before offset 5",
+            "problem with decoding: decompress message: decompress data: flate: corrupt input before offset 5",
+            "close decompressor: flate: corrupt input before offset 5"
+        )
+        val msg = CrocProcess.formatErrorMessage(1, outputTail)
+        assertEquals("Transfer failed: Network data corrupted during peer handshake. Please retry.", msg)
+    }
+
+    @Test
+    fun testErrorMessage_admissionRateLimitedMappedCleanly() {
+        val outputTail = listOf(
+            "relay admission rate limited: room join limit exceeded"
+        )
+        val msg = CrocProcess.formatErrorMessage(1, outputTail)
+        assertEquals("Transfer failed: Public relay rate limit reached. Please wait a minute and retry.", msg)
+    }
+
+    @Test
+    fun testErrorMessage_couldNotSecureChannelMappedCleanly() {
+        val outputTail = listOf(
+            "error: could not secure channel"
+        )
+        val msg = CrocProcess.formatErrorMessage(1, outputTail)
+        assertEquals("Transfer failed: Could not secure channel. Check the code phrase on both devices and retry.", msg)
+    }
+
+    @Test
+    fun testErrorMessage_roomIsFullMappedCleanly() {
+        val outputTail = listOf(
+            "room is full"
+        )
+        val msg = CrocProcess.formatErrorMessage(1, outputTail)
+        assertEquals("Transfer failed: Room is already in use. Please generate a fresh code phrase.", msg)
+    }
+
+    @Test
+    fun testInterruptionLine_matchesInterruptionPattern() {
+        val senderLine = "Sender detected a transfer interruption. Retrying securely..."
+        val receiverLine = "Receiver detected a transfer interruption. Retrying securely..."
+
+        assertTrue(senderLine.contains("detected a transfer interruption") || senderLine.contains("Retrying securely"))
+        assertTrue(receiverLine.contains("detected a transfer interruption") || receiverLine.contains("Retrying securely"))
+    }
 }

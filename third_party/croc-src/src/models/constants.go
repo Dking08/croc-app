@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -148,17 +147,14 @@ func FallbackDialContext(origDial func(context.Context, string, string) (net.Con
 	}
 }
 
-// InitDNS initializes DNS configuration for Android and internal DNS mode.
+// InitDNS initializes DNS fallback for HTTP transports.
+// INTERNAL_DNS mode is controlled exclusively via the --internal-dns flag or config.
 func InitDNS() {
-	if runtime.GOOS == "android" || os.Getenv("CROC_DNS") != "" || INTERNAL_DNS {
-		INTERNAL_DNS = true
-
-		initDNSOnce.Do(func() {
-			if t, ok := http.DefaultTransport.(*http.Transport); ok {
-				t.DialContext = FallbackDialContext(t.DialContext)
-			}
-		})
-	}
+	initDNSOnce.Do(func() {
+		if t, ok := http.DefaultTransport.(*http.Transport); ok {
+			t.DialContext = FallbackDialContext(t.DialContext)
+		}
+	})
 }
 
 func getConfigFile(requireValidPath bool) (fname string, err error) {

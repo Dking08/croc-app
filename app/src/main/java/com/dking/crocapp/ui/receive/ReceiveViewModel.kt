@@ -72,6 +72,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         ),
                         receivedFiles
                     )
+                    currentOutputDir?.deleteRecursively()
+                    currentOutputDir = null
                 }
             }
         }
@@ -95,11 +97,21 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun updateCodePhrase(code: String) {
-        _uiState.update { it.copy(codePhrase = QrCodeParser.parseCode(code)) }
+        val parsed = QrCodeParser.parseCode(code)
+        if (parsed != _uiState.value.codePhrase) {
+            currentOutputDir?.deleteRecursively()
+            currentOutputDir = null
+        }
+        _uiState.update { it.copy(codePhrase = parsed) }
     }
 
     fun setCodeFromQr(code: String) {
-        _uiState.update { it.copy(codePhrase = QrCodeParser.parseCode(code)) }
+        val parsed = QrCodeParser.parseCode(code)
+        if (parsed != _uiState.value.codePhrase) {
+            currentOutputDir?.deleteRecursively()
+            currentOutputDir = null
+        }
+        _uiState.update { it.copy(codePhrase = parsed) }
     }
 
     fun startReceiveWithCode(code: String, engine: CrocEngine? = null) {
@@ -124,6 +136,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
     fun switchToLegacyForNextReceive() {
         crocProcess.reset()
+        currentOutputDir?.deleteRecursively()
+        currentOutputDir = null
         _uiState.update {
             it.copy(
                 activeEngine = CrocEngine.LEGACY,
@@ -151,8 +165,9 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             crocProcess.reset()
             kotlinx.coroutines.delay(50)
 
-            // Unique sub-directory per transfer so we only scan THIS transfer's files
-            val outputDir = File(
+            // Reuse existing outputDir if retrying an uncompleted transfer so croc can resume partial files
+            val existingDir = currentOutputDir?.takeIf { it.exists() && it.walkTopDown().any { f -> f.isFile } }
+            val outputDir = existingDir ?: File(
                 getApplication<CrocApp>().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
                 "croc-received/${System.currentTimeMillis()}"
             ).apply { mkdirs() }
@@ -174,10 +189,14 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
     fun dismissTransferResult() {
         crocProcess.reset()
+        currentOutputDir?.deleteRecursively()
+        currentOutputDir = null
     }
 
     fun resetTransfer() {
         crocProcess.reset()
+        currentOutputDir?.deleteRecursively()
+        currentOutputDir = null
         _uiState.update {
             it.copy(
                 codePhrase = it.defaultCodePhrase,
