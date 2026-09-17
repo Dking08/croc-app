@@ -274,6 +274,11 @@
     <string name="settings_encryption">Encryption</string>
     <string name="settings_pake_curve_label">PAKE Curve</string>
     <string name="settings_transfer_options_label">Transfer Options</string>
+    <string name="settings_transfer_transport_label">Data Transport</string>
+    <string name="settings_transfer_transport_desc">Transport mechanism for transfers (croc v11+): Auto uses direct WireGuard or Tailscale DERP with relay fallback. DERP forces mesh relay; Relay uses classic TCP relay.</string>
+    <string name="transport_auto">Auto (Direct / DERP / Relay)</string>
+    <string name="transport_derp">DERP (Tailscale Relay)</string>
+    <string name="transport_relay">Relay (TCP Relay)</string>
     <string name="settings_disable_compression_label">Disable Compression</string>
     <string name="settings_disable_compression_full_desc">Transfer files without compression</string>
     <string name="settings_upload_speed_limit">Upload Speed Limit</string>

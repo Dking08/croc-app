@@ -46,6 +46,7 @@ class UserPreferencesRepository(private val context: Context) {
         val DEFAULT_STORE_EXPIRATION = stringPreferencesKey("default_store_expiration")
         val DEFAULT_STORE_DOWNLOADS = intPreferencesKey("default_store_downloads")
         val CUSTOM_STORE_URL = stringPreferencesKey("custom_store_url")
+        val TRANSFER_TRANSPORT = stringPreferencesKey("transfer_transport")
     }
 
     data class CrocPreferences(
@@ -77,7 +78,8 @@ class UserPreferencesRepository(private val context: Context) {
         val showAdvancedSettings: Boolean = false,
         val defaultStoreExpiration: String = "1d",
         val defaultStoreDownloads: Int = 1,
-        val customStoreUrl: String = ""
+        val customStoreUrl: String = "",
+        val transferTransport: String = "auto"
     ) {
         /** Effective Quick Send code: explicit quick code → defaultCodePhrase → empty */
         val effectiveQuickSendCode: String
@@ -107,7 +109,8 @@ class UserPreferencesRepository(private val context: Context) {
                     tryLegacyFirst ||
                     defaultStoreExpiration != "1d" ||
                     defaultStoreDownloads != 1 ||
-                    customStoreUrl.isNotBlank()
+                    customStoreUrl.isNotBlank() ||
+                    transferTransport != "auto"
     }
 
     val preferencesFlow: Flow<CrocPreferences> = context.dataStore.data.map { prefs ->
@@ -147,7 +150,8 @@ class UserPreferencesRepository(private val context: Context) {
             showAdvancedSettings = prefs[SHOW_ADVANCED_SETTINGS] ?: false,
             defaultStoreExpiration = prefs[DEFAULT_STORE_EXPIRATION] ?: "1d",
             defaultStoreDownloads = prefs[DEFAULT_STORE_DOWNLOADS] ?: 1,
-            customStoreUrl = prefs[CUSTOM_STORE_URL] ?: ""
+            customStoreUrl = prefs[CUSTOM_STORE_URL] ?: "",
+            transferTransport = prefs[TRANSFER_TRANSPORT] ?: "auto"
         )
     }
 
@@ -312,6 +316,10 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun updateCustomStoreUrl(value: String) {
         context.dataStore.edit { it[CUSTOM_STORE_URL] = value.trim() }
+    }
+
+    suspend fun updateTransferTransport(value: String) {
+        context.dataStore.edit { it[TRANSFER_TRANSPORT] = value.trim().lowercase() }
     }
 
     suspend fun clearReceiveLocationUri() {

@@ -256,6 +256,11 @@
     <string name="settings_encryption">加密</string>
     <string name="settings_pake_curve_label">PAKE 曲線</string>
     <string name="settings_transfer_options_label">傳輸選項</string>
+    <string name="settings_transfer_transport_label">資料傳輸通訊協定</string>
+    <string name="settings_transfer_transport_desc">檔案傳輸模式 (croc v11+)：自動使用直連 WireGuard 或 Tailscale DERP，並以中繼作為後備。DERP 強制使用網狀中繼；中繼使用傳統 TCP 中繼。</string>
+    <string name="transport_auto">自動 (直連 / DERP / 中繼)</string>
+    <string name="transport_derp">DERP (Tailscale 中繼)</string>
+    <string name="transport_relay">中繼 (TCP 中繼)</string>
     <string name="settings_disable_compression_label">停用壓縮</string>
     <string name="settings_disable_compression_full_desc">不壓縮直接傳輸檔案</string>
     <string name="settings_upload_speed_limit">上傳速度限制</string>
