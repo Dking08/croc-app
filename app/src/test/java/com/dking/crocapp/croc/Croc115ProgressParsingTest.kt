@@ -153,4 +153,114 @@ class Croc115ProgressParsingTest {
         val relayPrefs = CrocPreferences(transferTransport = "relay")
         assertTrue(relayPrefs.hasCustomAdvancedSettings)
     }
+
+    @Test
+    fun testHashingLine_doesNotPolluteFileNamesOrDuplicateTotalBytes() {
+        val initialFileNames = listOf("bigfile.mp4")
+        val fileNames = initialFileNames.toMutableList()
+        val fileSizeMap = mutableMapOf<String, Long>()
+        var totalBytes = 0L
+        var currentFileName = fileNames.first()
+        var totalFilesFromProgress = fileNames.size
+
+        val hashingLine = "Hashing bigfile.mp4... 50% |██████████          | (114/229 MB, 150 MB/s)"
+
+        // Hashing detection
+        if (hashingLine.contains("Hashing")) {
+            val hashingName = when {
+                ":" in hashingLine -> hashingLine.substringAfter(":").trim()
+                hashingLine.contains("Hashing ") -> hashingLine.substringAfter("Hashing ").substringBefore("...").substringBefore("%").trim()
+                else -> ""
+            }.removeSuffix("...").trim()
+
+            sizeInProgressRegex.find(hashingLine)?.let { sizeMatch ->
+                val totalNum = sizeMatch.groupValues[3].toDoubleOrNull() ?: 0.0
+                val totalUnit = sizeMatch.groupValues[4]
+                val fileTotalBytes = parseSize(totalNum, totalUnit)
+                if (fileTotalBytes > 0L) {
+                    val matchedFile = if (initialFileNames.isNotEmpty()) {
+                        fileNames.firstOrNull { it.startsWith(hashingName) || hashingName.startsWith(it) }
+                            ?: fileNames.firstOrNull()
+                    } else {
+                        hashingName.ifBlank { null }
+                    }
+                    if (matchedFile != null) {
+                        fileSizeMap[matchedFile] = fileTotalBytes
+                        if (totalBytes == 0L) {
+                            totalBytes = fileTotalBytes
+                        }
+                    }
+                }
+            }
+            // In CrocProcess, hashing does a continue and does NOT emit Transferring
+        }
+
+        assertEquals(1, fileNames.size)
+        assertEquals("bigfile.mp4", fileNames.first())
+        assertEquals(229 * 1024 * 1024L, fileSizeMap["bigfile.mp4"])
+        assertEquals(229 * 1024 * 1024L, totalBytes)
+
+        // Now simulate the transfer line
+        val transferLine = "bigfile.mp4 50% |██████████          | (114/229 MB, 1.2 MB/s)"
+        val match = progressLineRegex.find(transferLine)
+        assertNotNull(match)
+
+        val rawName = match!!.groupValues[1].trim()
+        val percent = match.groupValues[2].toIntOrNull() ?: 0
+        val sizeSection = match.groupValues[3]
+
+        var cleanedName = rawName
+        val unElided = cleanedName.removeSuffix("...").trim()
+        val existingFullName = fileNames.firstOrNull { it.startsWith(unElided) || it == cleanedName }
+        currentFileName = existingFullName ?: unElided.ifBlank { cleanedName }
+
+        sizeInProgressRegex.find(sizeSection)?.let { sizeMatch ->
+            val totalNum = sizeMatch.groupValues[3].toDoubleOrNull() ?: 0.0
+            val totalUnit = sizeMatch.groupValues[4]
+            val fileTotalBytes = parseSize(totalNum, totalUnit)
+            fileSizeMap[currentFileName] = fileTotalBytes
+        }
+
+        totalBytes = fileSizeMap.values.sum()
+        val effectiveTotalFiles = if (initialFileNames.isNotEmpty()) initialFileNames.size else totalFilesFromProgress
+
+        assertEquals(1, fileNames.size)
+        assertEquals(1, effectiveTotalFiles)
+        assertEquals(229 * 1024 * 1024L, totalBytes) // NOT 458MB!
+
+        val completedBytes = fileNames.filter { it != currentFileName }.sumOf { fileSizeMap[it] ?: 0L }
+        val currentFileSize = fileSizeMap[currentFileName] ?: 0L
+        val currentFileTransferred = (currentFileSize * percent / 100)
+        val bytesTransferred = completedBytes + currentFileTransferred
+
+        val state = CrocTransferState.Transferring(
+            fileName = currentFileName,
+            currentFile = 1,
+            totalFiles = effectiveTotalFiles,
+            currentFilePercent = percent,
+            bytesTransferred = bytesTransferred,
+            totalBytes = totalBytes
+        )
+
+        assertEquals(1, state.totalFiles)
+        assertEquals(1, state.currentFile)
+        assertEquals(50, state.progressPercent)
+        assertEquals(state.progress, state.fileCountProgress, 0.001f)
+    }
+
+    @Test
+    fun testTransferState_borderProgressMatchesCardProgress() {
+        val state = CrocTransferState.Transferring(
+            fileName = "movie.mp4",
+            currentFile = 1,
+            totalFiles = 1,
+            currentFilePercent = 45,
+            bytesTransferred = 45 * 1024 * 1024L,
+            totalBytes = 100 * 1024 * 1024L
+        )
+
+        assertEquals(0.45f, state.progress, 0.001f)
+        assertEquals(0.45f, state.fileCountProgress, 0.001f)
+        assertEquals(45, state.progressPercent)
+    }
 }

@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"github.com/schollz/croc/v11/src/cli"
+	"github.com/schollz/croc/v11/src/models"
 	"github.com/schollz/croc/v11/src/utils"
 )
 
 var runCLIContext = cli.RunContext
 
 func main() {
+	models.InitDNS()
 	// "github.com/pkg/profile"
 	// go func() {
 	// 	for {
