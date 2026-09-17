@@ -107,6 +107,8 @@ class CrocProcess(
             }
             if (prefs.relay6Address.isNotBlank()) {
                 add("--relay6"); add(prefs.relay6Address)
+            } else {
+                add("--relay6"); add("")
             }
             if (prefs.relayPassword.isNotBlank()) {
                 add("--pass"); add(prefs.relayPassword)
@@ -310,6 +312,8 @@ class CrocProcess(
                         }
                         if (prefs.relay6Address.isNotBlank()) {
                             add("--relay6"); add(prefs.relay6Address)
+                        } else {
+                            add("--relay6"); add("")
                         }
                         if (prefs.relayPassword.isNotBlank()) {
                             add("--pass"); add(prefs.relayPassword)
