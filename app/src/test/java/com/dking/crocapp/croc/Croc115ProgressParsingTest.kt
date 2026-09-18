@@ -311,4 +311,41 @@ class Croc115ProgressParsingTest {
         assertTrue(senderLine.contains("detected a transfer interruption") || senderLine.contains("Retrying securely"))
         assertTrue(receiverLine.contains("detected a transfer interruption") || receiverLine.contains("Retrying securely"))
     }
+
+    @Test
+    fun testIsCouldNotSecureChannel_detectsFailureAccurately() {
+        val failureResult = CrocProcess.ProcessResult(
+            exitCode = 1,
+            fileNames = emptyList(),
+            totalBytes = 0L,
+            outputTail = listOf("failed to negotiate", "could not secure channel: handshake timeout")
+        )
+        assertTrue(CrocProcess.isCouldNotSecureChannel(failureResult))
+
+        val successResult = CrocProcess.ProcessResult(
+            exitCode = 0,
+            fileNames = listOf("file.txt"),
+            totalBytes = 100L,
+            outputTail = listOf("could not secure channel")
+        )
+        assertFalse(CrocProcess.isCouldNotSecureChannel(successResult))
+
+        val otherErrorResult = CrocProcess.ProcessResult(
+            exitCode = 1,
+            fileNames = emptyList(),
+            totalBytes = 0L,
+            outputTail = listOf("room is full")
+        )
+        assertFalse(CrocProcess.isCouldNotSecureChannel(otherErrorResult))
+    }
+
+    @Test
+    fun testUseInternalDns_defaultIsFalseAndFlagsCustomSettings() {
+        val defaultPrefs = CrocPreferences()
+        assertFalse("useInternalDns must default to false", defaultPrefs.useInternalDns)
+        assertFalse("Default preferences should not be considered custom", defaultPrefs.hasCustomAdvancedSettings)
+
+        val enabledPrefs = CrocPreferences(useInternalDns = true)
+        assertTrue("Enabling internal DNS should flag custom settings", enabledPrefs.hasCustomAdvancedSettings)
+    }
 }
