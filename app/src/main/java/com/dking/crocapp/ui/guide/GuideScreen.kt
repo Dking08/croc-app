@@ -365,7 +365,7 @@ private fun GuideHeroHeader() {
                         shape = MaterialTheme.shapes.small
                     ) {
                         Text(
-                            text = "v6.0.0",
+                            text = "v6.1.0",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,

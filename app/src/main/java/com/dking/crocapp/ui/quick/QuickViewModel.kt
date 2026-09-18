@@ -7,6 +7,7 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dking.crocapp.CrocApp
+import com.dking.crocapp.croc.CodePhraseGenerator
 import com.dking.crocapp.croc.CrocBinaryManager
 import com.dking.crocapp.croc.CrocEngine
 import com.dking.crocapp.croc.CrocProcess
@@ -268,14 +269,49 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun ensureQuickSendCode(): String {
+        val current = _uiState.value.quickSendCode.trim()
+        if (current.isNotBlank()) return current
+        val generated = CodePhraseGenerator.generate()
+        viewModelScope.launch {
+            prefsRepo.updateDefaultCodePhrase(generated)
+        }
+        _uiState.update { it.copy(quickSendCode = generated, activeCode = generated) }
+        return generated
+    }
+
     fun startReceive(engine: CrocEngine? = null) {
         val code = _uiState.value.quickReceiveCode
         if (code.isBlank()) return
         startReceiveInternal(code, "receive", engine)
     }
 
-    fun startReceiveWithCode(code: String, engine: CrocEngine? = null) {
-        startReceiveInternal(QrCodeParser.parseCode(code), "receive", engine)
+    fun startReceiveWithCode(code: String, saveAsDefault: Boolean = false, engine: CrocEngine? = null) {
+        val parsedCode = QrCodeParser.parseCode(code).trim()
+        if (parsedCode.isBlank()) return
+        if (saveAsDefault) {
+            viewModelScope.launch {
+                prefsRepo.updateDefaultCodePhrase(parsedCode)
+            }
+            _uiState.update { it.copy(quickReceiveCode = parsedCode) }
+        }
+        startReceiveInternal(parsedCode, "receive", engine)
+    }
+
+    fun retrySend() {
+        val state = _uiState.value
+        when (state.lastAction) {
+            "send" -> {
+                if (lastSendUris.isNotEmpty()) {
+                    sendFiles(lastSendUris, engine = state.activeEngine)
+                }
+            }
+            "clipboard" -> {
+                if (!lastSendText.isNullOrBlank()) {
+                    sendClipboardText(lastSendText!!, engine = state.activeEngine)
+                }
+            }
+        }
     }
 
     fun startReceiveFromQr(code: String, engine: CrocEngine? = null) {

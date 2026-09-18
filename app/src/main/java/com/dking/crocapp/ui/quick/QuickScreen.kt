@@ -37,10 +37,12 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Upload
 import com.dking.crocapp.croc.CrocEngine
 import com.dking.crocapp.ui.components.EngineBadge
+import com.dking.crocapp.ui.components.ReceiveCodeInputDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -112,6 +114,7 @@ fun QuickScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    var showReceiveCodeDialog by remember { mutableStateOf(false) }
 
     val isTransferActive = uiState.transferState is CrocTransferState.Preparing ||
         uiState.transferState is CrocTransferState.WaitingForPeer ||
@@ -129,6 +132,16 @@ fun QuickScreen(
         if (uris.isNotEmpty()) {
             viewModel.sendFiles(uris)
         }
+    }
+
+    if (showReceiveCodeDialog) {
+        ReceiveCodeInputDialog(
+            onDismissRequest = { showReceiveCodeDialog = false },
+            onConfirm = { code, saveAsDefault ->
+                showReceiveCodeDialog = false
+                viewModel.startReceiveWithCode(code, saveAsDefault = saveAsDefault)
+            }
+        )
     }
 
     Scaffold(
@@ -178,6 +191,7 @@ fun QuickScreen(
                         receiveLocationLabel = uiState.receiveLocationLabel,
                         onCancel = { viewModel.cancelTransfer() },
                         onRetryLegacy = { viewModel.retryWithLegacy() },
+                        onRetrySend = { viewModel.retrySend() },
                         onSwitchToLegacy = { viewModel.switchToLegacyForNextReceive() },
                         onDismiss = { viewModel.dismissResult() },
                         onCopyText = { text ->
@@ -193,26 +207,34 @@ fun QuickScreen(
                     savedCodes = uiState.savedCodePhrases,
                     onSendTap = {
                         if (uiState.quickSendCode.isBlank()) {
-                            Toast.makeText(context, R.string.quick_code_not_set_toast, Toast.LENGTH_LONG).show()
-                        } else {
-                            filePickerLauncher.launch(arrayOf("*/*"))
+                            val code = viewModel.ensureQuickSendCode()
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.quick_code_auto_set_toast, code),
+                                Toast.LENGTH_LONG
+                            ).show()
                         }
+                        filePickerLauncher.launch(arrayOf("*/*"))
                     },
                     onClipboardSendTap = {
-                        if (uiState.quickSendCode.isBlank()) {
-                            Toast.makeText(context, R.string.quick_code_not_set_toast, Toast.LENGTH_LONG).show()
+                        val text = clipboardManager.getText()?.text ?: ""
+                        if (text.isBlank()) {
+                            Toast.makeText(context, R.string.quick_clipboard_empty_toast, Toast.LENGTH_SHORT).show()
                         } else {
-                            val text = clipboardManager.getText()?.text ?: ""
-                            if (text.isNotBlank()) {
-                                viewModel.sendClipboardText(text)
-                            } else {
-                                Toast.makeText(context, R.string.quick_clipboard_empty_toast, Toast.LENGTH_SHORT).show()
+                            if (uiState.quickSendCode.isBlank()) {
+                                val code = viewModel.ensureQuickSendCode()
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.quick_code_auto_set_toast, code),
+                                    Toast.LENGTH_LONG
+                                ).show()
                             }
+                            viewModel.sendClipboardText(text)
                         }
                     },
                     onReceiveTap = {
                         if (uiState.quickReceiveCode.isBlank()) {
-                            Toast.makeText(context, R.string.quick_code_not_set_toast, Toast.LENGTH_LONG).show()
+                            showReceiveCodeDialog = true
                         } else {
                             viewModel.startReceive()
                         }
@@ -300,6 +322,7 @@ private fun TransferStatusSection(
     receiveLocationLabel: String = "Downloads/croc-received",
     onCancel: () -> Unit,
     onRetryLegacy: (() -> Unit)? = null,
+    onRetrySend: (() -> Unit)? = null,
     onSwitchToLegacy: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onCopyText: (String) -> Unit
@@ -365,6 +388,26 @@ private fun TransferStatusSection(
                     Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(stringResource(R.string.action_switch_legacy_receive))
+                }
+            }
+        }
+
+        if (state is CrocTransferState.Error && isSending && onRetrySend != null) {
+            val isExcludedFromRetry = state.message.contains("rate limit", ignoreCase = true) ||
+                state.message.contains("relay admission", ignoreCase = true) ||
+                state.message.contains("wait a minute", ignoreCase = true) ||
+                (state.message.contains("relay", ignoreCase = true) && state.message.contains("time", ignoreCase = true)) ||
+                state.message.contains("timeout", ignoreCase = true) ||
+                state.message.contains("timed out", ignoreCase = true)
+            if (!isExcludedFromRetry) {
+                Button(
+                    onClick = onRetrySend,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(stringResource(R.string.action_retry))
                 }
             }
         }

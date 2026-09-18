@@ -86,6 +86,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dking.crocapp.R
 import com.dking.crocapp.croc.CrocTransferState
 import com.dking.crocapp.ui.components.EngineBadge
+import com.dking.crocapp.ui.components.ReceiveCodeInputDialog
 import com.dking.crocapp.ui.components.TransferProgressCard
 import com.dking.crocapp.ui.components.formatBytes
 import com.dking.crocapp.ui.components.progressBorder
@@ -105,6 +106,7 @@ fun ReceiveScreen(
     val clipboardManager = LocalClipboardManager.current
     var hideCodePhrase by remember { mutableStateOf(true) }
     var showAllFiles by remember { mutableStateOf(false) }
+    var showInputCodeDialog by remember { mutableStateOf(false) }
 
     // SAF folder picker for session-level location override
     val folderPickerLauncher = rememberLauncherForActivityResult(
@@ -149,6 +151,19 @@ fun ReceiveScreen(
     val showCodeBorder = isTransferActive || uiState.transferState is CrocTransferState.Completed
     val borderColor = MaterialTheme.colorScheme.tertiary
 
+    if (showInputCodeDialog) {
+        ReceiveCodeInputDialog(
+            onDismissRequest = { showInputCodeDialog = false },
+            onConfirm = { code, saveAsDefault ->
+                showInputCodeDialog = false
+                if (isTransferFinished) {
+                    viewModel.dismissTransferResult()
+                }
+                viewModel.startReceiveWithCode(code, saveAsDefault = saveAsDefault)
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -178,10 +193,14 @@ fun ReceiveScreen(
                         if (isLegacyFallback) {
                             viewModel.retryWithLegacy()
                         } else {
-                            if (isTransferFinished) {
-                                viewModel.dismissTransferResult()
+                            if (uiState.codePhrase.isBlank()) {
+                                showInputCodeDialog = true
+                            } else {
+                                if (isTransferFinished) {
+                                    viewModel.dismissTransferResult()
+                                }
+                                viewModel.startReceive()
                             }
-                            viewModel.startReceive()
                         }
                     },
                     icon = {
@@ -196,7 +215,7 @@ fun ReceiveScreen(
                     elevation = FloatingActionButtonDefaults.elevation(
                         defaultElevation = 3.dp
                     ),
-                    expanded = canReceive || isLegacyFallback
+                    expanded = true
                 )
             }
         }

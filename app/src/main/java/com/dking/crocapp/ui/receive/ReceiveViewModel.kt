@@ -114,8 +114,15 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(codePhrase = parsed) }
     }
 
-    fun startReceiveWithCode(code: String, engine: CrocEngine? = null) {
-        updateCodePhrase(code)
+    fun startReceiveWithCode(code: String, saveAsDefault: Boolean = false, engine: CrocEngine? = null) {
+        val parsed = QrCodeParser.parseCode(code).trim()
+        if (parsed.isBlank()) return
+        updateCodePhrase(parsed)
+        if (saveAsDefault) {
+            viewModelScope.launch {
+                prefsRepo.updateDefaultCodePhrase(parsed)
+            }
+        }
         startReceive(engine)
     }
 
