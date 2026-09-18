@@ -392,7 +392,8 @@ func (s *Server) StartContext(ctx context.Context) error {
 		logf(format, args...)
 	})
 	if err != nil {
-		return fmt.Errorf("netmon.New: %w", err)
+		logf("netmon.New failed (%v); falling back to static netmon", err)
+		netMon = netmon.NewStatic()
 	}
 	sys.Set(netMon)
 
@@ -1473,7 +1474,8 @@ func (c *Client) initLocked() error {
 		logf(format, args...)
 	})
 	if err != nil {
-		return fmt.Errorf("netmon.New: %w", err)
+		logf("netmon.New failed (%v); falling back to static netmon", err)
+		netMon = netmon.NewStatic()
 	}
 	sys.Set(netMon)
 

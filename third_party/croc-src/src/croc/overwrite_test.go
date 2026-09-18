@@ -6,7 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
-	"path"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -264,14 +264,14 @@ func TestReceiveTextArtifactDoesNotPromptOrRename(t *testing.T) {
 			if done || err != nil {
 				t.Fatalf("processSenderInfo() = (%v, %v), want accepted text offer", done, err)
 			}
-			artifactName := path.Base(client.FilesToTransfer[0].Name)
+			artifactName := filepath.Base(client.FilesToTransfer[0].Name)
 			if artifactName == senderName {
 				t.Fatal("text transfer reused the sender's filename")
 			}
 			if err := client.updateIfRecipientHasFileInfo(); err != nil {
 				t.Fatal(err)
 			}
-			if client.FilesToTransfer[0].Name != artifactName {
+			if filepath.Base(client.FilesToTransfer[0].Name) != artifactName {
 				t.Fatal("text artifact was renamed")
 			}
 			if client.CurrentFile == nil || !client.lifecycleSnapshot().RecipientRequested {
