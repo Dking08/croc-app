@@ -57,7 +57,7 @@ class UserPreferencesRepository(private val context: Context) {
         val disableCompression: Boolean = false,
         val uploadThrottle: String = "",
         val multicastAddress: String = "239.255.255.250",
-        val useInternalDns: Boolean = true,
+        val useInternalDns: Boolean = false,
         val themeMode: String = "system",
         val amoledDark: Boolean = false,
         val defaultCodePhrase: String = "",
@@ -97,7 +97,7 @@ class UserPreferencesRepository(private val context: Context) {
                     httpProxy.isNotBlank() ||
                     senderIp.isNotBlank() ||
                     forceLocal ||
-                    !useInternalDns ||
+                    useInternalDns ||
                     multicastAddress != "239.255.255.250" ||
                     pakeCurve != "p256" ||
                     hashAlgorithm != "xxhash" ||
@@ -128,8 +128,7 @@ class UserPreferencesRepository(private val context: Context) {
             disableCompression = prefs[DISABLE_COMPRESSION] ?: false,
             uploadThrottle = prefs[UPLOAD_THROTTLE] ?: "",
             multicastAddress = prefs[MULTICAST_ADDRESS] ?: "239.255.255.250",
-            // Android devices often have a broken localhost DNS path for the croc CLI.
-            useInternalDns = if (prefs.contains(USE_INTERNAL_DNS)) prefs[USE_INTERNAL_DNS] ?: true else true,
+            useInternalDns = prefs[USE_INTERNAL_DNS] ?: false,
             themeMode = prefs[THEME_MODE] ?: "system",
             amoledDark = prefs[AMOLED_DARK] ?: false,
             defaultCodePhrase = normalizeCodePhrase(prefs[DEFAULT_CODE_PHRASE] ?: ""),

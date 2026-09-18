@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.util.Log
 import com.dking.crocapp.data.preferences.UserPreferencesRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,6 +41,14 @@ class CrocProcess(
 ) {
     companion object {
         private const val TAG = "CrocProcess"
+        internal const val MAX_SECURE_CHANNEL_RETRIES = 2
+        internal const val INITIAL_BACKOFF_MS = 1000L
+
+        internal fun isCouldNotSecureChannel(result: ProcessResult): Boolean {
+            if (result.exitCode == 0) return false
+            val fullOutput = result.outputTail.joinToString("\n").lowercase()
+            return "could not secure channel" in fullOutput
+        }
 
         internal fun hasCliUsageExit(outputTail: List<String>): Boolean {
             return outputTail.any {
@@ -549,77 +558,139 @@ class CrocProcess(
         engine: CrocEngine,
         initialFileNames: List<String> = emptyList()
     ) {
-        Log.d(TAG, "$opName ($engine) command: ${redactCommandForLog(baseCommand)}")
+        val currentCommand = baseCommand.toMutableList()
+        var currentEnv = extraEnv
+        var currentWaitingState = waitingState
+        var effectiveCode = code
 
-        var result = runCommand(baseCommand, workDir, waitingState, extraEnv, engine, initialFileNames)
+        var attempt = 0
+        var lastResult: ProcessResult? = null
 
-        if (result.isLegacyFallback) {
-            val effectiveRoom = if (!code.isNullOrBlank()) code else result.announcedCode.ifBlank { "" }
-            _state.value = CrocTransferState.LegacyFallbackAvailable(
-                room = effectiveRoom,
-                reason = "The other device is using an older croc version (PAKE protocol version mismatch)."
-            )
-            return
-        }
+        while (attempt <= MAX_SECURE_CHANNEL_RETRIES) {
+            if (_state.value is CrocTransferState.Cancelled || !coroutineContext.isActive) {
+                return
+            }
 
-        if (shouldRetryWithInternalDns(result, prefs, baseCommand)) {
-            val retryCommand = baseCommand.toMutableList()
-            addInternalDnsFlag(retryCommand)
-            Log.w(TAG, "$opName ($engine) retry with --internal-dns: ${redactCommandForLog(retryCommand)}")
-            result = runCommand(retryCommand, workDir, waitingState, extraEnv, engine, initialFileNames)
+            Log.d(TAG, "$opName ($engine) attempt $attempt command: ${redactCommandForLog(currentCommand)}")
+            var result = runCommand(currentCommand, workDir, currentWaitingState, currentEnv, engine, initialFileNames)
+            lastResult = result
+
+            // Check cancelled state FIRST — cancel() may have been called while parseOutput was running.
+            if (_state.value is CrocTransferState.Cancelled || !coroutineContext.isActive) {
+                return // keep the Cancelled state intact
+            }
 
             if (result.isLegacyFallback) {
-                val effectiveRoom = if (!code.isNullOrBlank()) code else result.announcedCode.ifBlank { "" }
+                val effectiveRoom = if (!effectiveCode.isNullOrBlank()) effectiveCode else result.announcedCode.ifBlank { "" }
                 _state.value = CrocTransferState.LegacyFallbackAvailable(
                     room = effectiveRoom,
                     reason = "The other device is using an older croc version (PAKE protocol version mismatch)."
                 )
                 return
             }
+
+            if (shouldRetryWithInternalDns(result, prefs, currentCommand)) {
+                addInternalDnsFlag(currentCommand)
+                Log.w(TAG, "$opName ($engine) retry with --internal-dns: ${redactCommandForLog(currentCommand)}")
+                result = runCommand(currentCommand, workDir, currentWaitingState, currentEnv, engine, initialFileNames)
+                lastResult = result
+
+                if (_state.value is CrocTransferState.Cancelled || !coroutineContext.isActive) {
+                    return
+                }
+
+                if (result.isLegacyFallback) {
+                    val effectiveRoom = if (!effectiveCode.isNullOrBlank()) effectiveCode else result.announcedCode.ifBlank { "" }
+                    _state.value = CrocTransferState.LegacyFallbackAvailable(
+                        room = effectiveRoom,
+                        reason = "The other device is using an older croc version (PAKE protocol version mismatch)."
+                    )
+                    return
+                }
+            }
+
+            if (isSuccessfulTransfer(result)) {
+                break
+            }
+
+            val canRetry = !opName.endsWith("Store") &&
+                    isCouldNotSecureChannel(result) &&
+                    attempt < MAX_SECURE_CHANNEL_RETRIES
+
+            if (canRetry) {
+                attempt++
+                val backoffMs = attempt * INITIAL_BACKOFF_MS
+
+                // SMART CODE PRESERVATION:
+                // If code was not originally specified (e.g. sender auto-generated code),
+                // reuse the code announced on attempt 0 so the peer can reconnect to the same room.
+                if (effectiveCode.isNullOrBlank() && result.announcedCode.isNotBlank()) {
+                    effectiveCode = result.announcedCode.trim()
+                }
+
+                if (!effectiveCode.isNullOrBlank()) {
+                    currentEnv = secretEnv(effectiveCode)
+                    currentWaitingState = CrocTransferState.WaitingForPeer(effectiveCode)
+                    _state.value = currentWaitingState
+                }
+
+                Log.w(
+                    TAG,
+                    "$opName ($engine) could not secure channel on attempt ${attempt - 1}. " +
+                            "Retrying ($attempt/$MAX_SECURE_CHANNEL_RETRIES) in ${backoffMs}ms with code '${effectiveCode ?: ""}'..."
+                )
+                delay(backoffMs)
+
+                if (_state.value is CrocTransferState.Cancelled || !coroutineContext.isActive) {
+                    return
+                }
+                continue
+            }
+
+            break
         }
 
-        // Check cancelled state FIRST — cancel() may have been called while parseOutput was running.
-        // Without this guard, a force-killed process can exit with code 0 and be mis-reported as Completed.
         if (_state.value is CrocTransferState.Cancelled) {
-            return // keep the Cancelled state intact
+            return
         }
 
-        if (isSuccessfulTransfer(result)) {
-            if (opName == "SendStore" || result.storeBrowserLink.isNotBlank()) {
-                val effectiveStoreId = result.storeId.ifBlank {
-                    if (result.storeBrowserLink.contains("/s/")) {
-                        result.storeBrowserLink.substringAfter("/s/").substringBefore("#").trim()
+        val finalResult = lastResult ?: return
+        if (isSuccessfulTransfer(finalResult)) {
+            if (opName == "SendStore" || finalResult.storeBrowserLink.isNotBlank()) {
+                val effectiveStoreId = finalResult.storeId.ifBlank {
+                    if (finalResult.storeBrowserLink.contains("/s/")) {
+                        finalResult.storeBrowserLink.substringAfter("/s/").substringBefore("#").trim()
                     } else ""
                 }
-                val calculatedExpiresAt = if (result.storeExpiresAt > 0L) {
-                    result.storeExpiresAt
+                val calculatedExpiresAt = if (finalResult.storeExpiresAt > 0L) {
+                    finalResult.storeExpiresAt
                 } else {
                     System.currentTimeMillis() + parseExpirationDurationMillis(lastStoreExpiration)
                 }
-                val effectiveDownloads = if (result.storeDownloadsLimit > 0) result.storeDownloadsLimit else lastStoreDownloads
-                val effectiveRawExpiration = result.storeRawExpiration.ifBlank { lastStoreExpiration }
+                val effectiveDownloads = if (finalResult.storeDownloadsLimit > 0) finalResult.storeDownloadsLimit else lastStoreDownloads
+                val effectiveRawExpiration = finalResult.storeRawExpiration.ifBlank { lastStoreExpiration }
 
                 _state.value = CrocTransferState.StoreCompleted(
-                    browserLink = result.storeBrowserLink,
-                    cliToken = result.storeCliToken,
+                    browserLink = finalResult.storeBrowserLink,
+                    cliToken = finalResult.storeCliToken,
                     storeId = effectiveStoreId,
                     expiresAt = calculatedExpiresAt,
-                    fileNames = result.fileNames,
-                    totalBytes = result.totalBytes,
+                    fileNames = finalResult.fileNames,
+                    totalBytes = finalResult.totalBytes,
                     rawExpirationText = effectiveRawExpiration,
                     downloadsLimit = effectiveDownloads
                 )
             } else {
                 _state.value = CrocTransferState.Completed(
-                    fileNames = result.fileNames,
-                    totalBytes = result.totalBytes,
-                    peerIp = result.peerIp,
-                    totalFileCount = result.totalFileCount.coerceAtLeast(result.fileNames.size),
-                    receivedText = result.receivedText
+                    fileNames = finalResult.fileNames,
+                    totalBytes = finalResult.totalBytes,
+                    peerIp = finalResult.peerIp,
+                    totalFileCount = finalResult.totalFileCount.coerceAtLeast(finalResult.fileNames.size),
+                    receivedText = finalResult.receivedText
                 )
             }
         } else {
-            _state.value = CrocTransferState.Error(errorMessageFor(result))
+            _state.value = CrocTransferState.Error(errorMessageFor(finalResult))
         }
     }
 
