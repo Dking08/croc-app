@@ -325,6 +325,32 @@ class UserPreferencesRepository(private val context: Context) {
         context.dataStore.edit { it.remove(RECEIVE_LOCATION_URI) }
     }
 
+    suspend fun resetAdvancedSettings() {
+        context.dataStore.edit { prefs ->
+            prefs[RELAY_ADDRESS] = "croc.schollz.com:9009"
+            prefs[RELAY_PASSWORD] = "pass123"
+            prefs.remove(RELAY6_ADDRESS)
+            prefs.remove(SOCKS5_PROXY)
+            prefs.remove(HTTP_PROXY)
+            prefs.remove(SENDER_IP)
+            prefs[FORCE_LOCAL] = false
+            prefs[USE_INTERNAL_DNS] = false
+            prefs[MULTICAST_ADDRESS] = "239.255.255.250"
+            prefs[PAKE_CURVE] = "p256"
+            prefs[HASH_ALGORITHM] = "xxhash"
+            prefs[DISABLE_MULTIPLEXING] = true
+            prefs[TRANSFER_PORTS] = "4"
+            prefs[DISABLE_COMPRESSION] = false
+            prefs[ZIP_FOLDER_BEFORE_SEND] = false
+            prefs.remove(UPLOAD_THROTTLE)
+            prefs[TRY_LEGACY_FIRST] = false
+            prefs[DEFAULT_STORE_EXPIRATION] = "1d"
+            prefs[DEFAULT_STORE_DOWNLOADS] = 1
+            prefs.remove(CUSTOM_STORE_URL)
+            prefs[TRANSFER_TRANSPORT] = "auto"
+        }
+    }
+
     private fun normalizeCodePhrase(value: String): String {
         return value.trim().replace(" ", "-")
     }
