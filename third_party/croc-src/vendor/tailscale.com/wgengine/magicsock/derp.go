@@ -1040,6 +1040,11 @@ func (c *Conn) DERPs() int {
 	return len(c.activeDerp)
 }
 
+// DERPStartedChan returns a channel that is closed on the first connection to DERP.
+func (c *Conn) DERPStartedChan() <-chan struct{} {
+	return c.derpStarted
+}
+
 func (c *Conn) derpRegionCodeOfIDLocked(regionID int) string {
 	if c.derpMap == nil {
 		return ""

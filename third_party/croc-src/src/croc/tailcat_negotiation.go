@@ -303,6 +303,12 @@ func (c *Client) startTailcatPreparation() {
 		c.tailcat.prepareReady = make(chan struct{})
 		go func() {
 			defer close(c.tailcat.prepareReady)
+			defer func() {
+				if r := recover(); r != nil {
+					c.tailcat.prepareErr = fmt.Errorf("tailcat prepare panic: %v", r)
+					log.Debugf("Tailcat preparation panicked: %v", r)
+				}
+			}()
 			c.tailcat.prepared, c.tailcat.prepareErr = transport.Prepare(prepareCtx)
 			if c.tailcat.prepareErr != nil {
 				log.Debugf("Tailcat preparation failed: %v", c.tailcat.prepareErr)

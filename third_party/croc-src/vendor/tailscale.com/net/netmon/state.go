@@ -5,10 +5,12 @@ package netmon
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"runtime"
 	"slices"
 	"sort"
@@ -31,6 +33,19 @@ var forceAllIPv6Endpoints = envknob.RegisterBool("TS_DEBUG_FORCE_ALL_IPV6_ENDPOI
 // LoginEndpointForProxyDetermination is the URL used for testing
 // which HTTP proxy the system should use.
 var LoginEndpointForProxyDetermination = "https://controlplane.tailscale.com/"
+
+func isPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrPermission) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "permission denied") ||
+		strings.Contains(msg, "netlinkrib") ||
+		strings.Contains(msg, "operation not permitted")
+}
 
 func isUp(nif *net.Interface) bool       { return nif.Flags&net.FlagUp != 0 }
 func isLoopback(nif *net.Interface) bool { return nif.Flags&net.FlagLoopback != 0 }
@@ -184,6 +199,9 @@ func (i Interface) Addrs() ([]net.Addr, error) {
 func ForeachInterfaceAddress(fn func(Interface, netip.Prefix)) error {
 	ifaces, err := GetInterfaceList()
 	if err != nil {
+		if runtime.GOOS == "android" || isPermissionError(err) {
+			return nil
+		}
 		return err
 	}
 	return ifaces.ForeachInterfaceAddress(fn)
@@ -196,6 +214,9 @@ func (ifaces InterfaceList) ForeachInterfaceAddress(fn func(Interface, netip.Pre
 	for _, iface := range ifaces {
 		addrs, err := iface.Addrs()
 		if err != nil {
+			if runtime.GOOS == "android" || isPermissionError(err) {
+				continue
+			}
 			return err
 		}
 		for _, a := range addrs {
@@ -219,6 +240,9 @@ func (ifaces InterfaceList) ForeachInterfaceAddress(fn func(Interface, netip.Pre
 func ForeachInterface(fn func(Interface, []netip.Prefix)) error {
 	ifaces, err := GetInterfaceList()
 	if err != nil {
+		if runtime.GOOS == "android" || isPermissionError(err) {
+			return nil
+		}
 		return err
 	}
 	return ifaces.ForeachInterface(fn)
@@ -231,6 +255,9 @@ func (ifaces InterfaceList) ForeachInterface(fn func(Interface, []netip.Prefix))
 	for _, iface := range ifaces {
 		addrs, err := iface.Addrs()
 		if err != nil {
+			if runtime.GOOS == "android" || isPermissionError(err) {
+				continue
+			}
 			return err
 		}
 		var pfxs []netip.Prefix
@@ -532,7 +559,7 @@ func (s *State) HasPAC() bool { return s != nil && s.PAC != "" }
 
 // AnyInterfaceUp reports whether any interface seems like it has Internet access.
 func (s *State) AnyInterfaceUp() bool {
-	if runtime.GOOS == "js" || runtime.GOOS == "tamago" {
+	if runtime.GOOS == "js" || runtime.GOOS == "tamago" || runtime.GOOS == "android" {
 		return true
 	}
 	return s != nil && (s.HaveV4 || s.HaveV6)
@@ -616,7 +643,17 @@ func getState(optTSInterfaceName string) (*State, error) {
 			s.HaveV4 = s.HaveV4 || isUsableV4(pfx.Addr())
 		}
 	}); err != nil {
+		if runtime.GOOS == "android" || isPermissionError(err) {
+			s.HaveV4 = true
+			s.HaveV6 = true
+			return s, nil
+		}
 		return nil, err
+	}
+
+	if runtime.GOOS == "android" && !s.HaveV4 && !s.HaveV6 {
+		s.HaveV4 = true
+		s.HaveV6 = true
 	}
 
 	dr, _ := DefaultRoute()
@@ -845,6 +882,9 @@ func netInterfaces() ([]Interface, error) {
 	}
 	ifs, err := net.Interfaces()
 	if err != nil {
+		if runtime.GOOS == "android" || isPermissionError(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	ret := make([]Interface, len(ifs))

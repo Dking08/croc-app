@@ -395,7 +395,8 @@ func NewUserspaceEngine(logf logger.Logf, conf Config) (_ Engine, reterr error) 
 	} else {
 		mon, err := netmon.New(conf.EventBus, logf)
 		if err != nil {
-			return nil, err
+			logf("wgengine: netmon.New failed (%v), falling back to static netmon", err)
+			mon = netmon.NewStatic()
 		}
 		closePool.add(mon)
 		e.netMon = mon
