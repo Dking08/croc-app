@@ -192,6 +192,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
     fun cancelTransfer() {
         crocProcess.cancel()
+        currentOutputDir?.deleteRecursively()
+        currentOutputDir = null
     }
 
     fun dismissTransferResult() {

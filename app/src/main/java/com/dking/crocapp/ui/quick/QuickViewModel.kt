@@ -19,6 +19,7 @@ import com.dking.crocapp.data.preferences.UserPreferencesRepository
 import com.dking.crocapp.ui.receive.ReceivedFile
 import com.dking.crocapp.ui.receive.ReceivedFilePublisher
 import com.dking.crocapp.util.QrCodeParser
+import com.dking.crocapp.util.StorageCleaner
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -147,6 +148,7 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
                         saveToHistory(historyState, receivedFiles)
                         currentOutputDir?.deleteRecursively()
                         currentOutputDir = null
+                        StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
                     }
                     is CrocTransferState.LegacyFallbackAvailable -> {
                         _uiState.update {
@@ -157,6 +159,7 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                     is CrocTransferState.Error -> {
+                        StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
                         _uiState.update {
                             it.copy(
                                 statusMessage = "Error",
@@ -402,12 +405,16 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
 
     fun cancelTransfer() {
         crocProcess.cancel()
+        currentOutputDir?.deleteRecursively()
+        currentOutputDir = null
+        StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
     }
 
     fun dismissResult() {
         crocProcess.reset()
         currentOutputDir?.deleteRecursively()
         currentOutputDir = null
+        StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
         viewModelScope.launch {
             val defaultEngine = if (prefsRepo.preferencesFlow.first().tryLegacyFirst) {
                 CrocEngine.LEGACY
@@ -439,7 +446,10 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun copyFilesToInternal(uris: List<Uri>): List<String> {
         val context = getApplication<CrocApp>()
-        val sendDir = File(context.cacheDir, "croc-send").apply { mkdirs() }
+        val sendDir = File(context.cacheDir, "croc-send").apply {
+            if (exists()) deleteRecursively()
+            mkdirs()
+        }
         return uris.mapNotNull { uri ->
             try {
                 val name = resolveDisplayName(uri)

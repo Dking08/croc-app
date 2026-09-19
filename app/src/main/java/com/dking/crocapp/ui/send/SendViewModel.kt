@@ -16,6 +16,7 @@ import com.dking.crocapp.data.db.TransferHistory
 import com.dking.crocapp.data.db.TransferStatus
 import com.dking.crocapp.data.db.TransferType
 import com.dking.crocapp.data.preferences.UserPreferencesRepository
+import com.dking.crocapp.util.StorageCleaner
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -81,11 +82,17 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
             crocProcess.state.collect { state ->
                 _uiState.update { it.copy(transferState = state) }
 
-                // Save to history on completion
+                // Save to history on completion and clean up staging cache
                 if (state is CrocTransferState.Completed) {
                     saveToHistory(state)
+                    StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
                 } else if (state is CrocTransferState.StoreCompleted) {
                     saveStoreToHistory(state)
+                    StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
+                } else if (state is CrocTransferState.Error) {
+                    if (_uiState.value.sendMode != SendMode.FOLDER) {
+                        StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
+                    }
                 }
             }
         }
@@ -148,6 +155,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearFiles() {
         _uiState.update { it.copy(selectedFiles = emptyList(), selectedBytes = 0) }
+        StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
     }
 
     fun addFolder(treeUri: Uri) {
@@ -225,6 +233,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                 selectedFolderPath = null
             )
         }
+        StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
     }
 
     fun updateCodePhrase(code: String) {
@@ -409,10 +418,12 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
 
     fun cancelTransfer() {
         crocProcess.cancel()
+        StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
     }
 
     fun dismissTransferResult() {
         crocProcess.reset()
+        StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
         if (_uiState.value.defaultCodePhrase.isBlank()) {
             _uiState.update { it.copy(codePhrase = CodePhraseGenerator.generate()) }
         }
@@ -424,6 +435,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         if (path != null) {
             File(path).deleteRecursively()
         }
+        StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
         _uiState.update {
             it.copy(
                 selectedFiles = emptyList(),
@@ -440,7 +452,10 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun copyFilesToInternal(files: List<SelectedFile>): List<String> {
         val context = getApplication<CrocApp>()
-        val sendDir = File(context.cacheDir, "croc-send").apply { mkdirs() }
+        val sendDir = File(context.cacheDir, "croc-send").apply {
+            if (exists()) deleteRecursively()
+            mkdirs()
+        }
         return files.map { file ->
             val dest = File(sendDir, file.name)
             context.contentResolver.openInputStream(file.uri)?.use { input ->

@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import com.dking.crocapp.croc.CrocBinaryManager
 import com.dking.crocapp.data.db.AppDatabase
+import com.dking.crocapp.util.StorageCleaner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,6 +30,7 @@ class CrocApp : Application() {
         binaryManager = CrocBinaryManager(this)
 
         appScope.launch {
+            StorageCleaner.cleanStaleStorage(this@CrocApp)
             val ready = binaryManager.initialize()
             Log.i(TAG, "Croc binary ready: $ready")
         }
