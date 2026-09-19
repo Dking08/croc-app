@@ -75,6 +75,7 @@ But `croc-gui` is older, written in Go, and lacks a number of features and UX im
 
 ## Features
 
+- All croc engine features and options
 - Quick send and quick receive flows
 - Send files or clipboard text
 - QR code generation for fast pairing
@@ -82,7 +83,7 @@ But `croc-gui` is older, written in Go, and lacks a number of features and UX im
 - Saved send and receive codes
 - Transfer history and favorites
 - Android share-sheet support
-- Received files published to `Downloads/croc-received`
+- Support deep-links
 - Material 3 UI designed specifically for Android
 
 ## Current version
