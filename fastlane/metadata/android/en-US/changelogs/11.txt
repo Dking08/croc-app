@@ -2,8 +2,9 @@ Changes Made:
 
 1. Fix major transfer failures
 2. Bump croc version to v11.5.2
-3. Fix store command and fix bugs
-4. Add transport features - relay & DERP
-6. Some minor UI tweaks and bug fixes
-7. Updated Guide and settings UX 
-8. Default secret code auto-set
+3. New feature: auto-delete temp files
+4. Fix store command and fix bugs
+5. Add transport features - relay & DERP
+7. Some minor UI tweaks and bug fixes
+8. Updated Guide and settings UX 
+9. Default secret code auto-set
