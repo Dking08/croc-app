@@ -83,10 +83,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.border
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import com.dking.crocapp.R
 import com.dking.crocapp.croc.CrocTransferState
 import com.dking.crocapp.ui.components.EngineBadge
-import com.dking.crocapp.ui.components.ReceiveCodeInputDialog
 import com.dking.crocapp.ui.components.TransferProgressCard
 import com.dking.crocapp.ui.components.formatBytes
 import com.dking.crocapp.ui.components.progressBorder
@@ -106,7 +109,14 @@ fun ReceiveScreen(
     val clipboardManager = LocalClipboardManager.current
     var hideCodePhrase by remember { mutableStateOf(true) }
     var showAllFiles by remember { mutableStateOf(false) }
-    var showInputCodeDialog by remember { mutableStateOf(false) }
+    val codeFocusRequester = remember { FocusRequester() }
+    var highlightCodeInput by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.codePhrase) {
+        if (uiState.codePhrase.isNotBlank()) {
+            highlightCodeInput = false
+        }
+    }
 
     // SAF folder picker for session-level location override
     val folderPickerLauncher = rememberLauncherForActivityResult(
@@ -151,19 +161,6 @@ fun ReceiveScreen(
     val showCodeBorder = isTransferActive || uiState.transferState is CrocTransferState.Completed
     val borderColor = MaterialTheme.colorScheme.tertiary
 
-    if (showInputCodeDialog) {
-        ReceiveCodeInputDialog(
-            onDismissRequest = { showInputCodeDialog = false },
-            onConfirm = { code, saveAsDefault ->
-                showInputCodeDialog = false
-                if (isTransferFinished) {
-                    viewModel.dismissTransferResult()
-                }
-                viewModel.startReceiveWithCode(code, saveAsDefault = saveAsDefault)
-            }
-        )
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -194,7 +191,8 @@ fun ReceiveScreen(
                             viewModel.retryWithLegacy()
                         } else {
                             if (uiState.codePhrase.isBlank()) {
-                                showInputCodeDialog = true
+                                highlightCodeInput = true
+                                codeFocusRequester.requestFocus()
                             } else {
                                 if (isTransferFinished) {
                                     viewModel.dismissTransferResult()
@@ -215,7 +213,7 @@ fun ReceiveScreen(
                     elevation = FloatingActionButtonDefaults.elevation(
                         defaultElevation = 3.dp
                     ),
-                    expanded = true
+                    expanded = canReceive || isLegacyFallback
                 )
             }
         }
@@ -240,6 +238,12 @@ fun ReceiveScreen(
                                 progress = animatedBorderProgress,
                                 color = borderColor,
                                 cornerRadius = 28.dp
+                            )
+                        } else if (highlightCodeInput && uiState.codePhrase.isBlank()) {
+                            Modifier.border(
+                                width = 2.dp,
+                                color = MaterialTheme.colorScheme.error,
+                                shape = MaterialTheme.shapes.extraLarge
                             )
                         } else Modifier
                     ),
@@ -283,8 +287,14 @@ fun ReceiveScreen(
 
                     OutlinedTextField(
                         value = uiState.codePhrase,
-                        onValueChange = { viewModel.updateCodePhrase(it) },
-                        modifier = Modifier.fillMaxWidth(),
+                        onValueChange = {
+                            highlightCodeInput = false
+                            viewModel.updateCodePhrase(it)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(codeFocusRequester),
+                        isError = highlightCodeInput && uiState.codePhrase.isBlank(),
                         enabled = !isTransferActive,
                         singleLine = true,
                         placeholder = { Text(stringResource(R.string.receive_code_placeholder)) },

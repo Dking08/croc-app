@@ -2,8 +2,10 @@ package com.dking.crocapp.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardActions
@@ -11,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -33,7 +36,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.dking.crocapp.R
+import com.dking.crocapp.ui.scanner.QrScannerScreen
 import com.dking.crocapp.util.QrCodeParser
 
 @Composable
@@ -45,10 +51,29 @@ fun ReceiveCodeInputDialog(
 ) {
     var codeText by remember { mutableStateOf(initialCode) }
     var saveAsDefault by remember { mutableStateOf(true) }
+    var isScanning by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
 
     val trimmedCode = codeText.trim()
     val canSubmit = trimmedCode.isNotBlank()
+
+    if (isScanning) {
+        Dialog(
+            onDismissRequest = { isScanning = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                QrScannerScreen(
+                    onCodeScanned = { scanned ->
+                        codeText = QrCodeParser.parseCode(scanned)
+                    },
+                    onNavigateBack = {
+                        isScanning = false
+                    }
+                )
+            }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
@@ -97,16 +122,24 @@ fun ReceiveCodeInputDialog(
                         }
                     ),
                     trailingIcon = {
-                        IconButton(onClick = {
-                            val clip = clipboardManager.getText()?.text ?: ""
-                            if (clip.isNotBlank()) {
-                                codeText = QrCodeParser.parseCode(clip)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { isScanning = true }) {
+                                Icon(
+                                    Icons.Rounded.QrCodeScanner,
+                                    contentDescription = stringResource(R.string.action_scan_qr)
+                                )
                             }
-                        }) {
-                            Icon(
-                                Icons.Rounded.ContentPaste,
-                                contentDescription = stringResource(R.string.receive_paste)
-                            )
+                            IconButton(onClick = {
+                                val clip = clipboardManager.getText()?.text ?: ""
+                                if (clip.isNotBlank()) {
+                                    codeText = QrCodeParser.parseCode(clip)
+                                }
+                            }) {
+                                Icon(
+                                    Icons.Rounded.ContentPaste,
+                                    contentDescription = stringResource(R.string.receive_paste)
+                                )
+                            }
                         }
                     }
                 )
