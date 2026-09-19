@@ -126,7 +126,7 @@ class CrocProcess(
         val storeId: String = "",
         val storeExpiresAt: Long = 0L,
         val storeRawExpiration: String = "",
-        val storeDownloadsLimit: Int = 1
+        val storeDownloadsLimit: Int = 0
     )
 
     private val homeDir: File
@@ -815,6 +815,7 @@ class CrocProcess(
         var storeCliToken = ""
         var storeId = ""
         var storeRawExpiration = ""
+        var storeDownloadsLimit = 0
         var nextIsBrowserLink = false
         var nextIsCliToken = false
 
@@ -1044,6 +1045,16 @@ class CrocProcess(
                     isStoreTransfer = true
                     if (l.contains("available until")) {
                         storeRawExpiration = l.substringAfter("available until").substringBefore("or").trim()
+                        if (l.contains(" or ")) {
+                            val dlSection = l.substringAfter(" or ").lowercase()
+                            if ("one verified download" in dlSection) {
+                                storeDownloadsLimit = 1
+                            } else {
+                                Regex("""(\d+)\s+verified\s+downloads""").find(dlSection)?.let { m ->
+                                    storeDownloadsLimit = m.groupValues[1].toIntOrNull() ?: 0
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1167,7 +1178,8 @@ class CrocProcess(
                 storeCliToken = storeCliToken,
                 storeId = effectiveStoreId,
                 storeExpiresAt = 0L,
-                storeRawExpiration = storeRawExpiration
+                storeRawExpiration = storeRawExpiration,
+                storeDownloadsLimit = storeDownloadsLimit
             )
         } catch (e: InterruptedIOException) {
             val exitCode = waitForExitCode(process)
