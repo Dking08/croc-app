@@ -381,8 +381,13 @@
 
     <!-- ════ Advanced Settings Masking / Toggle ════ -->
     <string name="settings_advanced_title">Advanced Settings</string>
-    <string name="settings_advanced_desc">Relay server, proxy, network discovery, encryption, and transfer tuning</string>
+    <string name="settings_advanced_desc">Show or hide advanced configuration options (relay, proxy, discovery, encryption). Configured settings remain active even when hidden.</string>
     <string name="settings_advanced_customized_badge">Modified</string>
+    <string name="settings_advanced_revert_defaults">Revert to default</string>
+    <string name="settings_advanced_revert_confirm_title">Revert Advanced Settings?</string>
+    <string name="settings_advanced_revert_confirm_desc">Reset all advanced settings (relay address, proxies, transport mode, encryption, and ports) back to their default values?</string>
+    <string name="settings_advanced_reverted_toast">Advanced settings restored to default</string>
+    <string name="action_revert">Revert</string>
 
     <!-- Stored Transfers (croc v11) -->
     <string name="delivery_mode_direct">Direct</string>
@@ -474,24 +479,31 @@
     <string name="guide_sec_basics_relay_desc">croc uses relays to coordinate peer connections and route data. You can connect to public relays or self-host your own relay and configure custom addresses in Settings.</string>
     <string name="guide_sec_basics_codes_title">Secret Code Phrases</string>
     <string name="guide_sec_basics_codes_desc">croc uses 3-word phrases (e.g. bold-wave-rock) with billions of combinations. Each code creates a 2-device room; if multiple people use the same code, room conflicts will occur.</string>
-
+    <string name="guide_sec_basics_derp_title">DERP Encrypted Relays (croc v11)</string>
+    <string name="guide_sec_basics_derp_desc">croc includes Tailscale DERP transport for traversing strict NATs and restrictive firewalls. If direct peer-to-peer connection is blocked, DERP seamlessly relays encrypted packets without compromising end-to-end security.</string>
     <string name="guide_sec_troubleshooting_title">Common Errors &amp; Solutions</string>
     <string name="guide_sec_troubleshooting_subtitle">Step-by-step fixes for frequent transfer issues</string>
     <string name="guide_err_room_full_title">Error: \"Room is full\"</string>
-    <string name="guide_err_room_full_cause">Another transfer is currently active using the exact same code, or a previous session hasn\'t fully timed out.</string>
-    <string name="guide_err_room_full_solution">Wait 10–15 seconds, or tap the Regenerate button on the Send screen to create a fresh new secret code.</string>
+    <string name="guide_err_room_full_cause">Another transfer is active using the same code, or a previous session hasn\'t cleared yet.</string>
+    <string name="guide_err_room_full_solution">Wait 10–15 seconds, or tap the Regenerate button on the Send screen to generate a new code.</string>
     <string name="guide_err_pake_title">Error: \"Could not secure channel\" / PAKE Failed</string>
-    <string name="guide_err_pake_cause">The sender and receiver entered different code phrases, misspelled a word, or peer disconnected.</string>
-    <string name="guide_err_pake_solution">Double check that both devices typed the exact code phrase including hyphens, or use QR Code scan to avoid typos.</string>
+    <string name="guide_err_pake_cause">Misspelled code phrase, mismatched words between sender and receiver, flaky connections, or device disconnected during handshake.</string>
+    <string name="guide_err_pake_solution">Tap Retry to reconnect, verify both devices typed the exact same words with hyphens, or use QR Code scanning to eliminate typos.</string>
+    <string name="guide_err_relay_title">Error: Relay Timeout / Connection Failed</string>
+    <string name="guide_err_relay_cause">Public relays enforce traffic limits due to resource consumption, or a firewall/VPN is blocking access.</string>
+    <string name="guide_err_relay_solution">Wait 10–20 seconds and tap Retry. If timeouts persist, check your internet connection or configure a custom relay/proxy in Settings.</string>
+    <string name="guide_err_derp_title">Error: DERP Connection Failed / Tailcat Timeout</string>
+    <string name="guide_err_derp_cause">Direct peer connection was blocked by strict NAT or firewalls, and DERP encrypted relay timed out. DERP only works between croc v11+ clients.</string>
+    <string name="guide_err_derp_solution">Tap Retry. Ensure both devices have an active internet connection and are running croc v11+.</string>
+    <string name="guide_err_flate_title">Error: \"flate: corrupt input\" / Decompression Failed</string>
+    <string name="guide_err_flate_cause">Compressed data was corrupted during network transit or an incompatible compression algorithm was used.</string>
+    <string name="guide_err_flate_solution">Tap Retry to try again. If the error repeats, open Settings -&gt; Advanced Settings and enable \"Disable Compression\" to transfer files without compression.</string>
     <string name="guide_err_legacy_title">\"Older croc Detected\" / Version Mismatch</string>
     <string name="guide_err_legacy_cause">One device is running croc v11 (new protocol) and the other is running croc v10 or earlier.</string>
     <string name="guide_err_legacy_solution">Tap \"Retry (Legacy)\" on the transfer card, or turn on \"Try legacy croc first\" in Settings.</string>
-    <string name="guide_err_relay_title">Error: \"Relay connection failed / Timed out\"</string>
-    <string name="guide_err_relay_cause">Firewall, proxy, VPN, or unstable internet connection blocking communication with the relay server.</string>
-    <string name="guide_err_relay_solution">Verify internet access. If behind Tor/VPN, configure SOCKS5 proxy in Settings, or use a custom self-hosted relay.</string>
-    <string name="guide_err_file_missing_title">File not found on device</string>
-    <string name="guide_err_file_missing_cause">The previously received file was renamed, moved, or deleted outside the croc-app.</string>
-    <string name="guide_err_file_missing_solution">Check your configured download folder (set in Settings) using your file manager to locate or restore the file.</string>
+    <string name="guide_err_file_missing_title">File Not Found / Storage Permission Error</string>
+    <string name="guide_err_file_missing_cause">The selected file was moved or deleted, or croc-app lacks permission to save to the designated folder.</string>
+    <string name="guide_err_file_missing_solution">Confirm the file still exists on the device, or re-select your Download Folder in Settings.</string>
     <string name="guide_err_upstream_disclaimer">Note: All transfer errors originate upstream from the croc CLI engine. croc-app provides a native mobile interface and does not cause these errors.</string>
 
     <string name="guide_sec_quick_title">Quick Mode &amp; 1-Tap Transfers</string>
@@ -502,16 +514,25 @@
     <string name="guide_sec_quick_clipboard_desc">Tap the top-left clipboard icon in Quick tab to instantly broadcast your copied text to your receiver.</string>
     <string name="guide_sec_quick_qr_title">QR Code Scanner</string>
     <string name="guide_sec_quick_qr_desc">Tap the QR button in Quick tab to instantly scan a sender\'s QR code and begin downloading immediately.</string>
+    <string name="guide_sec_quick_auto_code_title">Instant First-Time Setup</string>
+    <string name="guide_sec_quick_auto_code_desc">On fresh install, tapping Quick Send automatically sets up a secure 3-word secret code for you if none was defined, making Quick Transfer ready in 1 tap without manual setup.</string>
+    <string name="guide_sec_quick_retry_title">Quick Retry on Disconnection</string>
+    <string name="guide_sec_quick_retry_desc">If a quick transfer fails due to temporary network drop or relay timeout, a Retry button lets you re-establish the connection instantly with the same files.</string>
 
     <string name="guide_sec_crossplatform_title">Cross-Platform &amp; Web Sharing</string>
     <string name="guide_sec_crossplatform_subtitle">Connect across Android, Linux, macOS, Windows, and browsers</string>
-    <string name="guide_sec_web_title">Web Client (https://croc-app.github.io)</string>
-    <string name="guide_sec_web_desc">Share files with recipients who don\'t have the app installed. They can open the web client on any modern browser to receive files.</string>
+    <string name="guide_sec_web_title">Web Client &amp; Store (getcroc.com)</string>
+    <string name="guide_sec_web_desc">getcroc.com is the official web client for croc. Anyone can receive direct peer transfers as well as pick up files uploaded via Store Mode directly from any modern browser without installing any app.</string>
+    <string name="guide_sec_deeplink_title">Smart Deep Links (croc-app.github.io)</string>
+    <string name="guide_sec_deeplink_desc">Sharing https://croc-app.github.io links creates intelligent deep links for croc-app. Clicking the link on mobile automatically redirects directly into croc-app to begin receiving instantly, or guides recipients to download the app.</string>
     <string name="guide_sec_cli_title">Command Line Interface (CLI)</string>
     <string name="guide_sec_cli_desc">On computers, install the official croc CLI (via brew, scoop, or apt) and run: croc &lt;code&gt; to receive or send directly.</string>
-    <string name="guide_sec_storelinks_title">Stored Pickups (https://getcroc.com)</string>
-    <string name="guide_sec_storelinks_desc">Use Store Mode to share download links that recipients can download from any web browser without being online at the same time.</string>
 
     <string name="guide_footer_privacy_note">croc-app is open-source and privacy-focused. Transfers are peer-to-peer and encrypted with PAKE &amp; AES-GCM.</string>
     <string name="guide_footer_web_button">Visit croc-app.github.io</string>
+
+    <string name="quick_code_auto_set_toast">Set a secret code for you: %s (can be changed in Settings)</string>
+    <string name="receive_input_code_dialog_title">Enter Secret Code</string>
+    <string name="receive_input_code_dialog_desc">Enter the secret code phrase from the sender to start receiving.</string>
+    <string name="receive_input_code_save_default">Save as default code phrase</string>
 </resources>

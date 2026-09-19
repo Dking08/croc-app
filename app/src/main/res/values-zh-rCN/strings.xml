@@ -358,8 +358,13 @@
 
     <!-- ════ 高级设置隐藏 / 折叠 ════ -->
     <string name="settings_advanced_title">高级设置</string>
-    <string name="settings_advanced_desc">中继服务器、代理、网络发现、加密及传输调优</string>
+    <string name="settings_advanced_desc">显示或隐藏高级配置选项（中继、代理、发现、加密）。隐藏时已配置的设置仍然有效。</string>
     <string name="settings_advanced_customized_badge">已修改</string>
+    <string name="settings_advanced_revert_defaults">恢复默认设置</string>
+    <string name="settings_advanced_revert_confirm_title">恢复高级设置？</string>
+    <string name="settings_advanced_revert_confirm_desc">是否将所有高级设置（中继地址、代理、传输模式、加密和端口）恢复为其默认值？</string>
+    <string name="settings_advanced_reverted_toast">高级设置已恢复为默认值</string>
+    <string name="action_revert">恢复</string>
 
     <!-- 存储中转 (croc v11) -->
     <string name="delivery_mode_direct">直接传输</string>
@@ -451,25 +456,32 @@
     <string name="guide_sec_basics_relay_desc">croc 依赖中继服务器协商配对与传输数据。您可以连接公共中继，也可以自建私有中继并在“设置”中配置服务器地址。</string>
     <string name="guide_sec_basics_codes_title">安全密码短语</string>
     <string name="guide_sec_basics_codes_desc">croc 使用由 3 个单词组成的短语（如 bold-wave-rock），具备数十亿种组合。每个代码建立一个专属 2 设备房间，多人共用相同代码会导致冲突。</string>
-
+    <string name="guide_sec_basics_derp_title">DERP 加密中继（croc v11）</string>
+    <string name="guide_sec_basics_derp_desc">croc 包含 Tailscale DERP 传输，用于穿越严格的 NAT 和受限防火墙。如果直接点对点连接被阻止，DERP 可以无缝转发加密数据包，且不会破坏端到端安全性。</string>
     <string name="guide_sec_troubleshooting_title">常见错误与解决方法</string>
     <string name="guide_sec_troubleshooting_subtitle">针对常见传输问题的排错指南</string>
-    <string name="guide_err_room_full_title">错误：\"Room is full\"（房间已满）</string>
-    <string name="guide_err_room_full_cause">当前有其他传输正在占用相同的密码，或者先前的连接尚未完全超时关闭。</string>
-    <string name="guide_err_room_full_solution">请等待 10–15 秒，或在发送页面点击“重新生成”按钮以创建新的唯一密码短语。</string>
-    <string name="guide_err_pake_title">错误：\"Could not secure channel\" / PAKE 验证失败</string>
-    <string name="guide_err_pake_cause">发送方与接收方输入的代码不一致、单词拼写错误或对端断开连接。</string>
-    <string name="guide_err_pake_solution">请仔细检查两端输入的密码短语（包括连字符），或使用二维码扫描以避免输入错误。</string>
-    <string name="guide_err_legacy_title">\"Older croc Detected\" / 协议版本不匹配</string>
-    <string name="guide_err_legacy_cause">一端运行 croc v11（最新加密协议），另一端运行 croc v10 或更旧版本。</string>
-    <string name="guide_err_legacy_solution">点击传输卡片上的“重试（兼容模式）”，或在设置中开启“优先尝试兼容模式”。</string>
-    <string name="guide_err_relay_title">错误：\"Relay connection failed / Timed out\"</string>
-    <string name="guide_err_relay_cause">防火墙、代理、VPN 或网络不稳定阻碍了与中继服务器的通信。</string>
-    <string name="guide_err_relay_solution">检查网络连接。若在 Tor/VPN 环境下，可在设置中配置 SOCKS5 代理或自定义中继服务器。</string>
-    <string name="guide_err_file_missing_title">设备上未找到该文件</string>
-    <string name="guide_err_file_missing_cause">先前接收的文件在应用外部被重命名、移动或删除了。</string>
-    <string name="guide_err_file_missing_solution">使用文件管理器查看您在“设置”中配置的下载目录以查找或恢复文件。</string>
-    <string name="guide_err_upstream_disclaimer">说明：所有传输错误均来自上游 croc CLI 核心引擎。本应用仅提供原生客户端交互界面，并非错误源头。</string>
+    <string name="guide_err_room_full_title">错误：“房间已满” (Room is full)</string>
+    <string name="guide_err_room_full_cause">另一项传输正在使用相同的代码，或者先前的会话尚未完全超时释放。</string>
+    <string name="guide_err_room_full_solution">等待 10–15 秒，或在发送界面点击“重新生成”以创建全新的加密代码短语。</string>
+    <string name="guide_err_pake_title">错误：“无法建立安全通道” / PAKE 握手失败</string>
+    <string name="guide_err_pake_cause">密码短语拼写错误、两端输入不一致、网络连接不稳定或在握手过程中对方断开连接。</string>
+    <string name="guide_err_pake_solution">点击“重试”重新发起连接，仔细核对两端输入的单词和连字符，或直接使用二维码扫描避免输入错误。</string>
+    <string name="guide_err_relay_title">错误：中继连接超时 / 连接失败</string>
+    <string name="guide_err_relay_cause">公共中继服务器因资源消耗设有负载与频率限制，或防火墙/VPN 阻止了中继通信。</string>
+    <string name="guide_err_relay_solution">请等待 10–20 秒后点击“重试”。若超时持续存在，请检查网络连接或在设置中配置自定义中继服务器与代理。</string>
+    <string name="guide_err_derp_title">错误：DERP 连接失败 / Tailcat 超时</string>
+    <string name="guide_err_derp_cause">严格的 NAT 或防火墙阻止了点对点直连，且回退的加密中继 (DERP) 握手超时。注意 DERP 仅支持 croc v11 及以上版本客户端。</string>
+    <string name="guide_err_derp_solution">点击“重试”。确保两台设备网络连接正常且均运行 croc v11+。</string>
+    <string name="guide_err_flate_title">错误：“flate: corrupt input” / 解压失败</string>
+    <string name="guide_err_flate_cause">压缩数据在网络传输过程中损坏，或两端使用的压缩算法不一致。</string>
+    <string name="guide_err_flate_solution">首先点击“重试”重新传输。若仍然报错，请进入 设置 -&gt; 高级设置 并开启“禁用压缩”，以不压缩直接传输文件。</string>
+    <string name="guide_err_legacy_title">“检测到旧版 croc” / 协议版本不匹配</string>
+    <string name="guide_err_legacy_cause">一台设备正在运行 croc v11（新协议），而另一台正在运行 croc v10 或更早版本。</string>
+    <string name="guide_err_legacy_solution">点击传输卡片上的“重试 (旧版)”，或在“设置”中开启“优先尝试旧版 croc”。</string>
+    <string name="guide_err_file_missing_title">文件未找到 / 存储权限错误</string>
+    <string name="guide_err_file_missing_cause">所选文件已被移动、重命名或删除，或 croc-app 缺少访问所选存储文件夹的权限。</string>
+    <string name="guide_err_file_missing_solution">确认文件在设备中依然存在，或在“设置”中重新选择下载文件夹。</string>
+    <string name="guide_err_upstream_disclaimer">注意：所有传输错误均来自上游 croc 核心引擎。croc-app 提供原生移动端界面，并非错误的根源。</string>
 
     <string name="guide_sec_quick_title">快捷模式与一键传输</string>
     <string name="guide_sec_quick_subtitle">使用预设代码实现日常极速分享</string>
@@ -478,17 +490,26 @@
     <string name="guide_sec_quick_clipboard_title">一键发送剪贴板</string>
     <string name="guide_sec_quick_clipboard_desc">点击快捷页面左上角的剪贴板图标，即可立即将复制的文本广播给接收端。</string>
     <string name="guide_sec_quick_qr_title">二维码扫描器</string>
-    <string name="guide_sec_quick_qr_desc">点击快捷页面的二维码图标，即可直接扫描发送方的二维码并立即开始接收。</string>
+    <string name="guide_sec_quick_qr_desc">点击快捷页面中的二维码按钮即可即时扫描发送方的二维码，自动开始下载。</string>
+    <string name="guide_sec_quick_auto_code_title">首次即用设置</string>
+    <string name="guide_sec_quick_auto_code_desc">在首次使用时，如果未配置默认口令，点击快速发送会自动为您设置一个安全的3词口令，无需手动配置即可一键使用快速传输。</string>
+    <string name="guide_sec_quick_retry_title">断连快速重试</string>
+    <string name="guide_sec_quick_retry_desc">如果快速传输由于临时网络中断或中继超时而失败，点击“重试”按钮可立即使用相同的文件重新建立连接传输。</string>
 
-    <string name="guide_sec_crossplatform_title">跨平台与网页分享</string>
-    <string name="guide_sec_crossplatform_subtitle">在 Android、Linux、macOS、Windows 和网页浏览器间互传</string>
-    <string name="guide_sec_web_title">Web 网页端 (https://croc-app.github.io)</string>
-    <string name="guide_sec_web_desc">与未安装此应用的用户分享文件时，对方可以在任何现代浏览器中打开网页端直接接收文件。</string>
+    <string name="guide_sec_crossplatform_title">跨平台与网页端分享</string>
+    <string name="guide_sec_crossplatform_subtitle">支持 Android、Linux、macOS、Windows 及各大现代浏览器</string>
+    <string name="guide_sec_web_title">网页版与中转存储 (getcroc.com)</string>
+    <string name="guide_sec_web_desc">getcroc.com 是 croc 的官方网页客户端。未安装应用的接收者可通过现代浏览器直接接收点对点文件，或下载通过“暂存模式”上传的文件。</string>
+    <string name="guide_sec_deeplink_title">智能深度链接 (croc-app.github.io)</string>
+    <string name="guide_sec_deeplink_desc">分享 https://croc-app.github.io 链接可为 croc-app 提供智能深度跳转。在移动端点击将自动拉起 croc-app 直接接收文件，未安装时可引导下载。</string>
     <string name="guide_sec_cli_title">命令行客户端 (CLI)</string>
-    <string name="guide_sec_cli_desc">在电脑上安装官方 croc 命令行工具（brew, scoop 或 apt），运行 croc &lt;代码&gt; 即可直接发送或接收。</string>
-    <string name="guide_sec_storelinks_title">存储提取链接 (https://getcroc.com)</string>
-    <string name="guide_sec_storelinks_desc">使用存储模式生成网页下载链接，接收方无需同时在线即可在浏览器中提取。</string>
+    <string name="guide_sec_cli_desc">在电脑上可通过包管理器（brew、scoop 或 apt）安装官方 croc CLI，直接运行：croc &lt;代码&gt; 即可收发文件。</string>
 
     <string name="guide_footer_privacy_note">croc-app 完全开源且注重隐私。所有传输均为点对点连接并经由 PAKE 与 AES-GCM 高度加密。</string>
     <string name="guide_footer_web_button">访问 croc-app.github.io</string>
+
+    <string name="quick_code_auto_set_toast">已为您设置密码短语：%s（可在“设置”中修改）</string>
+    <string name="receive_input_code_dialog_title">输入密码短语</string>
+    <string name="receive_input_code_dialog_desc">请输入发送方的密码短语以开始接收。</string>
+    <string name="receive_input_code_save_default">保存为默认密码短语</string>
 </resources>

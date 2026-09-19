@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.WarningAmber
@@ -197,6 +198,12 @@ fun GuideScreen(
                     title = stringResource(R.string.guide_sec_basics_codes_title),
                     description = stringResource(R.string.guide_sec_basics_codes_desc)
                 )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                GuideItem(
+                    icon = Icons.Rounded.Wifi,
+                    title = stringResource(R.string.guide_sec_basics_derp_title),
+                    description = stringResource(R.string.guide_sec_basics_derp_desc)
+                )
             }
 
             // ═══════════════════════════════════════════════════════════
@@ -220,14 +227,24 @@ fun GuideScreen(
                     solution = stringResource(R.string.guide_err_pake_solution)
                 )
                 GuideErrorItem(
-                    title = stringResource(R.string.guide_err_legacy_title),
-                    cause = stringResource(R.string.guide_err_legacy_cause),
-                    solution = stringResource(R.string.guide_err_legacy_solution)
-                )
-                GuideErrorItem(
                     title = stringResource(R.string.guide_err_relay_title),
                     cause = stringResource(R.string.guide_err_relay_cause),
                     solution = stringResource(R.string.guide_err_relay_solution)
+                )
+                GuideErrorItem(
+                    title = stringResource(R.string.guide_err_derp_title),
+                    cause = stringResource(R.string.guide_err_derp_cause),
+                    solution = stringResource(R.string.guide_err_derp_solution)
+                )
+                GuideErrorItem(
+                    title = stringResource(R.string.guide_err_flate_title),
+                    cause = stringResource(R.string.guide_err_flate_cause),
+                    solution = stringResource(R.string.guide_err_flate_solution)
+                )
+                GuideErrorItem(
+                    title = stringResource(R.string.guide_err_legacy_title),
+                    cause = stringResource(R.string.guide_err_legacy_cause),
+                    solution = stringResource(R.string.guide_err_legacy_solution)
                 )
                 GuideErrorItem(
                     title = stringResource(R.string.guide_err_file_missing_title),
@@ -270,6 +287,18 @@ fun GuideScreen(
                     title = stringResource(R.string.guide_sec_quick_qr_title),
                     description = stringResource(R.string.guide_sec_quick_qr_desc)
                 )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                GuideItem(
+                    icon = Icons.Rounded.FlashOn,
+                    title = stringResource(R.string.guide_sec_quick_auto_code_title),
+                    description = stringResource(R.string.guide_sec_quick_auto_code_desc)
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                GuideItem(
+                    icon = Icons.Rounded.Refresh,
+                    title = stringResource(R.string.guide_sec_quick_retry_title),
+                    description = stringResource(R.string.guide_sec_quick_retry_desc)
+                )
             }
 
             // ═══════════════════════════════════════════════════════════
@@ -289,15 +318,15 @@ fun GuideScreen(
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 GuideItem(
-                    icon = Icons.Rounded.Terminal,
-                    title = stringResource(R.string.guide_sec_cli_title),
-                    description = stringResource(R.string.guide_sec_cli_desc)
+                    icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                    title = stringResource(R.string.guide_sec_deeplink_title),
+                    description = stringResource(R.string.guide_sec_deeplink_desc)
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 GuideItem(
-                    icon = Icons.Rounded.CloudUpload,
-                    title = stringResource(R.string.guide_sec_storelinks_title),
-                    description = stringResource(R.string.guide_sec_storelinks_desc)
+                    icon = Icons.Rounded.Terminal,
+                    title = stringResource(R.string.guide_sec_cli_title),
+                    description = stringResource(R.string.guide_sec_cli_desc)
                 )
             }
 

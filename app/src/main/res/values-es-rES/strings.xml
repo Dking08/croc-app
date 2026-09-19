@@ -358,8 +358,13 @@
 
     <!-- ════ Enmascaramiento / Selector de ajustes avanzados ════ -->
     <string name="settings_advanced_title">Ajustes avanzados</string>
-    <string name="settings_advanced_desc">Servidor repetidor, proxy, descubrimiento de red, cifrado y ajuste de transferencias</string>
+    <string name="settings_advanced_desc">Muestra u oculta las opciones avanzadas (servidor relay, proxy, cifrado, puertos). Los ajustes guardados siguen activos incluso al ocultarse.</string>
     <string name="settings_advanced_customized_badge">Modificado</string>
+    <string name="settings_advanced_revert_defaults">Restablecer valores predeterminados</string>
+    <string name="settings_advanced_revert_confirm_title">¿Restablecer ajustes avanzados?</string>
+    <string name="settings_advanced_revert_confirm_desc">¿Restablecer todos los ajustes avanzados (servidor relay, proxies, modo de transporte, cifrado y puertos) a sus valores predeterminados?</string>
+    <string name="settings_advanced_reverted_toast">Ajustes avanzados restablecidos a los valores predeterminados</string>
+    <string name="action_revert">Restablecer</string>
 
     <!-- Transferencias almacenadas (croc v11) -->
     <string name="delivery_mode_direct">Directo</string>
@@ -451,24 +456,31 @@
     <string name="guide_sec_basics_relay_desc">croc utiliza relays para coordinar conexiones y enrutar datos. Puede conectarse a relays públicos o autoalojar su propio relay y configurar direcciones en Ajustes.</string>
     <string name="guide_sec_basics_codes_title">Frases de códigos secretos</string>
     <string name="guide_sec_basics_codes_desc">croc utiliza frases de 3 palabras (ej. bold-wave-rock) con miles de millones de combinaciones. Cada código crea una sala para 2 dispositivos; si varias personas usan el mismo código ocurrirán conflictos.</string>
-
+    <string name="guide_sec_basics_derp_title">Relays cifrados DERP (croc v11)</string>
+    <string name="guide_sec_basics_derp_desc">croc incluye el transporte DERP de Tailscale para atravesar NATs estrictas y cortafuegos restrictivos. Si la conexión directa entre pares está bloqueada, DERP retransmite paquetes cifrados manteniendo la seguridad de extremo a extremo.</string>
     <string name="guide_sec_troubleshooting_title">Errores comunes y Soluciones</string>
     <string name="guide_sec_troubleshooting_subtitle">Instrucciones paso a paso para resolver problemas frecuentes</string>
-    <string name="guide_err_room_full_title">Error: \"Room is full\" (Sala llena)</string>
-    <string name="guide_err_room_full_cause">Hay otra transferencia activa usando exactamente el mismo código, o una sesión previa no ha terminado de cerrarse.</string>
-    <string name="guide_err_room_full_solution">Espere 10–15 segundos, o pulse el botón Regenerar en la pantalla Enviar para crear un nuevo código secreto único.</string>
-    <string name="guide_err_pake_title">Error: \"Could not secure channel\" / Fallo de PAKE</string>
-    <string name="guide_err_pake_cause">El emisor y el receptor introdujeron códigos distintos, hubo una errata o el par se desconectó.</string>
-    <string name="guide_err_pake_solution">Compruebe que ambos dispositivos escribieron la frase de código exacta incluyendo guiones, o use el escaneo QR para evitar erratas.</string>
-    <string name="guide_err_legacy_title">\"Older croc Detected\" / Versión incompatible</string>
-    <string name="guide_err_legacy_cause">Un dispositivo ejecuta croc v11 (nuevo protocolo) y el otro ejecuta croc v10 o anterior.</string>
-    <string name="guide_err_legacy_solution">Pulse \"Reintentar (Legacy)\" en la tarjeta de transferencia, o active \"Probar croc heredado primero\" en Ajustes.</string>
-    <string name="guide_err_relay_title">Error: \"Relay connection failed / Timed out\"</string>
-    <string name="guide_err_relay_cause">Cortafuegos, proxy, VPN o conexión inestable que bloquea la comunicación con el servidor relay.</string>
-    <string name="guide_err_relay_solution">Verifique el acceso a Internet. Si usa Tor/VPN, configure el proxy SOCKS5 en Ajustes o use un relay personalizado.</string>
-    <string name="guide_err_file_missing_title">Archivo no encontrado en el dispositivo</string>
-    <string name="guide_err_file_missing_cause">El archivo recibido anteriormente fue renombrado, movido o eliminado fuera de croc-app.</string>
-    <string name="guide_err_file_missing_solution">Revise su carpeta de descargas configurada (en Ajustes) usando su gestor de archivos para localizar o restaurar el archivo.</string>
+    <string name="guide_err_room_full_title">Error: \"La sala está llena\"</string>
+    <string name="guide_err_room_full_cause">Hay otra transferencia activa usando el mismo código o una sesión previa no se ha cerrado aún.</string>
+    <string name="guide_err_room_full_solution">Espera 10–15 segundos o pulsa el botón Regenerar en Enviar para crear un nuevo código.</string>
+    <string name="guide_err_pake_title">Error: \"No se pudo asegurar el canal\" / Fallo de PAKE</string>
+    <string name="guide_err_pake_cause">Frase de código mal escrita, palabras distintas entre emisor y receptor, conexiones inestables o desconexión durante el enlace inicial.</string>
+    <string name="guide_err_pake_solution">Pulsa Reintentar para reconectar, verifica que ambos dispositivos tengan exactamente las mismas palabras y guiones, o escanea el código QR para evitar errores.</string>
+    <string name="guide_err_relay_title">Error: Tiempo de espera agotado / Fallo de conexión de retransmisión</string>
+    <string name="guide_err_relay_cause">Los servidores de retransmisión públicos tienen límites de tráfico por consumo de recursos, o un cortafuegos/VPN está bloqueando el acceso.</string>
+    <string name="guide_err_relay_solution">Espera 10–20 segundos y pulsa Reintentar. Si el error persiste, comprueba tu conexión a internet o configura un servidor/proxy personalizado en Ajustes.</string>
+    <string name="guide_err_derp_title">Error: Conexión DERP fallida / Tiempo de espera de Tailcat agotado</string>
+    <string name="guide_err_derp_cause">La conexión directa fue bloqueada por cortafuegos o NAT estricto, y la retransmisión cifrada DERP agotó el tiempo de espera. DERP solo funciona entre clientes croc v11+.</string>
+    <string name="guide_err_derp_solution">Pulsa Reintentar. Asegúrate de que ambos dispositivos tengan conexión a internet activa y ejecuten croc v11+.</string>
+    <string name="guide_err_flate_title">Error: \"flate: corrupt input\" / Fallo de descompresión</string>
+    <string name="guide_err_flate_cause">Los datos comprimidos se dañaron en tránsito o se utilizó un método de compresión incompatible.</string>
+    <string name="guide_err_flate_solution">Pulsa Reintentar para intentarlo de nuevo. Si el fallo continúa, entra en Ajustes -&gt; Ajustes avanzados y activa \"Deshabilitar compresión\" para transferir archivos sin comprimir.</string>
+    <string name="guide_err_legacy_title">\"croc anterior detectado\" / Discrepancia de versión</string>
+    <string name="guide_err_legacy_cause">Un dispositivo ejecuta croc v11 (nuevo protocolo) y el otro croc v10 o anterior.</string>
+    <string name="guide_err_legacy_solution">Pulsa \"Reintentar (Legacy)\" en la tarjeta de transferencia o activa \"Probar croc heredado primero\" en Ajustes.</string>
+    <string name="guide_err_file_missing_title">Archivo no encontrado / Error de permisos de almacenamiento</string>
+    <string name="guide_err_file_missing_cause">El archivo seleccionado se movió o eliminó, o croc-app no tiene permiso para guardar en la carpeta indicada.</string>
+    <string name="guide_err_file_missing_solution">Confirma que el archivo aún exista en el dispositivo o vuelve a seleccionar tu Carpeta de Descargas en Ajustes.</string>
     <string name="guide_err_upstream_disclaimer">Nota: Todos los errores de transferencia provienen del motor CLI de croc upstream. croc-app es una interfaz móvil y no origina estos errores.</string>
 
     <string name="guide_sec_quick_title">Modo Rápido y Transferencias en 1 toque</string>
@@ -479,16 +491,25 @@
     <string name="guide_sec_quick_clipboard_desc">Toque el icono de portapapeles en la pestaña Rápido para transmitir inmediatamente el texto copiado al receptor.</string>
     <string name="guide_sec_quick_qr_title">Escáner de código QR</string>
     <string name="guide_sec_quick_qr_desc">Toque el botón QR en la pestaña Rápido para escanear el código QR de un emisor y comenzar a descargar de inmediato.</string>
+    <string name="guide_sec_quick_auto_code_title">Configuración instantánea inicial</string>
+    <string name="guide_sec_quick_auto_code_desc">En una nueva instalación, al pulsar Envío rápido se genera automáticamente un código secreto seguro de 3 palabras si no había uno configurado, dejando la transferencia rápida lista en 1 toque.</string>
+    <string name="guide_sec_quick_retry_title">Reintento rápido ante desconexión</string>
+    <string name="guide_sec_quick_retry_desc">Si una transferencia rápida falla por un corte temporal de red o tiempo de espera agotado, el botón Reintentar te permite reanudarla al instante con los mismos archivos.</string>
 
     <string name="guide_sec_crossplatform_title">Multiplataforma y Enlaces web</string>
     <string name="guide_sec_crossplatform_subtitle">Conéctese entre Android, Linux, macOS, Windows y navegadores</string>
-    <string name="guide_sec_web_title">Cliente Web (https://croc-app.github.io)</string>
-    <string name="guide_sec_web_desc">Comparta archivos con personas que no tengan la app instalada. Pueden abrir el cliente web en cualquier navegador moderno para recibir archivos.</string>
+    <string name="guide_sec_web_title">Cliente web y Almacenamiento (getcroc.com)</string>
+    <string name="guide_sec_web_desc">getcroc.com es el cliente web oficial de croc. Cualquiera puede recibir transferencias directas o recoger archivos subidos mediante Modo Almacenar desde cualquier navegador moderno sin instalar ninguna app.</string>
+    <string name="guide_sec_deeplink_title">Enlaces inteligentes a la app (croc-app.github.io)</string>
+    <string name="guide_sec_deeplink_desc">Compartir enlaces https://croc-app.github.io genera enlaces profundos inteligentes para croc-app. Al abrir el enlace en el móvil se redirige automáticamente a croc-app para empezar a recibir de inmediato o descargar la aplicación.</string>
     <string name="guide_sec_cli_title">Línea de comandos (CLI)</string>
     <string name="guide_sec_cli_desc">En ordenadores, instale el CLI oficial de croc (vía brew, scoop o apt) y ejecute: croc &lt;código&gt; para recibir o enviar directamente.</string>
-    <string name="guide_sec_storelinks_title">Recogidas almacenadas (https://getcroc.com)</string>
-    <string name="guide_sec_storelinks_desc">Use el Modo Almacenar para compartir enlaces de descarga que el destinatario puede descargar desde cualquier navegador sin estar conectados a la vez.</string>
 
     <string name="guide_footer_privacy_note">croc-app es de código abierto y enfocada en la privacidad. Las transferencias son punto a punto y cifradas con PAKE y AES-GCM.</string>
     <string name="guide_footer_web_button">Visitar croc-app.github.io</string>
+
+    <string name="quick_code_auto_set_toast">Se configuró un código secreto para ti: %s (puedes cambiarlo en Ajustes)</string>
+    <string name="receive_input_code_dialog_title">Introduce el código secreto</string>
+    <string name="receive_input_code_dialog_desc">Introduce la frase de código secreto del remitente para comenzar a recibir.</string>
+    <string name="receive_input_code_save_default">Guardar como frase de código predeterminada</string>
 </resources>

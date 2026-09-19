@@ -103,7 +103,7 @@ fun HistoryScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Recents",
+                        stringResource(R.string.nav_history),
                         fontWeight = FontWeight.Bold
                     )
                 },
