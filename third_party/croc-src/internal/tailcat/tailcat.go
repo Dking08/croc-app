@@ -392,8 +392,7 @@ func (s *Server) StartContext(ctx context.Context) error {
 		logf(format, args...)
 	})
 	if err != nil {
-		logf("netmon.New failed (%v); falling back to static netmon", err)
-		netMon = netmon.NewStatic()
+		return fmt.Errorf("netmon.New: %w", err)
 	}
 	sys.Set(netMon)
 
@@ -471,21 +470,7 @@ func (s *Server) StartContext(ctx context.Context) error {
 
 	s.lb = lb
 	sys.Engine.Get().SetFilter(s.buildFilter())
-	if err := lb.Start(); err != nil {
-		return err
-	}
-	mc := lb.sys.MagicSock.Get()
-	if mc != nil {
-		select {
-		case <-mc.DERPStartedChan():
-			logf("tailcat: connected to DERP region %d", reg.RegionID)
-		case <-time.After(3 * time.Second):
-			logf("tailcat: DERP connection did not complete within 3s; continuing")
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-	return nil
+	return lb.Start()
 }
 
 var allTCPPorts = filter.PortRange{First: 0, Last: 65535}
@@ -1172,7 +1157,6 @@ func (lb *locoBackend) Start() error {
 	mc.SetDERPMap(lb.dm)
 
 	derpRegion := lb.derpRegionID()
-	mc.ForceSetNearestDERP(derpRegion)
 
 	nm := &netmap.NetworkMap{
 		NodeKey: lb.pub,
@@ -1430,7 +1414,6 @@ type Client struct {
 	serverAddr netip.Addr
 
 	startMu sync.Mutex      // guards key, started, and the one-time startup work
-	upMu    sync.Mutex      // guards up/ping serialization
 	key     key.NodePrivate // the effective node identity; Key or generated
 	started bool
 
@@ -1490,8 +1473,7 @@ func (c *Client) initLocked() error {
 		logf(format, args...)
 	})
 	if err != nil {
-		logf("netmon.New failed (%v); falling back to static netmon", err)
-		netMon = netmon.NewStatic()
+		return fmt.Errorf("netmon.New: %w", err)
 	}
 	sys.Set(netMon)
 
@@ -1633,11 +1615,6 @@ func (c *Client) up(ctx context.Context) error {
 	if c.upDone.Load() {
 		return nil
 	}
-	c.upMu.Lock()
-	defer c.upMu.Unlock()
-	if c.upDone.Load() {
-		return nil
-	}
 	_, err := c.Ping(ctx)
 	return err
 }
@@ -1661,7 +1638,7 @@ func (c *Client) Ping(ctx context.Context) (PingResult, error) {
 	return res, err
 }
 
-// ping sends meow pings periodically and waits for the meowed ack. The
+// ping sends a single meow ping and waits for the meowed ack. The
 // client must be started.
 func (c *Client) ping(ctx context.Context) (PingResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -1675,29 +1652,19 @@ func (c *Client) ping(ctx context.Context) (PingResult, error) {
 	derpRegion := c.lb.derpRegionID()
 	pkt := EncodeMeowPing(c.lb.pub, mc.DiscoPublicKey())
 
-	sendPing := func() {
-		sent, err := mc.SendDERPPacketTo(dstNode, derpRegion, pkt)
-		if err != nil {
-			c.lb.logf("tailcat: sending meow failed: %v", err)
-		} else if !sent {
-			c.lb.logf("tailcat: meow not queued")
-		}
+	sent, err := mc.SendDERPPacketTo(dstNode, derpRegion, pkt)
+	if err != nil {
+		return zero, fmt.Errorf("sending meow: %w", err)
+	}
+	if !sent {
+		return zero, fmt.Errorf("meow not sent")
 	}
 
-	sendPing()
-
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-c.meowWait:
-			return PingResult{time.Since(t0)}, nil
-		case <-ticker.C:
-			sendPing()
-		case <-ctx.Done():
-			return zero, ctx.Err()
-		}
+	select {
+	case <-c.meowWait:
+		return PingResult{time.Since(t0)}, nil
+	case <-ctx.Done():
+		return zero, ctx.Err()
 	}
 }
 
