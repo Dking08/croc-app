@@ -59,6 +59,13 @@ sealed class CrocDestination(
         unselectedIcon = Icons.Outlined.Download
     )
 
+    data object Diagnostics : CrocDestination(
+        route = "diagnostics",
+        labelRes = R.string.nav_diagnostics,
+        selectedIcon = Icons.Filled.Download, // not used in bottom nav
+        unselectedIcon = Icons.Outlined.Download
+    )
+
     companion object {
         /** Send, Quick, Receive appear in the bottom navigation */
         val bottomNavItems = listOf(Send, Quick, Receive)

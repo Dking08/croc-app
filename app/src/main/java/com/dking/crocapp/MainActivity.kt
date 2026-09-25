@@ -53,6 +53,7 @@ import androidx.navigation.compose.rememberNavController
 import com.dking.crocapp.data.preferences.UserPreferencesRepository
 import com.dking.crocapp.croc.BinarySetupPhase
 import com.dking.crocapp.croc.CrocBinaryManager
+import com.dking.crocapp.ui.debug.DiagnosticsScreen
 import com.dking.crocapp.ui.guide.GuideScreen
 import com.dking.crocapp.ui.history.HistoryScreen
 import com.dking.crocapp.ui.navigation.CrocDestination
@@ -425,6 +426,16 @@ fun CrocApp(
             composable(CrocDestination.Settings.route) {
                 SettingsScreen(
                     viewModel = settingsViewModel,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onNavigateToDiagnostics = {
+                        navController.navigate(CrocDestination.Diagnostics.route)
+                    }
+                )
+            }
+            composable(CrocDestination.Diagnostics.route) {
+                DiagnosticsScreen(
                     onNavigateBack = {
                         navController.popBackStack()
                     }

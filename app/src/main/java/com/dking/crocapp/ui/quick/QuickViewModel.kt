@@ -159,7 +159,10 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                     is CrocTransferState.Error -> {
+                        saveErrorToHistory(state)
                         StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
+                        currentOutputDir?.deleteRecursively()
+                        currentOutputDir = null
                         _uiState.update {
                             it.copy(
                                 statusMessage = "Error",
@@ -590,6 +593,26 @@ class QuickViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
+    }
+
+    private suspend fun saveErrorToHistory(state: CrocTransferState.Error) {
+        val code = _uiState.value.let {
+            if (it.lastAction in listOf("send", "clipboard")) {
+                it.quickSendCode
+            } else {
+                it.quickReceiveCode
+            }
+        }
+        val type = if (_uiState.value.lastAction in listOf("send", "clipboard")) TransferType.SEND else TransferType.RECEIVE
+        app.database.transferHistoryDao().insert(
+            TransferHistory(
+                code = code,
+                type = type,
+                fileName = "Failed Transfer",
+                fileSize = 0L,
+                status = TransferStatus.FAILED
+            )
+        )
     }
 
     private fun formatBytes(bytes: Long): String {

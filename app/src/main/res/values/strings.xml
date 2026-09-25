@@ -36,6 +36,7 @@
     <string name="nav_receive">Receive</string>
     <string name="nav_history">History</string>
     <string name="nav_settings">Settings</string>
+    <string name="nav_diagnostics">Diagnostics &amp; Logs</string>
 
     <!-- ════ Quick Screen ════ -->
     <string name="quick_send_label">Send</string>

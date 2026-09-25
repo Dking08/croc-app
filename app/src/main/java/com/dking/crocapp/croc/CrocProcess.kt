@@ -4,6 +4,9 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.util.Log
 import com.dking.crocapp.data.preferences.UserPreferencesRepository
+import com.dking.crocapp.debug.DebugLogManager
+import com.dking.crocapp.debug.DebugLogTag
+import com.dking.crocapp.debug.TransferWatchdog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -259,6 +262,8 @@ class CrocProcess(
             try {
                 _state.value = CrocTransferState.Preparing
                 val prefs = prefsRepository.preferencesFlow.first()
+                TransferWatchdog.onTransferStarted("Send", engine, prefs.relayAddress)
+                TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
                 val binaryPath = binaryManager.getBinaryPath(engine)
 
                 val command = mutableListOf(binaryPath, "--yes").apply {
@@ -313,6 +318,8 @@ class CrocProcess(
             try {
                 _state.value = CrocTransferState.Preparing
                 val prefs = prefsRepository.preferencesFlow.first()
+                TransferWatchdog.onTransferStarted("SendText", engine, prefs.relayAddress)
+                TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
                 val binaryPath = binaryManager.getBinaryPath(engine)
 
                 val command = mutableListOf(binaryPath, "--yes").apply {
@@ -361,6 +368,8 @@ class CrocProcess(
                 val prefs = prefsRepository.preferencesFlow.first()
                 val isStore = isStoredToken(code)
                 val effectiveEngine = if (isStore) CrocEngine.CURRENT else engine
+                TransferWatchdog.onTransferStarted(if (isStore) "ReceiveStore" else "Receive", effectiveEngine, prefs.relayAddress)
+                TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
                 val binaryPath = binaryManager.getBinaryPath(effectiveEngine)
                 outputDir.mkdirs()
 
@@ -445,6 +454,8 @@ class CrocProcess(
             try {
                 _state.value = CrocTransferState.Preparing
                 val prefs = prefsRepository.preferencesFlow.first()
+                TransferWatchdog.onTransferStarted("SendStore", CrocEngine.CURRENT, prefs.relayAddress)
+                TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
                 // Store is only supported on CURRENT engine (croc v11+)
                 val binaryPath = binaryManager.getBinaryPath(CrocEngine.CURRENT)
 
@@ -537,12 +548,14 @@ class CrocProcess(
     }
 
     fun cancel() {
+        TransferWatchdog.stop()
         currentProcess?.let { try { it.destroyForcibly() } catch (_: Exception) {} }
         currentProcess = null
         _state.value = CrocTransferState.Cancelled
     }
 
     fun reset() {
+        TransferWatchdog.stop()
         cancel()
         _state.value = CrocTransferState.Idle
     }
@@ -571,7 +584,9 @@ class CrocProcess(
                 return
             }
 
-            Log.d(TAG, "$opName ($engine) attempt $attempt command: ${redactCommandForLog(currentCommand)}")
+            val cmdStr = redactCommandForLog(currentCommand)
+            Log.d(TAG, "$opName ($engine) attempt $attempt command: $cmdStr")
+            DebugLogManager.d(DebugLogTag.PROCESS, "$opName ($engine) attempt $attempt: $cmdStr")
             var result = runCommand(currentCommand, workDir, currentWaitingState, currentEnv, engine, initialFileNames)
             lastResult = result
 
@@ -586,12 +601,16 @@ class CrocProcess(
                     room = effectiveRoom,
                     reason = "The other device is using an older croc version (PAKE protocol version mismatch)."
                 )
+                DebugLogManager.w(DebugLogTag.TRANSFER, "PAKE protocol version mismatch; legacy fallback available")
+                TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
                 return
             }
 
             if (shouldRetryWithInternalDns(result, prefs, currentCommand)) {
                 addInternalDnsFlag(currentCommand)
-                Log.w(TAG, "$opName ($engine) retry with --internal-dns: ${redactCommandForLog(currentCommand)}")
+                val retryCmd = redactCommandForLog(currentCommand)
+                Log.w(TAG, "$opName ($engine) retry with --internal-dns: $retryCmd")
+                DebugLogManager.w(DebugLogTag.DNS, "DNS failure encountered. Retrying with --internal-dns: $retryCmd")
                 result = runCommand(currentCommand, workDir, currentWaitingState, currentEnv, engine, initialFileNames)
                 lastResult = result
 
@@ -605,6 +624,8 @@ class CrocProcess(
                         room = effectiveRoom,
                         reason = "The other device is using an older croc version (PAKE protocol version mismatch)."
                     )
+                    DebugLogManager.w(DebugLogTag.TRANSFER, "PAKE protocol version mismatch; legacy fallback available")
+                    TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
                     return
                 }
             }
@@ -680,6 +701,8 @@ class CrocProcess(
                     rawExpirationText = effectiveRawExpiration,
                     downloadsLimit = effectiveDownloads
                 )
+                TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                DebugLogManager.i(DebugLogTag.TRANSFER, "Store transfer uploaded successfully.")
             } else {
                 _state.value = CrocTransferState.Completed(
                     fileNames = finalResult.fileNames,
@@ -688,9 +711,14 @@ class CrocProcess(
                     totalFileCount = finalResult.totalFileCount.coerceAtLeast(finalResult.fileNames.size),
                     receivedText = finalResult.receivedText
                 )
+                TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                DebugLogManager.i(DebugLogTag.TRANSFER, "Transfer completed successfully! Transferred: ${finalResult.totalBytes} bytes.")
             }
         } else {
-            _state.value = CrocTransferState.Error(errorMessageFor(finalResult))
+            val errorMsg = errorMessageFor(finalResult)
+            _state.value = CrocTransferState.Error(errorMsg)
+            TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+            DebugLogManager.e(DebugLogTag.TRANSFER, "Transfer failed: $errorMsg (exit code ${finalResult.exitCode})")
         }
     }
 
@@ -711,6 +739,8 @@ class CrocProcess(
             }
             putAll(extraEnv)
         }
+        val redactedCmd = redactCommandForLog(command)
+        DebugLogManager.d(DebugLogTag.PROCESS, "Starting croc ($engine): $redactedCmd")
         currentProcess = binaryManager.startProcess(
             command = command,
             workDir = workDir,
@@ -718,6 +748,7 @@ class CrocProcess(
             engine = engine
         )
         _state.value = waitingState
+        TransferWatchdog.onStateChanged(_state.value, "")
         return parseOutput(currentProcess!!, initialFileNames)
     }
 
@@ -838,6 +869,7 @@ class CrocProcess(
             while (reader.readLine().also { line = it } != null && coroutineContext.isActive) {
                 val l = line ?: continue
                 Log.d(TAG, "croc> $l")
+                DebugLogManager.v(DebugLogTag.PROCESS, l)
                 outputTail.addLast(l)
                 if (outputTail.size > 50) outputTail.removeFirst()
 
@@ -856,12 +888,14 @@ class CrocProcess(
                     val code = l.substringAfter("Code is:").trim()
                     announcedCode = code
                     _state.value = CrocTransferState.WaitingForPeer(code)
+                    TransferWatchdog.onStateChanged(_state.value, code)
                     continue
                 }
 
                 // Interruption & live secure retry announcement
                 if (l.contains("detected a transfer interruption") || l.contains("Retrying securely")) {
                     _state.value = CrocTransferState.WaitingForPeer("Connection interrupted. Retrying securely...")
+                    TransferWatchdog.onStateChanged(_state.value, "")
                     continue
                 }
 
@@ -1027,7 +1061,7 @@ class CrocProcess(
                         if (idx >= 0) idx + 1 else 1
                     }.coerceIn(1, effectiveTotalFiles)
 
-                    _state.value = CrocTransferState.Transferring(
+                    val transferringState = CrocTransferState.Transferring(
                         fileName = currentFileName,
                         currentFile = effectiveCurrentFile,
                         totalFiles = effectiveTotalFiles,
@@ -1036,6 +1070,8 @@ class CrocProcess(
                         totalBytes = totalBytes.coerceAtLeast(1),
                         peerIp = peerIp
                     )
+                    _state.value = transferringState
+                    TransferWatchdog.onStateChanged(transferringState, "")
                     continue
                 }
 
@@ -1138,7 +1174,7 @@ class CrocProcess(
                             totalFilesFromProgress.coerceAtLeast(fileNames.size).coerceAtLeast(1)
                         }
                         val effectiveCurrentFile = (fileNames.indexOf(currentFileName) + 1).coerceIn(1, effectiveTotalFiles)
-                        _state.value = CrocTransferState.Transferring(
+                        val transferringState = CrocTransferState.Transferring(
                             fileName = currentFileName,
                             currentFile = effectiveCurrentFile,
                             totalFiles = effectiveTotalFiles,
@@ -1147,6 +1183,8 @@ class CrocProcess(
                             totalBytes = totalBytes.coerceAtLeast(1),
                             peerIp = peerIp
                         )
+                        _state.value = transferringState
+                        TransferWatchdog.onStateChanged(transferringState, "")
                     }
                 }
             }

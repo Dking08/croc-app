@@ -90,6 +90,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                     saveStoreToHistory(state)
                     StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
                 } else if (state is CrocTransferState.Error) {
+                    saveErrorToHistory(state)
                     if (_uiState.value.sendMode != SendMode.FOLDER) {
                         StorageCleaner.cleanSendStaging(getApplication<CrocApp>())
                     }
@@ -551,6 +552,30 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
+    }
+
+    private suspend fun saveErrorToHistory(state: CrocTransferState.Error) {
+        val code = _uiState.value.codePhrase
+        val uiState = _uiState.value
+        val fileName = when (uiState.sendMode) {
+            SendMode.FILES -> uiState.selectedFiles.firstOrNull()?.name ?: "file"
+            SendMode.FOLDER -> uiState.selectedFolderName ?: "folder"
+            SendMode.TEXT -> "text message"
+        }
+        val fileSize = when (uiState.sendMode) {
+            SendMode.FILES -> uiState.selectedBytes
+            SendMode.FOLDER -> uiState.selectedFolderSize
+            SendMode.TEXT -> 0L
+        }
+        app.database.transferHistoryDao().insert(
+            TransferHistory(
+                code = code,
+                type = TransferType.SEND,
+                fileName = fileName,
+                fileSize = fileSize,
+                status = TransferStatus.FAILED
+            )
+        )
     }
 
     private fun normalizeCodePhrase(code: String): String {

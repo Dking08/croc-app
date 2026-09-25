@@ -74,6 +74,10 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     )
                     currentOutputDir?.deleteRecursively()
                     currentOutputDir = null
+                } else if (state is CrocTransferState.Error) {
+                    saveErrorToHistory(state)
+                    currentOutputDir?.deleteRecursively()
+                    currentOutputDir = null
                 }
             }
         }
@@ -288,6 +292,21 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 )
             )
         }
+    }
+
+    private suspend fun saveErrorToHistory(state: CrocTransferState.Error) {
+        val code = _uiState.value.codePhrase
+        val isStore = crocProcess.isStoredToken(code)
+        app.database.transferHistoryDao().insert(
+            TransferHistory(
+                code = code,
+                type = TransferType.RECEIVE,
+                fileName = "Failed Transfer",
+                fileSize = 0L,
+                isStored = isStore,
+                status = TransferStatus.FAILED
+            )
+        )
     }
 
     /**
