@@ -18,7 +18,8 @@ object DebugReportGenerator {
         networkReport: NetworkDiagnosticReport?,
         auditIssues: List<ConfigAuditIssue>,
         historyReport: HistoryAuditReport?,
-        logs: List<DebugLogEntry>
+        logs: List<DebugLogEntry>,
+        lastSession: TransferSession? = TransferSessionTracker.lastSession.value
     ): String {
         val now = SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", Locale.US).format(Date())
         val stat = StatFs(Environment.getDataDirectory().path)
@@ -43,6 +44,7 @@ object DebugReportGenerator {
         // 2. Network Diagnostics
         sb.appendLine("## 🌐 Network Environment & DNS")
         if (networkReport != null) {
+            sb.appendLine("- **Active Configured Relay:** `${networkReport.configuredRelayAddress}` (${if (networkReport.isConfiguredRelayReachable) "✅ REACHABLE (${networkReport.configuredRelayProbe?.latencyMs}ms)" else "❌ UNREACHABLE (${networkReport.configuredRelayProbe?.errorMessage ?: "Connection failed"})"})")
             sb.appendLine("- **Network Connection:** ${networkReport.connectionType}")
             sb.appendLine("- **Internet Connected:** ${if (networkReport.isConnected) "✅ YES" else "❌ NO"}")
             sb.appendLine("- **VPN Tunnel Active:** ${if (networkReport.isVpnActive) "⚠️ YES (Active VPN may intercept or split DNS)" else "NO"}")
@@ -80,6 +82,54 @@ object DebugReportGenerator {
             }
         } else {
             sb.appendLine("*Network diagnostics not executed yet.*")
+        }
+        sb.appendLine()
+
+        // 3. Last Transfer Session & Diagnostic Breakdown
+        sb.appendLine("## 🔬 Last Transfer Session & Diagnostic Breakdown")
+        if (lastSession != null) {
+            sb.appendLine("- **Operation:** ${lastSession.opName} (${lastSession.engine})")
+            sb.appendLine("- **Configured Relay:** `${lastSession.relayConfigured}`")
+            sb.appendLine("- **PAKE Curve:** `${lastSession.curve}`")
+            sb.appendLine("- **Start Time:** ${lastSession.formattedStartTime}")
+            sb.appendLine("- **Duration:** ${lastSession.durationSeconds}s")
+            sb.appendLine("- **Network at Start:** ${lastSession.networkAtStart}")
+            sb.appendLine("- **Network at End:** ${lastSession.networkAtEnd.ifBlank { "Ongoing / Unrecorded" }}")
+            sb.appendLine("- **Network Dropped Mid-Transfer:** ${if (lastSession.networkDroppedDuringTransfer) "⚠️ YES (Network loss detected during active transfer!)" else "NO"}")
+            sb.appendLine("- **Final Status:** ${lastSession.state::class.simpleName} (Exit code: ${lastSession.exitCode ?: "N/A"})")
+
+            if (lastSession.failureAnalysis != null) {
+                val f = lastSession.failureAnalysis
+                sb.appendLine()
+                sb.appendLine("### ⚠️ Root Cause Analysis")
+                sb.appendLine("- **Category:** ${f.category}")
+                sb.appendLine("- **Headline:** ${f.headline}")
+                sb.appendLine("- **Detailed Explanation:** ${f.explanation}")
+                sb.appendLine()
+                sb.appendLine("**Probable Causes:**")
+                f.probableCauses.forEach { cause ->
+                    sb.appendLine("- $cause")
+                }
+                sb.appendLine()
+                sb.appendLine("**Recommended Actionable Steps:**")
+                f.actionItems.forEachIndexed { idx, fix ->
+                    sb.appendLine("${idx + 1}. $fix")
+                }
+            } else if (lastSession.isSuccess) {
+                sb.appendLine("- **Result:** ✅ Transfer completed successfully.")
+            }
+
+            if (lastSession.stdoutTail.isNotEmpty()) {
+                sb.appendLine()
+                sb.appendLine("### croc Output Tail (Last ${lastSession.stdoutTail.size} lines)")
+                sb.appendLine("```text")
+                lastSession.stdoutTail.forEach { line ->
+                    sb.appendLine(DebugLogManager.sanitize(line))
+                }
+                sb.appendLine("```")
+            }
+        } else {
+            sb.appendLine("*No transfer attempted in this session yet.*")
         }
         sb.appendLine()
 

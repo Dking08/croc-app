@@ -4,8 +4,11 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.util.Log
 import com.dking.crocapp.data.preferences.UserPreferencesRepository
+import com.dking.crocapp.debug.DebugLogLevel
 import com.dking.crocapp.debug.DebugLogManager
 import com.dking.crocapp.debug.DebugLogTag
+import com.dking.crocapp.debug.TransferDiagnosticClassifier
+import com.dking.crocapp.debug.TransferSessionTracker
 import com.dking.crocapp.debug.TransferWatchdog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -61,7 +64,12 @@ class CrocProcess(
             }
         }
 
-        internal fun formatErrorMessage(exitCode: Int, outputTail: List<String>): String {
+        internal fun formatErrorMessage(
+            exitCode: Int,
+            outputTail: List<String>,
+            relayAddress: String = "",
+            isConnected: Boolean = true
+        ): String {
             if (hasCliUsageExit(outputTail)) {
                 return "Transfer failed: croc rejected the command syntax and printed usage help."
             }
@@ -90,21 +98,13 @@ class CrocProcess(
                 return "Transfer failed: Incorrect relay password."
             }
 
-            val usefulLine = outputTail
-                .asReversed()
-                .firstOrNull { line ->
-                    val trimmed = line.trim()
-                    trimmed.isNotBlank() &&
-                            !trimmed.startsWith("close decompressor:", ignoreCase = true) &&
-                            !trimmed.startsWith("flate:", ignoreCase = true)
-                }
-                ?.trim()
-
-            return if (usefulLine.isNullOrBlank()) {
-                "Transfer failed (exit code $exitCode)"
-            } else {
-                "Transfer failed: $usefulLine"
-            }
+            val analysis = TransferDiagnosticClassifier.classify(
+                exitCode = exitCode,
+                outputLines = outputTail,
+                isNetworkConnected = isConnected,
+                relayAddress = relayAddress
+            )
+            return "${analysis.headline}: ${analysis.explanation}"
         }
     }
 
@@ -237,9 +237,11 @@ class CrocProcess(
             }
             val resolvedAddress = "$ip:$port"
             Log.i(TAG, "Resolved relay '$relayAddress' to '$resolvedAddress'")
+            DebugLogManager.d(DebugLogTag.DNS, "Pre-resolved relay '$relayAddress' -> '$resolvedAddress'")
             resolvedAddress
         } catch (e: Exception) {
             Log.w(TAG, "Failed to resolve relay '$relayAddress', using original", e)
+            DebugLogManager.w(DebugLogTag.DNS, "Failed to pre-resolve relay '$relayAddress' (${e.javaClass.simpleName}: ${e.message}). Passing raw hostname to croc.")
             relayAddress
         }
     }
@@ -264,6 +266,7 @@ class CrocProcess(
                 val prefs = prefsRepository.preferencesFlow.first()
                 TransferWatchdog.onTransferStarted("Send", engine, prefs.relayAddress)
                 TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                TransferSessionTracker.startSession("Send", engine, prefs.relayAddress, code, prefs.pakeCurve)
                 val binaryPath = binaryManager.getBinaryPath(engine)
 
                 val command = mutableListOf(binaryPath, "--yes").apply {
@@ -308,7 +311,11 @@ class CrocProcess(
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Send failed", e)
+                DebugLogManager.e(DebugLogTag.TRANSFER, "Send threw exception: ${e.javaClass.simpleName}: ${e.message}")
+                val prefs = prefsRepository.preferencesFlow.first()
                 _state.value = CrocTransferState.Error(e.message ?: "Unknown error")
+                TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                TransferSessionTracker.finishSession(_state.value, -1, prefs.relayAddress, prefs.pakeCurve)
             }
         }
     }
@@ -320,6 +327,7 @@ class CrocProcess(
                 val prefs = prefsRepository.preferencesFlow.first()
                 TransferWatchdog.onTransferStarted("SendText", engine, prefs.relayAddress)
                 TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                TransferSessionTracker.startSession("SendText", engine, prefs.relayAddress, code, prefs.pakeCurve)
                 val binaryPath = binaryManager.getBinaryPath(engine)
 
                 val command = mutableListOf(binaryPath, "--yes").apply {
@@ -356,7 +364,11 @@ class CrocProcess(
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "SendText failed", e)
+                DebugLogManager.e(DebugLogTag.TRANSFER, "SendText threw exception: ${e.javaClass.simpleName}: ${e.message}")
+                val prefs = prefsRepository.preferencesFlow.first()
                 _state.value = CrocTransferState.Error(e.message ?: "Unknown error")
+                TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                TransferSessionTracker.finishSession(_state.value, -1, prefs.relayAddress, prefs.pakeCurve)
             }
         }
     }
@@ -368,8 +380,10 @@ class CrocProcess(
                 val prefs = prefsRepository.preferencesFlow.first()
                 val isStore = isStoredToken(code)
                 val effectiveEngine = if (isStore) CrocEngine.CURRENT else engine
-                TransferWatchdog.onTransferStarted(if (isStore) "ReceiveStore" else "Receive", effectiveEngine, prefs.relayAddress)
+                val opName = if (isStore) "ReceiveStore" else "Receive"
+                TransferWatchdog.onTransferStarted(opName, effectiveEngine, prefs.relayAddress)
                 TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                TransferSessionTracker.startSession(opName, effectiveEngine, prefs.relayAddress, code, prefs.pakeCurve)
                 val binaryPath = binaryManager.getBinaryPath(effectiveEngine)
                 outputDir.mkdirs()
 
@@ -416,13 +430,17 @@ class CrocProcess(
                     waitingState = CrocTransferState.WaitingForPeer(if (isStore) "Connecting to secure store..." else code),
                     extraEnv = secretEnv(code),
                     prefs = prefs,
-                    opName = if (isStore) "ReceiveStore" else "Receive",
+                    opName = opName,
                     code = code,
                     engine = effectiveEngine
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Receive failed", e)
+                DebugLogManager.e(DebugLogTag.TRANSFER, "Receive threw exception: ${e.javaClass.simpleName}: ${e.message}")
+                val prefs = prefsRepository.preferencesFlow.first()
                 _state.value = CrocTransferState.Error(e.message ?: "Unknown error")
+                TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                TransferSessionTracker.finishSession(_state.value, -1, prefs.relayAddress, prefs.pakeCurve)
             }
         }
     }
@@ -456,6 +474,7 @@ class CrocProcess(
                 val prefs = prefsRepository.preferencesFlow.first()
                 TransferWatchdog.onTransferStarted("SendStore", CrocEngine.CURRENT, prefs.relayAddress)
                 TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                TransferSessionTracker.startSession("SendStore", CrocEngine.CURRENT, prefs.relayAddress, null, prefs.pakeCurve)
                 // Store is only supported on CURRENT engine (croc v11+)
                 val binaryPath = binaryManager.getBinaryPath(CrocEngine.CURRENT)
 
@@ -496,7 +515,11 @@ class CrocProcess(
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "SendStore failed", e)
+                DebugLogManager.e(DebugLogTag.TRANSFER, "SendStore threw exception: ${e.javaClass.simpleName}: ${e.message}")
+                val prefs = prefsRepository.preferencesFlow.first()
                 _state.value = CrocTransferState.Error(e.message ?: "Unknown error")
+                TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                TransferSessionTracker.finishSession(_state.value, -1, prefs.relayAddress, prefs.pakeCurve)
             }
         }
     }
@@ -552,6 +575,7 @@ class CrocProcess(
         currentProcess?.let { try { it.destroyForcibly() } catch (_: Exception) {} }
         currentProcess = null
         _state.value = CrocTransferState.Cancelled
+        TransferSessionTracker.finishSession(CrocTransferState.Cancelled, -1, "", "")
     }
 
     fun reset() {
@@ -579,6 +603,18 @@ class CrocProcess(
         var attempt = 0
         var lastResult: ProcessResult? = null
 
+        val isConnected = com.dking.crocapp.debug.NetworkStateMonitor.networkState.value.isConnected
+        if (!isConnected && !prefs.forceLocal) {
+            DebugLogManager.e(
+                DebugLogTag.NETWORK,
+                "Pre-flight warning: Device is OFFLINE. Cannot reach relay '${prefs.relayAddress}'."
+            )
+        }
+        DebugLogManager.i(
+            DebugLogTag.PROCESS,
+            "Launching $opName ($engine): Relay='${prefs.relayAddress}', ForceLAN=${prefs.forceLocal}, Curve='${prefs.pakeCurve}'"
+        )
+
         while (attempt <= MAX_SECURE_CHANNEL_RETRIES) {
             if (_state.value is CrocTransferState.Cancelled || !coroutineContext.isActive) {
                 return
@@ -603,6 +639,7 @@ class CrocProcess(
                 )
                 DebugLogManager.w(DebugLogTag.TRANSFER, "PAKE protocol version mismatch; legacy fallback available")
                 TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                TransferSessionTracker.finishSession(_state.value, result.exitCode, prefs.relayAddress, prefs.pakeCurve)
                 return
             }
 
@@ -615,6 +652,7 @@ class CrocProcess(
                 lastResult = result
 
                 if (_state.value is CrocTransferState.Cancelled || !coroutineContext.isActive) {
+                    TransferSessionTracker.finishSession(_state.value, -1, prefs.relayAddress, prefs.pakeCurve)
                     return
                 }
 
@@ -626,6 +664,7 @@ class CrocProcess(
                     )
                     DebugLogManager.w(DebugLogTag.TRANSFER, "PAKE protocol version mismatch; legacy fallback available")
                     TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                    TransferSessionTracker.finishSession(_state.value, result.exitCode, prefs.relayAddress, prefs.pakeCurve)
                     return
                 }
             }
@@ -663,6 +702,7 @@ class CrocProcess(
                 delay(backoffMs)
 
                 if (_state.value is CrocTransferState.Cancelled || !coroutineContext.isActive) {
+                    TransferSessionTracker.finishSession(_state.value, -1, prefs.relayAddress, prefs.pakeCurve)
                     return
                 }
                 continue
@@ -672,6 +712,7 @@ class CrocProcess(
         }
 
         if (_state.value is CrocTransferState.Cancelled) {
+            TransferSessionTracker.finishSession(_state.value, -1, prefs.relayAddress, prefs.pakeCurve)
             return
         }
 
@@ -702,6 +743,7 @@ class CrocProcess(
                     downloadsLimit = effectiveDownloads
                 )
                 TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                TransferSessionTracker.finishSession(_state.value, finalResult.exitCode, prefs.relayAddress, prefs.pakeCurve)
                 DebugLogManager.i(DebugLogTag.TRANSFER, "Store transfer uploaded successfully.")
             } else {
                 _state.value = CrocTransferState.Completed(
@@ -712,12 +754,14 @@ class CrocProcess(
                     receivedText = finalResult.receivedText
                 )
                 TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+                TransferSessionTracker.finishSession(_state.value, finalResult.exitCode, prefs.relayAddress, prefs.pakeCurve)
                 DebugLogManager.i(DebugLogTag.TRANSFER, "Transfer completed successfully! Transferred: ${finalResult.totalBytes} bytes.")
             }
         } else {
-            val errorMsg = errorMessageFor(finalResult)
+            val errorMsg = errorMessageFor(finalResult, prefs.relayAddress)
             _state.value = CrocTransferState.Error(errorMsg)
             TransferWatchdog.onStateChanged(_state.value, prefs.relayAddress)
+            TransferSessionTracker.finishSession(_state.value, finalResult.exitCode, prefs.relayAddress, prefs.pakeCurve)
             DebugLogManager.e(DebugLogTag.TRANSFER, "Transfer failed: $errorMsg (exit code ${finalResult.exitCode})")
         }
     }
@@ -788,8 +832,38 @@ class CrocProcess(
         command.add(index, "--internal-dns")
     }
 
-    internal fun errorMessageFor(result: ProcessResult): String {
-        return formatErrorMessage(result.exitCode, result.outputTail)
+    internal fun errorMessageFor(result: ProcessResult, relayAddress: String = ""): String {
+        val isConnected = com.dking.crocapp.debug.NetworkStateMonitor.networkState.value.isConnected
+        return formatErrorMessage(
+            exitCode = result.exitCode,
+            outputTail = result.outputTail,
+            relayAddress = relayAddress,
+            isConnected = isConnected
+        )
+    }
+
+    private fun classifyAndLogStdout(line: String) {
+        val lower = line.lowercase()
+        when {
+            lower.contains("panic:") || lower.contains("fatal:") || lower.contains("error:") ||
+                    lower.contains("could not secure channel") || lower.contains("connection refused") ||
+                    lower.contains("no such host") || lower.contains("permission denied") ||
+                    lower.contains("failed") -> {
+                DebugLogManager.e(DebugLogTag.PROCESS, line)
+            }
+            lower.contains("warn") || lower.contains("retrying") || lower.contains("corrupt") ||
+                    lower.contains("interruption") || lower.contains("timeout") -> {
+                DebugLogManager.w(DebugLogTag.PROCESS, line)
+            }
+            lower.contains("code is:") || lower.contains("sending") || lower.contains("receiving") ||
+                    lower.contains("connected") || lower.contains("securing channel") ||
+                    lower.contains("transferring") || lower.contains("complete") -> {
+                DebugLogManager.i(DebugLogTag.PROCESS, line)
+            }
+            else -> {
+                DebugLogManager.v(DebugLogTag.PROCESS, line)
+            }
+        }
     }
 
     private fun hasCliUsageExit(result: ProcessResult): Boolean {
@@ -869,7 +943,8 @@ class CrocProcess(
             while (reader.readLine().also { line = it } != null && coroutineContext.isActive) {
                 val l = line ?: continue
                 Log.d(TAG, "croc> $l")
-                DebugLogManager.v(DebugLogTag.PROCESS, l)
+                classifyAndLogStdout(l)
+                TransferSessionTracker.recordOutputLine(l)
                 outputTail.addLast(l)
                 if (outputTail.size > 50) outputTail.removeFirst()
 
@@ -888,7 +963,7 @@ class CrocProcess(
                     val code = l.substringAfter("Code is:").trim()
                     announcedCode = code
                     _state.value = CrocTransferState.WaitingForPeer(code)
-                    TransferWatchdog.onStateChanged(_state.value, code)
+                    TransferWatchdog.onStateChanged(_state.value, "")
                     continue
                 }
 

@@ -19,12 +19,13 @@ data class WatchdogAlert(
     val durationSeconds: Long = 0,
     val message: String = "",
     val isLikelyRelayMismatch: Boolean = false,
+    val isNetworkDisconnected: Boolean = false,
     val relayReachable: Boolean? = null
 )
 
 /**
  * Monitors croc transfer execution to detect infinite wait loops, stalled handshakes,
- * and relay mismatches in real time.
+ * network drops, and relay mismatches in real time.
  */
 object TransferWatchdog {
 
@@ -33,27 +34,70 @@ object TransferWatchdog {
     private var sessionStartTime: Long = 0L
     private var waitingStartTime: Long = 0L
 
+    private var activeRelayAddress: String = "croc.schollz.com:9009"
+    private var activeOpName: String = ""
+    private var isTransferActive: Boolean = false
+
     private val _alertState = MutableStateFlow(WatchdogAlert())
     val alertState: StateFlow<WatchdogAlert> = _alertState.asStateFlow()
 
     fun onTransferStarted(opName: String, engine: CrocEngine, relayAddress: String) {
         stop()
+        isTransferActive = true
+        activeOpName = opName
+        activeRelayAddress = if (relayAddress.isNotBlank()) relayAddress.trim() else "croc.schollz.com:9009"
         sessionStartTime = System.currentTimeMillis()
         waitingStartTime = 0L
         _alertState.value = WatchdogAlert()
 
-        DebugLogManager.i(
+        val isConnected = NetworkStateMonitor.networkState.value.isConnected
+        if (!isConnected) {
+            DebugLogManager.e(
+                DebugLogTag.NETWORK,
+                "Transfer '$opName' started while device is OFFLINE! Internet connection required for relay '$activeRelayAddress'."
+            )
+            _alertState.value = WatchdogAlert(
+                isStalled = true,
+                isNetworkDisconnected = true,
+                durationSeconds = 0,
+                message = "Device is offline. Turn on Wi-Fi or Mobile Data to connect to relay '$activeRelayAddress'."
+            )
+        } else {
+            DebugLogManager.i(
+                DebugLogTag.TRANSFER,
+                "Transfer started: $opName using engine $engine (Configured relay: $activeRelayAddress)"
+            )
+        }
+    }
+
+    fun onNetworkLost() {
+        if (!isTransferActive) return
+
+        val duration = if (sessionStartTime > 0) (System.currentTimeMillis() - sessionStartTime) / 1000 else 0
+        DebugLogManager.e(
             DebugLogTag.TRANSFER,
-            "Transfer started: $opName using engine $engine (Configured relay: $relayAddress)"
+            "CRITICAL: Internet dropped during active transfer '$activeOpName'! Connection to relay '$activeRelayAddress' was severed."
+        )
+
+        _alertState.value = WatchdogAlert(
+            isStalled = true,
+            durationSeconds = duration,
+            isNetworkDisconnected = true,
+            message = "Internet disconnected! Active connection to relay '$activeRelayAddress' was lost. Transfer cannot continue.",
+            relayReachable = false
         )
     }
 
-    fun onStateChanged(newState: CrocTransferState, configuredRelay: String) {
+    fun onStateChanged(newState: CrocTransferState, configuredRelay: String = "") {
+        if (configuredRelay.isNotBlank() && !configuredRelay.contains("-")) {
+            activeRelayAddress = configuredRelay.trim()
+        }
+
         when (newState) {
             is CrocTransferState.WaitingForPeer -> {
                 if (waitingStartTime == 0L) {
                     waitingStartTime = System.currentTimeMillis()
-                    startWaitingTimer(configuredRelay)
+                    startWaitingTimer(activeRelayAddress)
                 }
             }
             is CrocTransferState.Transferring -> {
@@ -90,7 +134,7 @@ object TransferWatchdog {
         }
     }
 
-    private fun startWaitingTimer(configuredRelay: String) {
+    private fun startWaitingTimer(relayAddress: String) {
         watchdogJob?.cancel()
         watchdogJob = scope.launch {
             var seconds = 0L
@@ -98,15 +142,34 @@ object TransferWatchdog {
                 delay(1000L)
                 seconds++
 
+                // Immediate offline check
+                if (!NetworkStateMonitor.networkState.value.isConnected) {
+                    _alertState.value = WatchdogAlert(
+                        isStalled = true,
+                        durationSeconds = seconds,
+                        isNetworkDisconnected = true,
+                        message = "Device is offline. Turn on Wi-Fi or Mobile Data to connect to relay '$activeRelayAddress'.",
+                        relayReachable = false
+                    )
+                    continue
+                }
+
+                if (seconds == 15L || seconds == 30L) {
+                    DebugLogManager.d(
+                        DebugLogTag.WATCHDOG,
+                        "Still waiting for peer connection ($seconds seconds elapsed)..."
+                    )
+                }
+
                 if (seconds == 20L) {
                     DebugLogManager.w(
                         DebugLogTag.WATCHDOG,
-                        "Transfer has been waiting for peer for 20s. Probing relay connectivity to '$configuredRelay'..."
+                        "Transfer has been waiting for peer for 20s. Probing relay connectivity to '$activeRelayAddress'..."
                     )
-                    val reachable = probeRelayPort(configuredRelay)
+                    val reachable = probeRelayPort(activeRelayAddress)
                     DebugLogManager.i(
                         DebugLogTag.RELAY,
-                        "Relay '$configuredRelay' TCP 9009 reachability check: ${if (reachable) "REACHABLE" else "UNREACHABLE / TIMED OUT"}"
+                        "Relay '$activeRelayAddress' TCP 9009 reachability check: ${if (reachable) "REACHABLE" else "UNREACHABLE / TIMED OUT"}"
                     )
                     _alertState.value = WatchdogAlert(
                         isStalled = true,
@@ -114,7 +177,7 @@ object TransferWatchdog {
                         message = if (reachable) {
                             "Waiting for peer (20s)... Relay is reachable. Waiting for second device to connect."
                         } else {
-                            "Warning: Relay '$configuredRelay' is not responding on port 9009."
+                            "Warning: Relay '$activeRelayAddress' is not responding on port 9009."
                         },
                         isLikelyRelayMismatch = false,
                         relayReachable = reachable
@@ -122,7 +185,7 @@ object TransferWatchdog {
                 }
 
                 if (seconds == 45L) {
-                    val isDefaultRelay = configuredRelay.contains("croc.schollz.com")
+                    val isDefaultRelay = activeRelayAddress.contains("croc.schollz.com")
                     val mismatchNote = if (isDefaultRelay) {
                         "croc-app is using croc.schollz.com. If the other device is using the standard croc CLI, it uses 1-4.getcroc.com by default. Ensure both devices specify the exact same relay!"
                     } else {
@@ -157,21 +220,30 @@ object TransferWatchdog {
         }
     }
 
-    private fun probeRelayPort(relayAddress: String): Boolean {
+    fun probeRelayPort(relayAddress: String): Boolean {
         return try {
-            val parts = relayAddress.trim().removePrefix("relay://").split(":")
-            val host = parts[0]
-            val port = if (parts.size > 1) parts[1].toIntOrNull() ?: 9009 else 9009
+            val clean = relayAddress.trim()
+                .removePrefix("http://")
+                .removePrefix("https://")
+                .removePrefix("relay://")
+            val host = clean.substringBefore(":")
+            val port = clean.substringAfter(":", "9009").toIntOrNull() ?: 9009
+
+            if (host.isBlank()) return false
+
             Socket().use { socket ->
                 socket.connect(InetSocketAddress(host, port), 3000)
                 true
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            DebugLogManager.w(DebugLogTag.RELAY, "Probe error for '$relayAddress': ${e.message}")
             false
         }
     }
 
     fun stop() {
+        isTransferActive = false
+        activeOpName = ""
         watchdogJob?.cancel()
         watchdogJob = null
         waitingStartTime = 0L

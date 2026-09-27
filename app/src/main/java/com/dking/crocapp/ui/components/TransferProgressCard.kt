@@ -21,6 +21,9 @@ import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dking.crocapp.debug.TransferWatchdog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,6 +57,7 @@ fun TransferProgressCard(
     activeEngine: CrocEngine = CrocEngine.CURRENT
 ) {
     val isLegacy = activeEngine == CrocEngine.LEGACY
+    val watchdogAlert by TransferWatchdog.alertState.collectAsStateWithLifecycle()
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -66,6 +70,42 @@ fun TransferProgressCard(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            if (watchdogAlert.isStalled) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Rounded.WarningAmber,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                if (watchdogAlert.isNetworkDisconnected) "Network Disconnected!" else "Wait Loop Detected (${watchdogAlert.durationSeconds}s)",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                watchdogAlert.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+            }
+
             when (state) {
                 is CrocTransferState.Preparing -> {
                     TransferHeader(

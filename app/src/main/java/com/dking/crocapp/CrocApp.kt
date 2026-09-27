@@ -28,6 +28,7 @@ class CrocApp : Application() {
         super.onCreate()
         database = AppDatabase.getInstance(this)
         binaryManager = CrocBinaryManager(this)
+        com.dking.crocapp.debug.NetworkStateMonitor.initialize(this)
 
         appScope.launch {
             StorageCleaner.cleanStaleStorage(this@CrocApp)

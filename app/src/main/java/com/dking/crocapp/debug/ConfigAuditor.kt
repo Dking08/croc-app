@@ -25,7 +25,45 @@ object ConfigAuditor {
     ): List<ConfigAuditIssue> = withContext(Dispatchers.IO) {
         val issues = mutableListOf<ConfigAuditIssue>()
 
-        // 1. Relay Address Audit
+        // 0. Network Offline Audit
+        if (networkReport != null && !networkReport.isConnected && !prefs.forceLocal) {
+            issues.add(
+                ConfigAuditIssue(
+                    title = "Device is Offline / No Internet",
+                    description = "Device has no active internet connection (${networkReport.connectionType}). All relay-based file transfers will fail immediately.",
+                    severity = IssueSeverity.ERROR,
+                    recommendation = "Connect to Wi-Fi or turn on Mobile Data before starting a transfer."
+                )
+            )
+        }
+
+        // 1. Configured Relay Reachability & DNS Audit
+        if (networkReport != null && networkReport.isConnected) {
+            val dnsProbe = networkReport.configuredDnsProbe
+            val relayProbe = networkReport.configuredRelayProbe
+
+            if (dnsProbe != null && !dnsProbe.isResolved) {
+                issues.add(
+                    ConfigAuditIssue(
+                        title = "Configured Relay DNS Resolution Failed",
+                        description = "Cannot resolve hostname '${dnsProbe.host}' for relay '${prefs.relayAddress}': ${dnsProbe.errorMessage ?: "UnknownHostException"}. Any transfers using this relay will fail with 'relay not found'.",
+                        severity = IssueSeverity.ERROR,
+                        recommendation = "Check for typos in Settings -> Relay Server. If using a custom relay, ensure the domain name is registered and publicly resolvable."
+                    )
+                )
+            } else if (relayProbe != null && !relayProbe.isReachable) {
+                issues.add(
+                    ConfigAuditIssue(
+                        title = "Configured Relay Server Unreachable",
+                        description = "Could not connect to relay '${prefs.relayAddress}' on TCP port 9009: ${relayProbe.errorMessage ?: "Timed out"}. Transfers will hang in an infinite wait loop.",
+                        severity = IssueSeverity.ERROR,
+                        recommendation = "Verify the relay server is online and port 9009 is forwarded/open. In Settings -> Relay Server, you can revert to 'croc.schollz.com:9009'."
+                    )
+                )
+            }
+        }
+
+        // 2. Relay Address Syntax Audit
         val relay = prefs.relayAddress.trim()
         if (relay.startsWith("http://", ignoreCase = true) || relay.startsWith("https://", ignoreCase = true)) {
             issues.add(
@@ -33,7 +71,7 @@ object ConfigAuditor {
                     title = "Invalid Relay Protocol (HTTP/HTTPS)",
                     description = "Relay address '$relay' includes a web scheme (http:// or https://). Croc communicates using raw TCP sockets, not HTTP.",
                     severity = IssueSeverity.ERROR,
-                    recommendation = "Remove 'http://' or 'https://' in Settings -> Relay Server (e.g. use 'myrelay.com:9009')."
+                    recommendation = "Remove 'http://' or 'https://' in Settings -> Relay Server (e.g. use '${relay.removePrefix("http://").removePrefix("https://")}')."
                 )
             )
         }
@@ -42,7 +80,7 @@ object ConfigAuditor {
             issues.add(
                 ConfigAuditIssue(
                     title = "Missing Relay Port",
-                    description = "Relay address '$relay' has no port specified. Android socket pre-resolution may fail without an explicit port.",
+                    description = "Relay address '$relay' has no port specified. Android socket pre-resolution requires an explicit port.",
                     severity = IssueSeverity.WARNING,
                     recommendation = "Append ':9009' to the relay address in Settings (e.g. '$relay:9009')."
                 )
@@ -55,23 +93,23 @@ object ConfigAuditor {
                     title = "Spaces in Relay Address",
                     description = "Relay address '$relay' contains whitespace characters.",
                     severity = IssueSeverity.ERROR,
-                    recommendation = "Remove any spaces from the relay address."
+                    recommendation = "Remove any spaces from the relay address in Settings."
                 )
             )
         }
 
-        if (relay == "croc.schollz.com:9009") {
+        if (relay == "croc.schollz.com:9009" || relay.contains("croc.schollz.com")) {
             issues.add(
                 ConfigAuditIssue(
                     title = "Single Relay vs Desktop Pool (Infinite Loop Risk)",
-                    description = "croc-app is using the single server 'croc.schollz.com:9009'. Standard desktop croc CLI (v11+) connects to the 1-4.getcroc.com public pool by default. If transferring with a PC, both devices may wait in an infinite loop unless the PC also uses --relay.",
+                    description = "croc-app is using the single server 'croc.schollz.com:9009'. Standard desktop croc CLI (v11+) connects to the 1-4.getcroc.com public pool by default. If transferring with a PC, both devices will wait in an infinite loop unless the PC also uses --relay.",
                     severity = IssueSeverity.INFO,
                     recommendation = "When transferring with a computer, specify '--relay croc.schollz.com:9009' in your terminal: croc --relay croc.schollz.com:9009 <code>"
                 )
             )
         }
 
-        // 2. Force Local (LAN Only) Audit
+        // 3. Force Local (LAN Only) Audit
         if (prefs.forceLocal) {
             val isCellular = networkReport?.connectionType?.contains("Cellular", ignoreCase = true) == true
             val isVpn = networkReport?.isVpnActive == true
@@ -96,109 +134,89 @@ object ConfigAuditor {
             }
         }
 
-        // 3. Proxy Audit
+        // 4. Proxy Audit
         if (prefs.socks5Proxy.isNotBlank()) {
-            val reachable = probeProxy(prefs.socks5Proxy)
+            val proxyStr = prefs.socks5Proxy.trim()
+            val reachable = testProxyReachability(proxyStr)
             if (!reachable) {
                 issues.add(
                     ConfigAuditIssue(
-                        title = "SOCKS5 Proxy Offline / Unreachable",
-                        description = "Configured SOCKS5 proxy '${prefs.socks5Proxy}' is not responding. All transfers routed through this proxy will fail immediately.",
+                        title = "Configured SOCKS5 Proxy Unreachable",
+                        description = "SOCKS5 proxy '$proxyStr' did not respond to TCP connection attempts. All croc transfers routed through this proxy will fail.",
                         severity = IssueSeverity.ERROR,
-                        recommendation = "Ensure your proxy app (e.g. Orbot / Tor) is running and listening on '${prefs.socks5Proxy}', or clear the proxy setting in Settings."
+                        recommendation = "Check the SOCKS5 proxy IP/port in Settings -> Advanced -> Proxy, or clear the proxy field if not using a proxy."
                     )
                 )
             }
         }
 
         if (prefs.httpProxy.isNotBlank()) {
-            val reachable = probeProxy(prefs.httpProxy)
+            val proxyStr = prefs.httpProxy.trim()
+            val reachable = testProxyReachability(proxyStr)
             if (!reachable) {
                 issues.add(
                     ConfigAuditIssue(
-                        title = "HTTP Proxy Offline / Unreachable",
-                        description = "Configured HTTP proxy '${prefs.httpProxy}' is not responding.",
+                        title = "Configured HTTP Proxy Unreachable",
+                        description = "HTTP proxy '$proxyStr' did not respond to TCP connection attempts.",
                         severity = IssueSeverity.ERROR,
-                        recommendation = "Ensure your HTTP proxy is running, or clear the HTTP proxy setting in Settings."
+                        recommendation = "Verify your HTTP proxy in Settings -> Advanced -> Proxy, or clear the field."
                     )
                 )
             }
         }
 
-        // 4. Built-in DNS Audit
-        if (prefs.useInternalDns) {
-            val udp53Blocked = networkReport?.udpPort53Probes?.all { !it.isReachable } == true
-            if (udp53Blocked) {
+        // 5. Built-in DNS vs UDP 53 Blocking Audit
+        if (prefs.useInternalDns && networkReport != null) {
+            val udpBlocked = networkReport.udpPort53Probes.isNotEmpty() && networkReport.udpPort53Probes.all { !it.isReachable }
+            if (udpBlocked) {
                 issues.add(
                     ConfigAuditIssue(
                         title = "Built-in DNS Active but UDP Port 53 Blocked",
-                        description = "Built-in DNS resolver is ON, but outbound UDP port 53 is blocked on this network. Croc will fail to resolve relay addresses.",
+                        description = "Internal DNS (--internal-dns) sends UDP queries directly to public DNS (1.1.1.1/8.8.8.8), but your current network/carrier is blocking outbound UDP port 53.",
                         severity = IssueSeverity.ERROR,
-                        recommendation = "Turn OFF 'Built-in DNS' in Settings -> Network to use Android's system DNS."
-                    )
-                )
-            } else {
-                issues.add(
-                    ConfigAuditIssue(
-                        title = "Built-in DNS Active",
-                        description = "Using internal Go stub resolver instead of Android system DNS. Queries are sent directly to public resolvers (1.1.1.1, 8.8.8.8).",
-                        severity = IssueSeverity.INFO,
-                        recommendation = "If using a corporate or school network with private internal domains, disable Built-in DNS."
+                        recommendation = "Turn OFF 'Use Built-in DNS' in Settings -> Network so croc uses Android system DNS."
                     )
                 )
             }
         }
 
-        // 5. Relay Password
-        if (prefs.relayPassword.isNotBlank() && prefs.relayPassword != "pass123") {
-            issues.add(
-                ConfigAuditIssue(
-                    title = "Custom Relay Password Configured",
-                    description = "A custom relay password is configured. Both devices and the relay server must match this password.",
-                    severity = IssueSeverity.WARNING,
-                    recommendation = "If the other device fails with 'Incorrect relay password', verify that both devices have the same password configured."
-                )
-            )
-        }
-
-        // 6. PAKE Curve
+        // 6. Non-default PAKE Curve Audit
         if (prefs.pakeCurve.isNotBlank() && prefs.pakeCurve != "p256") {
             issues.add(
                 ConfigAuditIssue(
                     title = "Non-Default Encryption Curve (${prefs.pakeCurve})",
-                    description = "PAKE curve is set to '${prefs.pakeCurve}' instead of default 'p256'. The other device must specify the exact same curve (--curve ${prefs.pakeCurve}).",
+                    description = "Using curve '${prefs.pakeCurve}'. Both sender and receiver MUST configure the exact same curve, otherwise the PAKE handshake will fail silently.",
                     severity = IssueSeverity.WARNING,
-                    recommendation = "Reset PAKE Curve to 'p256' in Settings -> Transfer Options if peer handshake fails."
+                    recommendation = "Ensure the peer device also uses '--curve ${prefs.pakeCurve}', or reset curve to 'p256' in Settings -> Advanced."
                 )
             )
         }
 
-        // 7. Upload Throttle Check
-        if (prefs.uploadThrottle.isNotBlank()) {
-            val valid = prefs.uploadThrottle.trim().matches(Regex("""^\d+(\.\d+)?(k|m|g)?$""", RegexOption.IGNORE_CASE))
-            if (!valid) {
-                issues.add(
-                    ConfigAuditIssue(
-                        title = "Invalid Upload Throttle Format",
-                        description = "Upload throttle '${prefs.uploadThrottle}' is not recognized. Format must be e.g. '500k', '1m', or '10m'.",
-                        severity = IssueSeverity.WARNING,
-                        recommendation = "Correct format in Settings -> Transfer Options (e.g. '1m')."
-                    )
+        // 7. Relay Password Audit
+        if (prefs.relayPassword.isNotBlank()) {
+            issues.add(
+                ConfigAuditIssue(
+                    title = "Custom Relay Password Configured",
+                    description = "A relay password is set. If the relay server is public and does not require authentication, transfers may be rejected with 'bad password'.",
+                    severity = IssueSeverity.WARNING,
+                    recommendation = "Clear the relay password in Settings -> Relay Server unless using a private relay with authentication."
                 )
-            }
+            )
         }
 
         issues
     }
 
-    private fun probeProxy(proxyAddr: String): Boolean {
+    private fun testProxyReachability(proxyAddress: String): Boolean {
         return try {
-            val cleaned = proxyAddr.trim().removePrefix("http://").removePrefix("https://").removePrefix("socks5://")
-            val parts = cleaned.split(":")
-            val host = parts[0]
-            val port = if (parts.size > 1) parts[1].toIntOrNull() ?: return false else return false
+            val clean = proxyAddress.trim()
+                .removePrefix("socks5://")
+                .removePrefix("http://")
+                .removePrefix("https://")
+            val host = clean.substringBefore(":")
+            val port = clean.substringAfter(":", "1080").toIntOrNull() ?: 1080
             Socket().use { socket ->
-                socket.connect(InetSocketAddress(host, port), 2000)
+                socket.connect(InetSocketAddress(host, port), 2500)
                 true
             }
         } catch (_: Exception) {

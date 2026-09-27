@@ -15,9 +15,12 @@ import com.dking.crocapp.debug.DebugReportGenerator
 import com.dking.crocapp.debug.HistoryAuditReport
 import com.dking.crocapp.debug.NetworkDiagnosticReport
 import com.dking.crocapp.debug.NetworkDiagnostics
+import com.dking.crocapp.debug.NetworkStateMonitor
 import com.dking.crocapp.debug.TransferHistoryAuditor
 import com.dking.crocapp.debug.TransferWatchdog
 import com.dking.crocapp.debug.WatchdogAlert
+import com.dking.crocapp.debug.TransferSession
+import com.dking.crocapp.debug.TransferSessionTracker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,12 +30,14 @@ import kotlinx.coroutines.launch
 
 data class DiagnosticsUiState(
     val isRunning: Boolean = false,
+    val currentPrefs: UserPreferencesRepository.CrocPreferences? = null,
     val networkReport: NetworkDiagnosticReport? = null,
     val auditIssues: List<ConfigAuditIssue> = emptyList(),
     val historyReport: HistoryAuditReport? = null,
     val logs: List<DebugLogEntry> = emptyList(),
     val watchdogAlert: WatchdogAlert = WatchdogAlert(),
-    val selectedTagFilter: DebugLogTag? = null
+    val selectedTagFilter: DebugLogTag? = null,
+    val lastSession: TransferSession? = null
 )
 
 class DiagnosticsViewModel(application: Application) : AndroidViewModel(application) {
@@ -59,14 +64,33 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
 
-        // Run initial quick audit on screen open
-        runFullDiagnostics()
+        // Collect last transfer session & diagnostic analysis
+        viewModelScope.launch {
+            TransferSessionTracker.lastSession.collect { session ->
+                _uiState.update { it.copy(lastSession = session) }
+            }
+        }
+
+        // React dynamically to preference changes (e.g. user edited relay in Settings)
+        viewModelScope.launch {
+            prefsRepo.preferencesFlow.collect { prefs ->
+                _uiState.update { it.copy(currentPrefs = prefs) }
+                runFullDiagnostics()
+            }
+        }
+
+        // React dynamically to network connection changes (e.g. Wi-Fi turned off/on)
+        viewModelScope.launch {
+            NetworkStateMonitor.networkState.collect {
+                runFullDiagnostics()
+            }
+        }
     }
 
     fun runFullDiagnostics() {
         viewModelScope.launch {
             _uiState.update { it.copy(isRunning = true) }
-            DebugLogManager.i(DebugLogTag.SYSTEM, "User requested full diagnostics check.")
+            DebugLogManager.d(DebugLogTag.SYSTEM, "Running diagnostics on current settings...")
 
             try {
                 val prefs = prefsRepo.preferencesFlow.first()
@@ -77,12 +101,13 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
                 _uiState.update {
                     it.copy(
                         isRunning = false,
+                        currentPrefs = prefs,
                         networkReport = netReport,
                         auditIssues = configIssues,
                         historyReport = histReport
                     )
                 }
-                DebugLogManager.i(DebugLogTag.SYSTEM, "Diagnostics completed successfully.")
+                DebugLogManager.d(DebugLogTag.SYSTEM, "Diagnostics completed.")
             } catch (e: Exception) {
                 DebugLogManager.e(DebugLogTag.SYSTEM, "Diagnostics check failed: ${e.message}")
                 _uiState.update { it.copy(isRunning = false) }
@@ -99,7 +124,8 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
             networkReport = state.networkReport,
             auditIssues = state.auditIssues,
             historyReport = state.historyReport,
-            logs = state.logs
+            logs = state.logs,
+            lastSession = state.lastSession
         )
     }
 
