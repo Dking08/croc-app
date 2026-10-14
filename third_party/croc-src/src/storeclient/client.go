@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,8 +20,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/schollz/croc/v11/src/comm"
-	"github.com/schollz/croc/v11/src/models"
 	"github.com/schollz/croc/v11/src/receivefs"
 	"github.com/schollz/croc/v11/src/storecrypto"
 )
@@ -142,42 +139,7 @@ func (c *Client) httpClient() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
-
-	baseDialer := &net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}
-
-	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           models.FallbackDialContext(baseDialer.DialContext),
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-
-	if comm.HttpProxy != "" {
-		pStr := comm.HttpProxy
-		if !strings.Contains(pStr, "://") {
-			pStr = "http://" + pStr
-		}
-		if pURL, err := url.Parse(pStr); err == nil {
-			transport.Proxy = http.ProxyURL(pURL)
-		}
-	} else if comm.Socks5Proxy != "" {
-		pStr := comm.Socks5Proxy
-		if !strings.Contains(pStr, "://") {
-			pStr = "socks5://" + pStr
-		}
-		if pURL, err := url.Parse(pStr); err == nil {
-			transport.Proxy = http.ProxyURL(pURL)
-		}
-	}
-
 	return &http.Client{
-		Transport: transport,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return errors.New("stored-transfer redirects are not allowed")
 		},
