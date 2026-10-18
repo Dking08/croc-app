@@ -26,7 +26,7 @@ import kotlin.coroutines.coroutineContext
 /**
  * Executes croc CLI commands and parses output for transfer progress.
  *
- * croc v11.5.2 global flags:
+ * croc v11.5.4 global flags:
  *   --yes, --relay, --pass, --curve, --overwrite,
  *   --no-compress, --local, --throttleUpload, --internal-dns,
  *   --classic, --multicast, --ip, --relay6, --out, --quiet
@@ -157,7 +157,7 @@ class CrocProcess(
 
     /**
      * Build common global flags from preferences.
-     * Only includes flags that actually exist in croc v11.5.2 and v10.6.0.
+     * Only includes flags that actually exist in croc v11.5.4.2 and v10.6.0.
      */
     private fun buildGlobalFlags(prefs: UserPreferencesRepository.CrocPreferences): List<String> {
         // When a proxy is configured (SOCKS5 or HTTP CONNECT), do not pre-resolve the relay

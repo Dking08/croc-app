@@ -47,6 +47,22 @@ func updateCommand(c *internalcli.Context) error {
 	if c.Bool("register-installer") {
 		return registerInstallerTarget()
 	}
+	// Package-owned paths must remain protected even with a stale standalone
+	// registration, and should not need network access to explain how to update.
+	if !c.Bool("check") {
+		target, err := runningExecutable()
+		if err != nil {
+			return fmt.Errorf("locate running croc executable: %w", err)
+		}
+		if packageManagedLocation(target) {
+			writer := io.Writer(os.Stdout)
+			if c.App != nil && c.App.Writer != nil {
+				writer = c.App.Writer
+			}
+			_, _ = fmt.Fprintln(writer, updateGuidance(target))
+			return nil
+		}
+	}
 	if _, ok := parseReleaseVersion(Version); !ok {
 		return fmt.Errorf("cannot update development build %q; install a stable croc release first", Version)
 	}
@@ -170,6 +186,9 @@ func registerInstallerTarget() error {
 	if err != nil {
 		return err
 	}
+	if packageManagedLocation(target) {
+		return errors.New("cannot register a package-managed executable for standalone updates")
+	}
 	path, err := installManifestPath(true)
 	if err != nil {
 		return err
@@ -186,6 +205,9 @@ func registerInstallerTarget() error {
 }
 
 func registeredWritableTarget(target string) (bool, string) {
+	if packageManagedLocation(target) {
+		return false, "This executable is installed in a package-managed location."
+	}
 	if runtime.GOOS == "windows" {
 		return false, "This platform cannot safely replace the running executable in place."
 	}
@@ -223,6 +245,14 @@ func registeredWritableTarget(target string) (bool, string) {
 	return true, ""
 }
 
+func packageManagedLocation(target string) bool {
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	target = filepath.Clean(target)
+	return target == "/usr/bin/croc" || target == "/bin/croc" || strings.HasPrefix(target, "/nix/store/")
+}
+
 func updateGuidance(target string) string {
 	normalized := filepath.ToSlash(strings.ToLower(target))
 	switch {
@@ -242,8 +272,8 @@ func updateGuidance(target string) string {
 		return "Upgrade with Termux pkg: pkg upgrade croc"
 	case runtime.GOOS == "freebsd" && normalized == "/usr/local/bin/croc":
 		return "Upgrade with FreeBSD pkg: pkg upgrade croc (or rerun the official installer if it owns this file)"
-	case normalized == "/usr/bin/croc":
-		return "Upgrade croc with the system package manager that installed it (for example apt, pacman, apk, or pkg)."
+	case normalized == "/usr/bin/croc" || normalized == "/bin/croc":
+		return "Upgrade croc with the system package manager that installed it (for example apt, dnf, zypper, pacman, or apk)."
 	case strings.HasSuffix(normalized, "/go/bin/croc"):
 		return "Upgrade the Go installation: go install github.com/schollz/croc/v11@latest"
 	case runtime.GOOS == "windows":
@@ -259,7 +289,14 @@ func shellQuote(value string) string {
 }
 
 func applyStandaloneUpdate(ctx context.Context, target, version string, client *http.Client) error {
-	asset, err := updateAssetName(version)
+	return applyStandaloneUpdateWithAssetName(ctx, target, version, client, updateAssetName)
+}
+
+func applyStandaloneUpdateWithAssetName(ctx context.Context, target, version string, client *http.Client, assetName func(string) (string, error)) error {
+	if packageManagedLocation(target) {
+		return errors.New("refusing to replace a package-managed executable")
+	}
+	asset, err := assetName(version)
 	if err != nil {
 		return err
 	}
@@ -426,6 +463,20 @@ func extractUpdateBinary(asset string, archive []byte, destination io.Writer) er
 }
 
 func updateAssetName(version string) (string, error) {
+	var goarm string
+	if runtime.GOARCH == "arm" {
+		if buildInfo, ok := debug.ReadBuildInfo(); ok {
+			for _, setting := range buildInfo.Settings {
+				if setting.Key == "GOARM" {
+					goarm = setting.Value
+				}
+			}
+		}
+	}
+	return updateAssetNameForPlatform(version, runtime.GOOS, runtime.GOARCH, goarm)
+}
+
+func updateAssetNameForPlatform(version, goos, goarch, goarm string) (string, error) {
 	if parsed, ok := parseReleaseVersion(version); !ok || parsed.String() != version {
 		return "", fmt.Errorf("invalid croc update version %q", version)
 	}
@@ -438,27 +489,23 @@ func updateAssetName(version string) (string, error) {
 		"netbsd":    {"386": true, "amd64": true, "arm64": true},
 		"openbsd":   {"amd64": true, "arm64": true},
 	}
-	if !supported[runtime.GOOS][runtime.GOARCH] {
-		return "", fmt.Errorf("croc releases do not contain an update for %s/%s", runtime.GOOS, runtime.GOARCH)
+	if !supported[goos][goarch] {
+		return "", fmt.Errorf("croc releases do not contain an update for %s/%s", goos, goarch)
 	}
 	arch := map[string]string{
 		"amd64":   "64bit",
 		"386":     "32bit",
 		"arm64":   "ARM64",
 		"riscv64": "RISCV64",
-	}[runtime.GOARCH]
-	if runtime.GOARCH == "arm" {
+	}[goarch]
+	if goarch == "arm" {
 		arch = "ARM"
-		if buildInfo, ok := debug.ReadBuildInfo(); ok {
-			for _, setting := range buildInfo.Settings {
-				if setting.Key == "GOARM" && strings.HasPrefix(setting.Value, "5") {
-					arch = "ARMv5"
-				}
-			}
+		if strings.HasPrefix(goarm, "5") {
+			arch = "ARMv5"
 		}
 	}
 	if arch == "" {
-		return "", fmt.Errorf("croc releases do not contain an update for %s/%s", runtime.GOOS, runtime.GOARCH)
+		return "", fmt.Errorf("croc releases do not contain an update for %s/%s", goos, goarch)
 	}
 	osName := map[string]string{
 		"darwin":    "macOS",
@@ -468,12 +515,12 @@ func updateAssetName(version string) (string, error) {
 		"openbsd":   "OpenBSD",
 		"netbsd":    "NetBSD",
 		"dragonfly": "DragonFlyBSD",
-	}[runtime.GOOS]
+	}[goos]
 	if osName == "" {
-		return "", fmt.Errorf("croc releases do not contain an update for %s/%s", runtime.GOOS, runtime.GOARCH)
+		return "", fmt.Errorf("croc releases do not contain an update for %s/%s", goos, goarch)
 	}
 	extension := ".tar.gz"
-	if runtime.GOOS == "windows" {
+	if goos == "windows" {
 		extension = ".zip"
 	}
 	return fmt.Sprintf("croc_v%s_%s-%s%s", version, osName, arch, extension), nil

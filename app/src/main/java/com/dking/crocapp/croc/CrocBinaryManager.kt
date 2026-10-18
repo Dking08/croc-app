@@ -52,11 +52,11 @@ class CrocBinaryManager(private val context: Context) {
     companion object {
         private const val TAG = "CrocBinaryManager"
         private const val BINARY_NAME = "croc"
-        private const val BINARY_VERSION = "11.5.2"
+        private const val BINARY_VERSION = "11.5.4"
         private const val DOWNLOAD_URL =
-            "https://github.com/schollz/croc/releases/download/v11.5.2/croc_v11.5.2_Linux-ARM64.tar.gz"
+            "https://github.com/schollz/croc/releases/download/v11.5.4/croc_v11.5.4_Linux-ARM64.tar.gz"
         private const val CURRENT_SHA256 =
-            "fdfcf43db90c677a6c730b6167f847e629ec65bd8ba8ee413b2ddb4a9a27998b"
+            "532646fdc82e51b524aa99fa52024e8d9ddf8b67622f574b5ae7943dc9ffce55"
 
         private const val LEGACY_BINARY_NAME = "croc_legacy"
         private const val LEGACY_BINARY_VERSION = "10.6.0"
