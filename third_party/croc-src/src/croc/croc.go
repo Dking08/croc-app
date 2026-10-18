@@ -279,6 +279,10 @@ type Client struct {
 	finishedNum              int
 	numberOfTransferredFiles int
 	numberOfUnchangedFiles   int
+	// filesWrittenByReceiver tracks destination indexes this session opened
+	// or created. --stdout cleanup must not remove a skipped or unchanged file:
+	// FilesToTransferCurrentNum stays at zero when nothing was written.
+	filesWrittenByReceiver   map[int]struct{}
 	preparedHashAlgorithm    string
 	sourceSnapshots          []os.FileInfo
 	remainingPreparationOnce sync.Once
@@ -327,6 +331,10 @@ type FileInfo struct {
 	TempFile     bool        `json:"tf,omitempty"`
 	IsIgnored    bool        `json:"ig,omitempty"`
 	Prepared     bool        `json:"p,omitempty"`
+
+	// declined is set on the receiver when the user refuses to overwrite
+	// or resume the file, so nothing was written for it.
+	declined bool
 }
 
 // RemoteFileRequest requests specific bytes
@@ -363,7 +371,7 @@ const (
 	implicitTailcatReadyFeature = "implicit-tailcat-ready-v1"
 	selectedTransportUnset      = 0
 	selectedTransportRelay      = 2
-	localProbeResponseTimeout   = 2500 * time.Millisecond
+	localProbeResponseTimeout   = 500 * time.Millisecond
 	// Keep in sync with web/src/protocol/types.ts maxTextTransferBytes.
 	maxTextTransferBytes = 1 << 20
 )
@@ -1581,17 +1589,6 @@ func (c *Client) senderWaitForHandshake(conn *comm.Comm) error {
 			}
 		} else if dataMessage.Kind == "pake1" {
 			log.Trace("got pake1")
-			if c.Options.DisableLocal {
-				log.Trace("local probe disabled, declining pake1")
-				dataMessage.Kind = "no-local"
-				dataMessage.Bytes = nil
-				dataMessage.Bytes2 = nil
-				data, _ = json.Marshal(dataMessage)
-				if sendErr := conn.Send(data); sendErr != nil {
-					return sendErr
-				}
-				continue
-			}
 			if dataMessage.Version != pakekey.ProtocolVersion {
 				return incompatiblePakeVersionError{got: dataMessage.Version}
 			}
@@ -2101,10 +2098,6 @@ func (c *Client) Receive() (err error) {
 				return
 			}
 			err = json.Unmarshal(data, &dataMessage)
-			if dataMessage.Kind == "no-local" {
-				log.Debug("peer declined local probe (local transfers disabled)")
-				return fmt.Errorf("peer declined local probe")
-			}
 			if err != nil || dataMessage.Kind != "pake2" {
 				log.Debugf("received invalid local PAKE response (%d bytes)", len(data))
 				return fmt.Errorf("dataMessage %s pake failed", ipRequest)
@@ -2343,7 +2336,7 @@ func (c *Client) transfer() (err error) {
 		}
 	}
 
-	if c.Options.Stdout && !c.Options.IsSender && len(c.FilesToTransfer) > 0 && c.FilesToTransferCurrentNum < len(c.FilesToTransfer) {
+	if c.Options.Stdout && !c.Options.IsSender && c.receiverWroteFile(c.FilesToTransferCurrentNum) {
 		pathToFile := path.Join(
 			c.FilesToTransfer[c.FilesToTransferCurrentNum].FolderRemote,
 			c.FilesToTransfer[c.FilesToTransferCurrentNum].Name,
@@ -2391,7 +2384,7 @@ func (c *Client) extractReceivedArchives() error {
 		return err
 	}
 	for _, file := range c.FilesToTransfer {
-		if !file.TempFile {
+		if !file.TempFile || file.declined {
 			continue
 		}
 		_, archivePath, pathErr := normalizeReceiveFilePath(file.FolderRemote, file.Name)
@@ -2475,9 +2468,19 @@ func (c *Client) processSenderInfo(senderInfo SenderInfo) (done bool, err error)
 	}
 	c.nextReconnectRoom = senderInfo.NextReconnectRoom
 	c.TotalNumberFolders = senderInfo.TotalNumberFolders
+	// a reconnect offers the file list again, keep what the user already declined
+	declined := make(map[string]bool)
+	for _, fi := range c.FilesToTransfer {
+		if fi.declined {
+			declined[path.Join(fi.FolderRemote, fi.Name)] = true
+		}
+	}
 	c.FilesToTransfer, c.EmptyFoldersToTransfer, err = validateReceiveMetadata(senderInfo.FilesToTransfer, senderInfo.EmptyFoldersToTransfer)
 	if err != nil {
 		return true, err
+	}
+	for i, fi := range c.FilesToTransfer {
+		c.FilesToTransfer[i].declined = declined[path.Join(fi.FolderRemote, fi.Name)]
 	}
 	if err = validateSendingTextOffer(senderInfo.SendingText, c.FilesToTransfer, c.EmptyFoldersToTransfer, c.TotalNumberFolders); err != nil {
 		return true, err
@@ -2929,26 +2932,9 @@ func (c *Client) processExternalIP(m message.Message) (done bool, err error) {
 	return
 }
 
-func isStaleControlFrame(payload []byte) bool {
-	if bytes.Equal(payload, ipRequest) || bytes.Equal(payload, handshakeRequest) {
-		return true
-	}
-	var sm SimpleMessage
-	if err := json.Unmarshal(payload, &sm); err == nil {
-		if sm.Kind == "pake1" || sm.Kind == "pake2" || sm.Kind == "no-local" {
-			return true
-		}
-	}
-	return false
-}
-
 func (c *Client) processMessage(payload []byte, attempt *transferAttemptState) (done bool, err error) {
 	m, err := message.Decode(c.Key, payload)
 	if err != nil {
-		if c.Key == nil && isStaleControlFrame(payload) {
-			log.Debug("discarding stale pre-transfer control frame")
-			return false, nil
-		}
 		err = fmt.Errorf("problem with decoding: %w", err)
 		log.Debug(err)
 		return
@@ -3203,6 +3189,7 @@ func (c *Client) recipientInitializeFile() (err error) {
 			return err
 		}
 	}
+	c.markFileWrittenByReceiver(c.FilesToTransferCurrentNum)
 	return
 }
 
@@ -3324,7 +3311,23 @@ func (c *Client) createEmptyFileAndFinish(fileInfo FileInfo, i int) (err error) 
 	}
 	c.setProgressBar(c.newProgressBar(1, formatDescription(description), 0))
 	c.finishProgress()
+	c.markFileWrittenByReceiver(i)
 	return
+}
+
+func (c *Client) markFileWrittenByReceiver(index int) {
+	if c.filesWrittenByReceiver == nil {
+		c.filesWrittenByReceiver = make(map[int]struct{})
+	}
+	c.filesWrittenByReceiver[index] = struct{}{}
+}
+
+func (c *Client) receiverWroteFile(index int) bool {
+	if index < 0 || index >= len(c.FilesToTransfer) {
+		return false
+	}
+	_, wrote := c.filesWrittenByReceiver[index]
+	return wrote
 }
 
 var receiveFileHash = utils.HashFileCtx
@@ -3396,7 +3399,7 @@ func (c *Client) updateIfRecipientHasFileInfo() (err error) {
 		if _, ok := c.FilesHasFinished[i]; ok {
 			continue
 		}
-		if i < c.FilesToTransferCurrentNum {
+		if i < c.FilesToTransferCurrentNum || fileInfo.declined {
 			continue
 		}
 		if c.progressiveHashActive() && !fileInfo.Prepared {
@@ -3444,7 +3447,7 @@ func (c *Client) updateIfRecipientHasFileInfo() (err error) {
 			log.Debugf("hashes are not equal %x != %x", fileHash, fileInfo.Hash)
 			// The croc-stdin- exemption is reserved for validated text transfers,
 			// whose destination names are generated by the receiver.
-			isTextArtifact := c.Options.SendingText && strings.HasPrefix(filepath.Base(fileInfo.Name), "croc-stdin-")
+			isTextArtifact := c.Options.SendingText && strings.HasPrefix(path.Base(fileInfo.Name), "croc-stdin-")
 			if destinationExists && !isTextArtifact && c.Options.Rename {
 				newName := utils.UnusedFilename(fileInfo.FolderRemote, fileInfo.Name)
 				output, colorEnabled := termui.Output(os.Stderr)
@@ -3460,6 +3463,7 @@ func (c *Client) updateIfRecipientHasFileInfo() (err error) {
 					return promptErr
 				}
 				if !overwrite {
+					c.FilesToTransfer[i].declined = true
 					continue
 				}
 			}

@@ -14,7 +14,9 @@ Supporting organizations:
 </p>
 <p align="center">
 <a href="https://sx.org/c/CROC">
-<img width="728" height="90" alt="CROC_728х90" src="https://github.com/user-attachments/assets/04553f49-3e4e-467b-91c3-e869750118a2" />
+<img width="600"  alt="CROC_728х90" src="https://github.com/user-attachments/assets/04553f49-3e4e-467b-91c3-e869750118a2" />
+<a href="https://www.rapidproxy.io/?ref=croc">
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/1efc8f9a-afae-4f21-87b9-1599b09f1bd5" />
 </a>
 </p>
 
@@ -108,21 +110,53 @@ environment.systemPackages = [
 
 ### On Alpine Linux
 
-First, install dependencies:
+Enable the community repository for your Alpine release, then install:
 
 ```bash
-apk add bash coreutils
-wget -qO- https://getcroc.com | bash
+apk add croc
 ```
 
-### On Debian
+Check the [Alpine package index](https://pkgs.alpinelinux.org/packages?name=croc)
+for your branch's version. Stable branches can carry older releases; see the
+[distribution status](packaging/distributions/status.md) before selecting one.
 
-Install from the pkg.haus APT archive:
+### On Debian and Ubuntu
+
+The [pkg.haus archive](https://pkg.haus/) provides third-party Debian packages.
+Follow its repository setup and supported-release instructions before running:
 
 ```bash
-# Add the repository (see https://pkg.haus for setup instructions)
 sudo apt install croc
 ```
+
+For a release that includes upstream `.deb` downloads, download the file matching
+`dpkg --print-architecture` from the [release page](https://github.com/schollz/croc/releases).
+Replace `VERSION` and `ARCH` below with the downloaded filename:
+
+```bash
+sudo apt install ./croc_VERSION-1_ARCH.deb
+```
+
+This downloaded-package method also applies to older Debian and Ubuntu releases
+that do not provide croc in their configured repositories. It does not add an APT
+repository; download a newer package to upgrade it.
+
+### On Fedora and openSUSE
+
+For a release that includes upstream `.rpm` downloads, choose the file matching
+`rpm --eval '%{_arch}'` from the [release page](https://github.com/schollz/croc/releases).
+Replace `VERSION` and `ARCH` with the downloaded filename:
+
+```bash
+sudo dnf install ./croc-VERSION-1.ARCH.rpm
+# On openSUSE:
+sudo zypper install ./croc-VERSION-1.ARCH.rpm
+```
+
+These downloads install the CLI, manual, license notices, and shell completions.
+They require `ca-certificates` and start no background services. Upgrade them
+through the package manager; `croc update` leaves package-owned binaries intact.
+See [Linux packaging](packaging/README.md) for architectures and verification.
 
 ### On Arch Linux
 
@@ -419,6 +453,10 @@ the native CLI flag does not configure the browser.
 
 <p align="center">
   <strong>Sponsored by <a href="https://sx.org/en/proxy/">SX.org</a>.</strong>
+</p>
+
+<p align="center">
+  <strong>Sponsored by <a href="https://www.rapidproxy.io/?ref=croc">RapidProxy</a>.</strong>
 </p>
 
 ### Data transport selection
