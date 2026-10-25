@@ -850,7 +850,7 @@ type Endpoint interface {
 	// protocol-specific and is primarily used for diagnostics.
 	State() uint32
 
-	// ModerateRecvBuf should be called everytime data is copied to the user
+	// ModerateRecvBuf should be called every time data is copied to the user
 	// space. This allows for dynamic tuning of recv buffer space for a
 	// given socket.
 	//
@@ -1066,6 +1066,16 @@ type DefaultTTLOption uint8
 func (*DefaultTTLOption) isGettableNetworkProtocolOption() {}
 
 func (*DefaultTTLOption) isSettableNetworkProtocolOption() {}
+
+// AllowExternalLoopbackTrafficOption enables or disables acceptance of martian
+// loopback packets (packets with a loopback source or destination address
+// arriving on a non-loopback NIC). It mirrors Linux's
+// net.ipv4.conf.*.route_localnet.
+type AllowExternalLoopbackTrafficOption bool
+
+func (*AllowExternalLoopbackTrafficOption) isGettableNetworkProtocolOption() {}
+
+func (*AllowExternalLoopbackTrafficOption) isSettableNetworkProtocolOption() {}
 
 // GettableTransportProtocolOption is a marker interface for transport protocol
 // options that may be queried.

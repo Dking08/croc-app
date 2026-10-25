@@ -384,7 +384,7 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation, endpoint 
 	}
 
 	peer := device.LookupPeer(peerPK)
-	if peer == nil || !peer.isRunning.Load() {
+	if peer == nil || !peer.runningState.isRunning.Load() {
 		return nil
 	}
 

@@ -1,20 +1,22 @@
-// Copyright (c) 2025 Karl Gaissmaier
+// Copyright (c) 2026 Karl Gaissmaier
 // SPDX-License-Identifier: MIT
 
 // Package bart provides high-performance Balanced Routing Tables (BART)
-// for fastest IP-to-CIDR lookups on IPv4 and IPv6 addresses.
+// for fast IP-to-CIDR lookups on IPv4 and IPv6 addresses.
 //
 // BART offers three table variants optimized for different use cases:
 //
 //   - Lite:  Memory-optimized with popcount-compressed sparse arrays
 //   - Table: Full-featured with popcount-compressed sparse arrays
-//   - Fast:  Speed-optimized with fixed-size 256-element arrays
+//   - Fast:  Speed-optimized with additional rank caching
 //
 // The implementation is based on Knuth's ART algorithm with novel
 // optimizations for memory efficiency and lookup speed.
 //
 // `Table` and `Lite` use popcount compression for memory efficiency, while
-// `Fast` trades memory for maximum lookup speed with uncompressed arrays.
+// `Fast` trades additional memory and slower updates for maximum lookup
+// speed: a child-rank cache is maintained on every insert/delete, so
+// lookups avoid popcount but updates pay the caching cost.
 //
 // BART excels at efficient set operations on routing tables including Union,
 // Overlaps, Equal, Subnets, and Supernets with optimal complexity, making it
@@ -35,6 +37,11 @@
 //
 // The bart package detects the interface satisfaction automatically at
 // runtime using type assertions.
+//
+// Input Preconditions:
+//
+// Zoned IP addresses have no effect on lookup results; zone identifiers
+// are unconditionally stripped during lookup.
 package bart
 
 import (

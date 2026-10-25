@@ -101,7 +101,7 @@ func (tun *NativeTun) routineRouteListener(tunIfindex int) {
 	}
 }
 
-func CreateTUN(name string, mtu int) (Device, error) {
+func CreateTUN(name string, mtu int, _ ...Option) (Device, error) {
 	ifIndex := -1
 	if name != "tun" {
 		_, err := fmt.Sscanf(name, "tun%d", &ifIndex)
@@ -138,6 +138,10 @@ func CreateTUN(name string, mtu int) (Device, error) {
 	}
 
 	return tun, err
+}
+
+func CreateTUNFromFiles(files []*os.File, mtu int) (Device, error) {
+	return createTUNFromFilesNoMQ(files, mtu)
 }
 
 func CreateTUNFromFile(file *os.File, mtu int) (Device, error) {
@@ -204,17 +208,18 @@ func (tun *NativeTun) Events() <-chan Event {
 	return tun.events
 }
 
-func (tun *NativeTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+func (tun *NativeTun) Read(slab []byte, packets []ReadPacket) (int, error) {
 	select {
 	case err := <-tun.errors:
 		return 0, err
 	default:
-		buf := bufs[0][offset-4:]
+		buf := slab[ReadPacketSpacing-4 : len(slab)-ReadPacketSpacing]
 		n, err := tun.tunFile.Read(buf[:])
 		if n < 4 {
 			return 0, err
 		}
-		sizes[0] = n - 4
+		packets[0].Offset = ReadPacketSpacing
+		packets[0].Size = n - 4
 		return 1, err
 	}
 }

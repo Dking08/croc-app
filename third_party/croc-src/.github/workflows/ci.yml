@@ -9,6 +9,9 @@ on:
     paths-ignore:
       - '**/*.md'
   workflow_dispatch:
+permissions:
+  contents: read
+
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -25,11 +28,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: '^1.27.0'
+          go-version: '^1.27.1'
 
       - name: Test portable path, redaction, and PAKE primitives
         run: go test ./src/receivefs ./src/redact ./src/pakekey
@@ -41,7 +46,12 @@ jobs:
         run: go test ./src/storecrypto ./src/storeclient -run 'Test(ValidateManifest|Stored|Receive)'
 
       - name: Test relay admission regressions
-        run: go test ./src/tcp -run 'Test(AdmissionLimiter|RoomDenials|RelayAdmissionLimits|CanonicalSource|WithAdmissionLimits|ConnectToTCPServerControlContext)'
+        run: go test ./src/tcp -run 'Test(AdmissionLimiter|RoomDenials|RelayAdmissionLimits|CanonicalSource|WithAdmissionLimits|ConnectToTCPServerControlContext|PendingHandshake|FirstMessage|HandshakeOptions|EstablishedTransfer|ServerCancellation)'
+
+      - name: Test reserved relay listener lifecycle
+        run: |
+          go test ./src/tcp -run '^TestRunWithListener'
+          go test ./src/croc -run '^TestLocalRelay(Reservation|Startup)'
 
       - name: Test SSH sharing protocol and lifecycle regressions
         run: |
@@ -58,20 +68,27 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: '^1.27.0'
+          go-version: '^1.27.1'
 
       - name: Race-test root-scoped and stored writes
-        run: go test -race ./src/receivefs ./src/redact ./src/storecrypto ./src/storeclient
+        run: go test -race ./src/receivefs ./src/redact ./src/storecrypto ./src/storeclient ./src/store ./src/webcli ./src/webrelay
 
       - name: Race-test archive and marked-file regressions
         run: go test -race ./src/utils -run 'Test(UnzipDirectory|RemoveMarkedFiles)'
 
       - name: Race-test relay admission
-        run: go test -race ./src/tcp -run 'Test(AdmissionLimiter|RoomDenials|RelayAdmissionLimits|CanonicalSource|WithAdmissionLimits|ConnectToTCPServerControlContext)'
+        run: go test -race ./src/tcp -run 'Test(AdmissionLimiter|RoomDenials|RelayAdmissionLimits|CanonicalSource|WithAdmissionLimits|ConnectToTCPServerControlContext|PendingHandshake|FirstMessage|HandshakeOptions|EstablishedTransfer|ServerCancellation)'
+
+      - name: Race-test reserved relay listener lifecycle
+        run: |
+          go test -race ./src/tcp -run '^TestRunWithListener'
+          go test -race ./src/croc -run '^TestLocalRelay(Reservation|Startup)'
 
       - name: Race-test SSH sharing protocol and lifecycle
         run: |
@@ -82,7 +99,7 @@ jobs:
       - name: Race-test Croc and Tailcat transport lifecycle
         run: |
           go test -race ./src/logger ./src/tailcattransport
-          go test -race ./internal/tailcat -run 'HalfClose|ConnBlob|FetchDERPMapMemoryCache|Wire'
+          go test -race ./internal/tailcat -run 'HalfClose|ConnBlob|FetchDERPMapMemoryCache|Wire|ExpandWideDERPRegion|PeerConfig'
           go test -race ./src/croc -run 'Tailcat|Staged|Transport'
 
   security-fuzz-smoke:
@@ -91,11 +108,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: '^1.27.0'
+          go-version: '^1.27.1'
 
       - name: Fuzz portable path normalization
         run: go test ./src/receivefs -run '^$' -fuzz '^FuzzNormalize$' -fuzztime 10s
@@ -112,11 +131,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: '^1.27.0'
+          go-version: '^1.27.1'
 
       - name: Check go fix
         run: |

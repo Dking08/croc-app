@@ -1,9 +1,9 @@
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/gaissmai/bart)
 [![Go Reference](https://pkg.go.dev/badge/github.com/gaissmai/bart.svg)](https://pkg.go.dev/github.com/gaissmai/bart#section-documentation)
+[![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/gaissmai/bart)](https://coderabbit.ai)
 [![Mentioned in Awesome Go](https://awesome.re/mentioned-badge-flat.svg)](https://github.com/avelino/awesome-go)
 [![CI](https://github.com/gaissmai/bart/actions/workflows/go.yml/badge.svg)](https://github.com/gaissmai/bart/actions/workflows/go.yml)
 [![Coverage Status](https://coveralls.io/repos/github/gaissmai/bart/badge.svg)](https://coveralls.io/github/gaissmai/bart)
-[![Go Report Card](https://goreportcard.com/badge/github.com/gaissmai/bart)](https://goreportcard.com/report/github.com/gaissmai/bart)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
 
@@ -38,12 +38,8 @@ sparse arrays for **level compression**.
 Combined with a **novel path and fringe compression**, this design reduces
 memory consumption by nearly two orders of magnitude compared to classical ART.
 
-For **bart.Fast** this binary tree is represented with fixed arrays
-without level compression (classical ART), but combined with the same
-novel **path and fringe compression** from BART. This design
-reduces memory consumption by more than an order of magnitude compared
-to classical ART and thus makes ART usable in the first place for large
-routing tables.
+For **bart.Fast**, an additional 256 bytes per node are used to
+achieve faster level traversal in the multibit trie.
 
 **bart.Lite** is a special form of **bart.Table**, but without a payload, and therefore
 has the lowest memory overhead while maintaining the same lookup times.
@@ -110,12 +106,13 @@ func main() {
  
  | Aspect | Table | Lite | Fast |
  |--------|-------------|-------------|-------------|
- | **Per-level Speed** | ⚡ **O(1)** | ⚡ **O(1)** | 🚀 **O(1), 50-100% faster** |
+ | **Per-level Speed** | ⚡ **O(1)** | ⚡ **O(1)** | 🚀 **O(1), ~25% faster** |
  | **Overall Lookup** | O(trie_depth) | O(trie_depth) | O(trie_depth) |
  | **IPv4 Performance** | ~3 level traversals | ~3 level traversals | ~3 level traversals |
  | **IPv6 Performance** | ~6 level traversals | ~6 level traversals | ~6 level traversals |
  | **IPv6 vs IPv4** | ~2× slower | ~2× slower | ~2× slower |
- | **Memory** | efficient | very efficient | inefficient |
+ | **Memory** | efficient | very efficient | less efficient |
+ | **Update** | very fast | best | fast |
 
 A more detailed description can be found in [NODETYPES.md](NODETYPES.md).
 
@@ -124,15 +121,18 @@ A more detailed description can be found in [NODETYPES.md](NODETYPES.md).
 ### 🎯 **bart.Table[V]** - The Balanced Choice                                                                        
 - **Recommended** for most routing table use cases
 - Near-optimal per-level performance with excellent memory efficiency
+- Very fast updates (insert/delete)
 - Perfect balance for both IPv4 and IPv6 routing tables (use it for RIB)
  
 ### 🪶 **bart.Lite** - The Minimalist
 - **Specialized** for prefix-only operations, no payload
-- Same per-level performance as *bart.Table[V]* but 35% less memory
+- Same per-level performance as *bart.Table[V]* but ~35% less memory
+- Optimal updates (insert/delete), ~25% faster than *bart.Table[V]*
 - Ideal for IPv4/IPv6 allowlists and set-based operations (use it for ACL)
  
-### 🚀 **bart.Fast[V]** - The Performance Champion
-- **50-100% faster** when memory constraints allow
+### 🚀 **bart.Fast[V]** - The Lookup Performance Champion
+- **~25% faster** when memory constraints allow
+- Fast updates (insert/delete), ~50% slower than *bart.Table[V]*
 - Best choice for lookup-intensive applications (use it for FIB)
 
 ## Bitset Efficiency
@@ -145,24 +145,23 @@ For maximum performance, specify the CPU feature set when compiling.
 See the [Go minimum requirements](https://go.dev/wiki/MinimumRequirements#architectures) for details.
 
 ```bash
-# On ARM64, Go auto-selects CPU instructions.
 # Example for AMD64, choose v2/v3/v4 to match your CPU features.
 GOAMD64=v3 go build
+
+# On ARM64, Go auto-selects CPU instructions.
+
 ```
 Critical loops over these fixed-size bitsets can be unrolled for additional speed,
 ensuring predictable memory access and efficient use of CPU pipelines.
 
 ```go
 func (b *BitSet256) popcnt() (cnt int) {
-  cnt += bits.OnesCount64(b[0])
-  cnt += bits.OnesCount64(b[1])
-  cnt += bits.OnesCount64(b[2])
-  cnt += bits.OnesCount64(b[3])
-  return
+  return bits.OnesCount64(b[0]) +
+      bits.OnesCount64(b[1]) +
+      bits.OnesCount64(b[2]) +
+      bits.OnesCount64(b[3])
 }
 ```
-Future Go versions with SIMD intrinsics for `uint64` vectors may unlock
-additional speedups on compatible hardware.
 
 ## Concurrency model
 
@@ -192,11 +191,11 @@ heap allocations on a modern CPU.
 ## API
 
 BART has a rich API for CRUD, lookup, comparison, iteration,
-serialization and persistence. 
+serialization and persistence.
 
-**Table** and **Fast** expose the identical API, while **Lite** deviates in
-its methods from the common API when it comes to the payload, since *Lite*
-has no payload.
+**Table** and **Fast** expose the identical API, while **Lite** deviates from
+the common API since it carries no payload. Additionally, **Lite** provides
+specialized methods like `Aggregate` to compact ACL prefixes in-place.
 
 ```go
 import "github.com/gaissmai/bart"
@@ -268,11 +267,13 @@ $ GOAMD64=v3 go test -run=xxx -bench=FullFastM/Lookup$ -cpu=1
 goos: linux
 goarch: amd64
 pkg: github.com/gaissmai/bart
-cpu: Intel(R) Core(TM) i5-8250U CPU @ 1.60GHz
-BenchmarkFullFastMatch4/Lookup           124476082          9.63 ns/op
-BenchmarkFullFastMatch6/Lookup           91032597          13.20 ns/op
-BenchmarkFullFastMiss4/Lookup            134171480          8.93 ns/op
-BenchmarkFullFastMiss6/Lookup            75634396          15.79 ns/op
+cpu: AMD Ryzen 7 PRO 4750U with Radeon Graphics
+BenchmarkFullFastMatch4/Lookup         	36917803	        31.57 ns/op
+BenchmarkFullFastMatch6/Lookup         	24484578	        48.67 ns/op
+BenchmarkFullFastMiss4/Lookup          	46067090	        24.90 ns/op
+BenchmarkFullFastMiss6/Lookup          	30606994	        38.88 ns/op
+PASS
+ok  	github.com/gaissmai/bart	6.466s
 ```
 
 ## Compatibility Guarantees

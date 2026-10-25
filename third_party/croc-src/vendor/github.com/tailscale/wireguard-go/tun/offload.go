@@ -2,6 +2,7 @@ package tun
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 )
 
@@ -73,15 +74,34 @@ const (
 	ipProtoUDP = 17
 )
 
-// GSOSplit splits packets from 'in' into outBufs[<index>][outOffset:], writing
-// the size of each element into sizes. It returns the number of buffers
-// populated, and/or an error. Callers may pass an 'in' slice that overlaps with
-// the first element of outBuffers, i.e. &in[0] may be equal to
-// &outBufs[0][outOffset]. GSONone is a valid options.GSOType regardless of the
-// value of options.NeedsCsum. Length of each outBufs element must be greater
-// than or equal to the length of 'in', otherwise output may be silently
-// truncated.
-func GSOSplit(in []byte, options GSOOptions, outBufs [][]byte, sizes []int, outOffset int) (int, error) {
+// GSOSplit splits 'in' according to options and writes the resulting segments
+// into slab. It populates packets with each packet's offset and size and returns
+// the number of populated entries.
+//
+// spacing bytes are reserved before the first packet, between adjacent packets,
+// and after the final packet.
+//
+// 'in' may overlap slab only when in begins at slab[spacing]. Overlapping input
+// is modified and must not be used after this call.
+//
+// If packets or slab cannot accommodate every segment, GSOSplit returns the
+// number successfully written together with [ErrTooManySegments]. packets[:n]
+// remains valid.
+func GSOSplit(in []byte, options GSOOptions, slab []byte, packets []ReadPacket, spacing int) (int, error) {
+	if spacing < 0 {
+		return 0, errors.New("spacing must be nonnegative")
+	}
+
+	// return early if instructed to split with no split size
+	if options.GSOType != GSONone && options.GSOSize == 0 {
+		return 0, fmt.Errorf("invalid GSOType (%v) with zero GSOSize", options.GSOType)
+	}
+
+	// return early if we can't fill a single packet
+	if len(packets) == 0 || spacing > len(slab)/2 {
+		return 0, ErrTooManySegments
+	}
+
 	cSumAt := int(options.CsumStart) + int(options.CsumOffset)
 	if cSumAt+1 >= len(in) {
 		return 0, fmt.Errorf("end of checksum offset (%d) exceeds packet length (%d)", cSumAt+1, len(in))
@@ -91,20 +111,34 @@ func GSOSplit(in []byte, options GSOOptions, outBufs [][]byte, sizes []int, outO
 		return 0, fmt.Errorf("length of packet (%d) < GSO HdrLen (%d)", len(in), options.HdrLen)
 	}
 
-	// Handle the conditions where we are copying a single element to outBuffs.
+	// Handle the conditions where we are copying a single element to slab.
 	payloadLen := len(in) - int(options.HdrLen)
 	if options.GSOType == GSONone || payloadLen < int(options.GSOSize) {
-		if len(in) > len(outBufs[0][outOffset:]) {
-			return 0, fmt.Errorf("length of packet (%d) exceeds output element length (%d)", len(in), len(outBufs[0][outOffset:]))
+		// trim spacing on both ends
+		output := slab[spacing : len(slab)-spacing]
+
+		if len(in) > len(output) {
+			return 0, ErrTooManySegments
 		}
+
+		// slice to packet size, so checksum computation below is correct
+		singleOut := output[:len(in)]
+
+		// Copy before checksum computation, so that we don't mutate 'in' if
+		// 'in' and 'slab' happen to be disjoint.
+		copy(singleOut, in)
+		packets[0] = ReadPacket{
+			Offset: spacing,
+			Size:   len(singleOut),
+		}
+
 		if options.NeedsCsum {
 			// The initial value at the checksum offset should be summed with
 			// the checksum we compute. This is typically the pseudo-header sum.
-			initial := binary.BigEndian.Uint16(in[cSumAt:])
-			in[cSumAt], in[cSumAt+1] = 0, 0
-			binary.BigEndian.PutUint16(in[cSumAt:], ^Checksum(in[options.CsumStart:], initial))
+			initial := binary.BigEndian.Uint16(singleOut[cSumAt:])
+			singleOut[cSumAt], singleOut[cSumAt+1] = 0, 0
+			binary.BigEndian.PutUint16(singleOut[cSumAt:], ^Checksum(singleOut[options.CsumStart:], initial))
 		}
-		sizes[0] = copy(outBufs[0][outOffset:], in)
 		return 1, nil
 	}
 
@@ -132,6 +166,62 @@ func GSOSplit(in []byte, options GSOOptions, outBufs [][]byte, sizes []int, outO
 		return 0, fmt.Errorf("invalid ip header version: %d", ipVersion)
 	}
 
+	// Calculate how many segments fit in slab. I found it helpful to mentally
+	// model the slab as:
+	//
+	//	[leading spacing][packet][spacing][packet]...[spacing]
+	//
+	// If every packet were full-sized, after removing the leading spacing each
+	// packet consumes fullPacketSize+spacing bytes.
+	hdrLen := int(options.HdrLen)
+	gsoSize := int(options.GSOSize)
+	// equivalent to ceil(payloadLen / gsoSize), but overflow safe if payloadLen
+	// is close to bounds
+	totalOutSegments := payloadLen / gsoSize
+	if payloadLen%gsoSize != 0 {
+		totalOutSegments++
+	}
+	// how many full gso-sized segments would fit in slab
+	fullPacketSize := hdrLen + gsoSize
+	fullFit := (len(slab) - spacing) / (fullPacketSize + spacing)
+	// this min does not yet account for a smaller tail
+	n := min(totalOutSegments, len(packets), fullFit)
+
+	// Account for the potentially shorter final segment. The exact layout needs
+	// one header per segment, the original payload bytes, and N+1 spacing
+	// regions.
+	requiredBytesLen :=
+		totalOutSegments*hdrLen +
+			payloadLen +
+			(totalOutSegments+1)*spacing
+	if len(packets) >= totalOutSegments && requiredBytesLen <= len(slab) {
+		// n was previously calculated assuming totalOutSegments were all of
+		// gsoSize, but the tail segment may be smaller than gsoSize. If a
+		// smaller than gsoSize tail fits, we can bump n back to totalOutSegments,
+		// assuming packets is long enough.
+		n = totalOutSegments
+	}
+
+	// n is the number of leading segments that fit.
+	//
+	// Since input and output may overlap, split back-to-front. Splitting
+	// front-to-back could overwrite input before it is copied.
+	//
+	// H is the header; A, B, and C are payload segments.
+	//
+	//	Input:
+	//	[ H | A | B | C ]
+	//
+	//	Desired output:
+	//	[ H | A | gap | H | B | gap | H | C ]
+	//
+	//	Front-to-back could overwrite unread B/C:
+	//	[ H | A | gap | H ... ]
+	//	          └── overwrites remaining input ──┘
+	//
+	// For the same reason, copy each segment's payload before its headers.
+
+	// Identify IP addr offsets and length, transport protocol, and transport offsets.
 	iphLen := int(options.CsumStart)
 	srcAddrOffset := ipv6SrcAddrOffset
 	addrLen := 16
@@ -152,22 +242,61 @@ func GSOSplit(in []byte, options GSOOptions, outBufs [][]byte, sizes []int, outO
 	} else {
 		protocol = ipProtoUDP
 	}
-	nextSegmentDataAt := int(options.HdrLen)
-	i := 0
-	for ; nextSegmentDataAt < len(in); i++ {
-		if i == len(outBufs) {
-			return i - 1, ErrTooManySegments
-		}
-		nextSegmentEnd := nextSegmentDataAt + int(options.GSOSize)
-		if nextSegmentEnd > len(in) {
-			nextSegmentEnd = len(in)
-		}
-		segmentDataLen := nextSegmentEnd - nextSegmentDataAt
-		totalLen := int(options.HdrLen) + segmentDataLen
-		sizes[i] = totalLen
-		out := outBufs[i][outOffset:]
 
-		copy(out, in[:iphLen])
+	// The segment-writing loop indexes these fixed IP and transport header
+	// fields within out[:hdrLen]. Validate that each field fits before
+	// modifying slab.
+	csumStart := int(options.CsumStart)
+	csumAt := csumStart + int(options.CsumOffset)
+	if ipVersion == 4 {
+		if hdrLen < 20 {
+			return 0, fmt.Errorf("IPv4 header exceeds GSO header length %d", hdrLen)
+		}
+	} else {
+		if hdrLen < 40 {
+			return 0, fmt.Errorf("IPv6 header exceeds GSO header length %d", hdrLen)
+		}
+	}
+	if protocol == ipProtoTCP {
+		if hdrLen < csumStart+20 {
+			return 0, fmt.Errorf(
+				"TCP header at offset %d exceeds GSO header length %d",
+				csumStart, hdrLen,
+			)
+		}
+	} else {
+		if hdrLen < csumStart+8 {
+			return 0, fmt.Errorf(
+				"UDP header at offset %d exceeds GSO header length %d",
+				csumStart, hdrLen,
+			)
+		}
+	}
+	if hdrLen < csumAt+2 {
+		return 0, fmt.Errorf(
+			"checksum field at offset %d exceeds GSO header length %d",
+			csumAt, hdrLen,
+		)
+	}
+
+	// Split back-to-front
+	for i := n - 1; i >= 0; i-- {
+		// identify input and output offsets
+		payloadStart := hdrLen + (i * gsoSize)
+		payloadEnd := min(payloadStart+gsoSize, len(in))
+		payloadSize := payloadEnd - payloadStart
+		packetSize := hdrLen + payloadSize
+		outOffset := spacing + i*(fullPacketSize+spacing)
+		out := slab[outOffset : outOffset+packetSize]
+		packets[i] = ReadPacket{
+			Offset: outOffset,
+			Size:   packetSize,
+		}
+
+		// Copy payload first because in and out may overlap.
+		copy(out[hdrLen:], in[payloadStart:payloadEnd])
+		copy(out[:hdrLen], in[:hdrLen])
+
 		if ipVersion == 4 {
 			// For IPv4 we are responsible for incrementing the ID field,
 			// updating the total len field, and recalculating the header
@@ -177,44 +306,57 @@ func GSOSplit(in []byte, options GSOOptions, outBufs [][]byte, sizes []int, outO
 				id += uint16(i)
 				binary.BigEndian.PutUint16(out[4:], id)
 			}
-			out[10], out[11] = 0, 0 // clear ipv4 header checksum
-			binary.BigEndian.PutUint16(out[2:], uint16(totalLen))
-			ipv4CSum := ^Checksum(out[:iphLen], 0)
-			binary.BigEndian.PutUint16(out[10:], ipv4CSum)
+			// clear ipv4 header checksum
+			out[10], out[11] = 0, 0
+			// update total len
+			binary.BigEndian.PutUint16(out[2:], uint16(packetSize))
+			// compute & set updated checksum
+			binary.BigEndian.PutUint16(out[10:], ^Checksum(out[:iphLen], 0))
 		} else {
 			// For IPv6 we are responsible for updating the payload length field.
-			binary.BigEndian.PutUint16(out[4:], uint16(totalLen-iphLen))
+			binary.BigEndian.PutUint16(out[4:], uint16(packetSize-iphLen))
 		}
-
-		// copy transport header
-		copy(out[options.CsumStart:options.HdrLen], in[options.CsumStart:options.HdrLen])
 
 		if protocol == ipProtoTCP {
 			// set TCP seq and adjust TCP flags
-			tcpSeq := firstTCPSeqNum + uint32(options.GSOSize*uint16(i))
-			binary.BigEndian.PutUint32(out[options.CsumStart+4:], tcpSeq)
-			if nextSegmentEnd != len(in) {
-				// FIN and PSH should only be set on last segment
+			seq := firstTCPSeqNum + uint32(i*gsoSize)
+			binary.BigEndian.PutUint32(out[options.CsumStart+4:], seq)
+
+			if payloadEnd != len(in) {
+				// FIN and PSH should only be set on last segment. Last
+				// specifically means last input segment, not last output, which
+				// could be last fitting, but not last input.
 				clearFlags := tcpFlagFIN | tcpFlagPSH
 				out[options.CsumStart+tcpFlagsOffset] &^= clearFlags
 			}
 		} else {
 			// set UDP header len
-			binary.BigEndian.PutUint16(out[options.CsumStart+4:], uint16(segmentDataLen)+(options.HdrLen-options.CsumStart))
+			udpLen := uint16(payloadSize) + options.HdrLen - options.CsumStart
+			binary.BigEndian.PutUint16(out[options.CsumStart+4:], udpLen)
 		}
-
-		// payload
-		copy(out[options.HdrLen:], in[nextSegmentDataAt:nextSegmentEnd])
 
 		// transport checksum
 		out[transportCsumAt], out[transportCsumAt+1] = 0, 0 // clear tcp/udp checksum
 		transportHeaderLen := int(options.HdrLen - options.CsumStart)
-		lenForPseudo := uint16(transportHeaderLen + segmentDataLen)
-		transportCSum := PseudoHeaderChecksum(protocol, in[srcAddrOffset:srcAddrOffset+addrLen], in[srcAddrOffset+addrLen:srcAddrOffset+addrLen*2], lenForPseudo)
-		transportCSum = ^Checksum(out[options.CsumStart:totalLen], transportCSum)
-		binary.BigEndian.PutUint16(out[options.CsumStart+options.CsumOffset:], transportCSum)
-
-		nextSegmentDataAt += int(options.GSOSize)
+		pseudoLen := uint16(transportHeaderLen + payloadSize)
+		transportCSum := PseudoHeaderChecksum(
+			protocol,
+			in[srcAddrOffset:srcAddrOffset+addrLen],
+			in[srcAddrOffset+addrLen:srcAddrOffset+2*addrLen],
+			pseudoLen,
+		)
+		transportCSum = ^Checksum(
+			out[options.CsumStart:packetSize],
+			transportCSum,
+		)
+		binary.BigEndian.PutUint16(
+			out[options.CsumStart+options.CsumOffset:],
+			transportCSum,
+		)
 	}
-	return i, nil
+
+	if n < totalOutSegments {
+		return n, ErrTooManySegments
+	}
+	return n, nil
 }

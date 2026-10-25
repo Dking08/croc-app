@@ -2,8 +2,10 @@
 package nltest
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"os"
 
 	"github.com/mdlayher/netlink"
@@ -149,59 +151,99 @@ func (c *socket) Send(m netlink.Message) error {
 }
 
 func (c *socket) Receive() ([]netlink.Message, error) {
-	// No messages set by Send means that we are emulating a
-	// multicast response or an error occurred.
-	if len(c.msgs) == 0 {
-		switch c.err {
-		case nil:
-			// No error, simulate multicast, but also return EOF to simulate
-			// no replies if needed.
-			msgs, err := c.fn(nil)
-			if err == io.EOF {
-				err = nil
-			}
-
-			return msgs, err
-		case io.EOF:
-			// EOF, simulate no replies in multi-part message.
-			return nil, nil
+	var msgs []netlink.Message
+	for msg, err := range c.ReceiveIter() {
+		if err != nil {
+			return nil, err
 		}
-
-		// If the error is a system call error, wrap it in os.NewSyscallError
-		// to simulate what the Linux netlink.Conn does.
-		if isSyscallError(c.err) {
-			return nil, os.NewSyscallError("recvmsg", c.err)
-		}
-
-		// Some generic error occurred and should be passed to the caller.
-		return nil, c.err
+		msgs = append(msgs, msg)
 	}
 
-	// Detect multi-part messages.
-	var multi bool
-	for _, m := range c.msgs {
-		if m.Header.Flags&netlink.Multi != 0 && m.Header.Type != netlink.Done {
-			multi = true
-		}
-	}
-
-	// When a multi-part message is detected, return all messages except for the
-	// final "multi-part done", so that a second call to Receive from netlink.Conn
-	// will drain that message.
-	if multi {
-		last := c.msgs[len(c.msgs)-1]
-		ret := c.msgs[:len(c.msgs)-1]
-		c.msgs = []netlink.Message{last}
-
-		return ret, c.err
-	}
-
-	msgs, err := c.msgs, c.err
-	c.msgs, c.err = nil, nil
-
-	return msgs, err
+	return msgs, nil
 }
 
-func panicf(format string, a ...interface{}) {
+func (c *socket) ReceiveIter() iter.Seq2[netlink.Message, error] {
+	return func(yield func(netlink.Message, error) bool) {
+		// No messages set by Send means that we are emulating a
+		// multicast response or an error occurred.
+		if len(c.msgs) == 0 {
+			switch {
+			case c.err == nil:
+				msgs, err := c.fn(nil)
+				if errors.Is(err, io.EOF) {
+					return
+				}
+				if err != nil {
+					yield(netlink.Message{}, err)
+					return
+				}
+				for _, m := range msgs {
+					if !yield(m, nil) {
+						return
+					}
+				}
+				return
+			case errors.Is(c.err, io.EOF):
+				return
+			}
+
+			// If the error is a system call error, wrap it in os.NewSyscallError
+			// to simulate what the Linux netlink.Conn does.
+			if isSyscallError(c.err) {
+				err := c.err
+				c.err = nil
+				yield(netlink.Message{}, os.NewSyscallError("recvmsg", err))
+				return
+			}
+
+			// Some generic error occurred and should be passed to the caller.
+			err := c.err
+			c.err = nil
+			yield(netlink.Message{}, err)
+			return
+		}
+
+		// Detect multi-part messages.
+		var multi bool
+		for _, m := range c.msgs {
+			if m.Header.Flags&netlink.Multi != 0 && m.Header.Type != netlink.Done {
+				multi = true
+			}
+		}
+
+		// When a multi-part message is detected, the messages are returned in
+		// batches of half the total messages, so that multiple calls to Receive or
+		// ReceiveIter from netlink.Conn are needed to drain all messages.
+		if multi {
+			batchSize := (len(c.msgs) + 1) / 2
+			batch := c.msgs[:batchSize]
+			c.msgs = c.msgs[batchSize:]
+
+			for _, m := range batch {
+				if !yield(m, nil) {
+					return
+				}
+			}
+
+			return
+		}
+
+		msgs, err := c.msgs, c.err
+		c.msgs, c.err = nil, nil
+
+		if err != nil {
+			yield(netlink.Message{}, err)
+			return
+		}
+
+		for _, m := range msgs {
+			if !yield(m, nil) {
+				return
+			}
+		}
+	}
+}
+
+func panicf(format string, a ...any) {
 	panic(fmt.Sprintf(format, a...))
 }

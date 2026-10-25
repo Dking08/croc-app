@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Karl Gaissmaier
+// Copyright (c) 2026 Karl Gaissmaier
 // SPDX-License-Identifier: MIT
 
 // Package sparse provides a compact and efficient sparse array
@@ -51,12 +51,12 @@ type Array256[T any] struct {
 
 // Set panics. The bitset is internally coupled with Items[].
 // Use InsertAt to add or overwrite at index i.
-func (a *Array256[T]) Set(uint) {
+func (a *Array256[T]) Set(uint8) {
 	panic("forbidden, use InsertAt")
 }
 
 // Clear panics. The bitset is internally coupled with Items[].
-func (a *Array256[T]) Clear(uint) {
+func (a *Array256[T]) Clear(uint8) {
 	panic("forbidden, use DeleteAt")
 }
 
@@ -72,7 +72,7 @@ func (a *Array256[T]) Clear(uint) {
 //	                ⬆
 //
 //	BitSet256.Test(5):     true
-//	BitSet256.Rank(5):     2,
+//	BitSet256.Rank(5):     2
 func (a *Array256[T]) Get(i uint8) (value T, ok bool) {
 	if a.Test(i) {
 		return a.Items[a.Rank(i)-1], true
@@ -108,24 +108,37 @@ func (a *Array256[T]) Copy() *Array256[T] {
 	return c
 }
 
-// InsertAt adds the value to the index i. If a value already exists there,
-// it is overwritten and true is returned.
+// InsertAt inserts or overwrites the value at sparse index i.
 //
-// Otherwise, the value is inserted, the bit is marked, and false returned.
-func (a *Array256[T]) InsertAt(i uint8, value T) (exists bool) {
-	// slot exists, overwrite value
+// If the slot at i already exists, its value is overwritten in-place and
+// (rank0, true) is returned, where rank0 = Rank(i)-1 is the 0-based index
+// into Items[].
+//
+// If the slot is new, the bit for i is set, the value is inserted into Items[]
+// at the correct packed position, and (rank0, false) is returned.
+//
+// rank0 can be cached by the caller to directly access Items[rank0]
+// without a second Rank() call.
+func (a *Array256[T]) InsertAt(i uint8, value T) (rank0 int, exists bool) {
+
+	// slot exists, just overwrite value
 	if a.Test(i) {
-		a.Items[a.Rank(i)-1] = value
-		return true
+		rank0 = a.Rank(i) - 1
+		a.Items[rank0] = value
+		return rank0, true
 	}
+
+	// Since i is not set yet, Rank(i) before Set(i) is exactly
+	// the index where the new item should be inserted (equivalent to Rank(i)-1 after Set(i)).
+	rank0 = a.Rank(i)
 
 	// new, insert into bitset ...
 	a.BitSet256.Set(i)
 
-	// ... and slice
-	a.insertItem(a.Rank(i)-1, value)
+	// ... and insert value into slice
+	a.insertItem(rank0, value)
 
-	return false
+	return rank0, false
 }
 
 // DeleteAt removes the value at index i from the sparse array,
@@ -154,7 +167,7 @@ func (a *Array256[T]) DeleteAt(i uint8) (value T, exists bool) {
 // shifting all following elements one position to the right to make space.
 //
 // This method must be called with the correct insertion index - that is,
-// the rank-0 value of the corresponding bit index i in BitSet256 once it's set.
+// the rank-0 value of the corresponding bit index i in BitSet256 (calculated before Set(i)).
 //
 // The slice will be extended by one element. If the capacity allows, this is done
 // without reallocation (fast path); otherwise slice growth occurs (slow path).
