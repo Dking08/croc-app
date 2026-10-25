@@ -1,15 +1,15 @@
-// Copyright (c) 2024 Karl Gaissmaier
+// Copyright (c) 2026 Karl Gaissmaier
 // SPDX-License-Identifier: MIT
 
 // Package art summarizes the functions and inverse functions
 // for mapping between a prefix and a baseIndex.
 //
-//	can inline IdxToPfx with cost 37
-//	can inline IdxToRange with cost 68
-//	can inline NetMask with cost 14
-//	can inline OctetToIdx with cost 5
+//	can inline OctetToIdx with cost 6
+//	can inline PfxToIdx with cost 10
+//	can inline NetMask with cost 13
 //	can inline PfxBits with cost 21
-//	can inline PfxToIdx with cost 17
+//	can inline IdxToPfx with cost 39
+//	can inline IdxToRange with cost 71
 package art
 
 import "math/bits"
@@ -17,7 +17,7 @@ import "math/bits"
 // PfxToIdx maps 8bit prefixes to numbers. The prefixes range from 0/0 to 255/7
 // The return values range from 1 to 255.
 //
-//	  [0x0000_00001 .. 0x1111_1111] = [1 .. 255]
+//	  [0x0000_0001 .. 0x1111_1111] = [1 .. 255]
 //
 //		example: octet/pfxLen: 160/3 = 0b1010_0000/3 => IdxToPfx(160/3) => 13
 //
@@ -29,17 +29,26 @@ import "math/bits"
 //		                 + -----------------------
 //		                               0b0000_1101 = 13
 //
-// Panics if `pfxLen > 7`.
+// ATTENTION: For pfxLen values > 7 the result is undefined!
 func PfxToIdx(octet, pfxLen uint8) uint8 {
-	if pfxLen > 7 {
-		panic("PfxToIdx: invalid pfxLen > 7")
-	}
-	return octet>>(8-pfxLen) + 1<<pfxLen
+	//  use '|' instead of '+', maybe a little bit faster
+	return octet>>(8-pfxLen) | 1<<pfxLen
 }
 
-// OctetToIdx maps octet/8 prefixes to numbers in the range [128..255].
+// OctetToIdx maps octet/8 prefixes from [256..511] => [128..255] to start
+// with the parent (>>1) in the complete binary tree.
+//
+// Same formula as PfxToIdx, but for octet/8 and a shift (>>1).
+//
+//	octet>>(8-pfxLen) + 1<<pfxLen
+//	     octet>>(8-8) + 1<<8
+//	            octet + 256
+//
+//	got to parent idx:
+//	    (octet+256)>>1 == octet>>1 + 128
 func OctetToIdx(octet uint8) uint8 {
-	return 128 + octet>>1
+	//  use '|' instead of '+', maybe a little bit faster
+	return octet>>1 | 128
 }
 
 // IdxToPfx returns the octet and prefix len of baseIdx.
@@ -53,7 +62,7 @@ func IdxToPfx(idx uint8) (octet, pfxLen uint8) {
 	// so we subtract 1 to recover the prefix length (which is always >= 0).
 	// Invariant: idx==0 is invalid
 
-	//nolint:gosec  //G115: integer overflow conversion int -> uint8 (gosec)
+	//nolint:gosec  //G115: integer overflow conversion int -> uint8
 	pfxLen = uint8(bits.Len8(idx)) - 1
 
 	// Compute the number of bits to shift back to obtain the original octet.

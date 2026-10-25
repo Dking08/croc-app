@@ -9,15 +9,6 @@
   <strong>This project’s future depends on community support. <a href="https://github.com/sponsors/schollz">Become a sponsor today</a>.</strong>
 </p>
 
-<p align="center">
-Supporting organizations:
-</p>
-<p align="center">
-<a href="https://sx.org/c/CROC">
-<img width="728" height="90" alt="CROC_728х90" src="https://github.com/user-attachments/assets/04553f49-3e4e-467b-91c3-e869750118a2" />
-</a>
-</p>
-
 
 ## About
 
@@ -108,21 +99,53 @@ environment.systemPackages = [
 
 ### On Alpine Linux
 
-First, install dependencies:
+Enable the community repository for your Alpine release, then install:
 
 ```bash
-apk add bash coreutils
-wget -qO- https://getcroc.com | bash
+apk add croc
 ```
 
-### On Debian
+Check the [Alpine package index](https://pkgs.alpinelinux.org/packages?name=croc)
+for your branch's version. Stable branches can carry older releases; see the
+[distribution status](packaging/distributions/status.md) before selecting one.
 
-Install from the pkg.haus APT archive:
+### On Debian and Ubuntu
+
+The [pkg.haus archive](https://pkg.haus/) provides third-party Debian packages.
+Follow its repository setup and supported-release instructions before running:
 
 ```bash
-# Add the repository (see https://pkg.haus for setup instructions)
 sudo apt install croc
 ```
+
+For a release that includes upstream `.deb` downloads, download the file matching
+`dpkg --print-architecture` from the [release page](https://github.com/schollz/croc/releases).
+Replace `VERSION` and `ARCH` below with the downloaded filename:
+
+```bash
+sudo apt install ./croc_VERSION-1_ARCH.deb
+```
+
+This downloaded-package method also applies to older Debian and Ubuntu releases
+that do not provide croc in their configured repositories. It does not add an APT
+repository; download a newer package to upgrade it.
+
+### On Fedora and openSUSE
+
+For a release that includes upstream `.rpm` downloads, choose the file matching
+`rpm --eval '%{_arch}'` from the [release page](https://github.com/schollz/croc/releases).
+Replace `VERSION` and `ARCH` with the downloaded filename:
+
+```bash
+sudo dnf install ./croc-VERSION-1.ARCH.rpm
+# On openSUSE:
+sudo zypper install ./croc-VERSION-1.ARCH.rpm
+```
+
+These downloads install the CLI, manual, license notices, and shell completions.
+They require `ca-certificates` and start no background services. Upgrade them
+through the package manager; `croc update` leaves package-owned binaries intact.
+See [Linux packaging](packaging/README.md) for architectures and verification.
 
 ### On Arch Linux
 
@@ -174,7 +197,7 @@ You can also just paste it in the terminal for current session. On first run Doc
 
 ### Build from Source
 
-If you prefer, you can [install Go](https://go.dev/dl/) and build from source (requires Go 1.27+):
+If you prefer, you can [install Go](https://go.dev/dl/) and build from source (requires Go 1.27.1+):
 
 ```bash
 go install github.com/schollz/croc/v11@latest
@@ -417,10 +440,6 @@ sender to use the SOCKS5-capable relay transport for file data. The browser
 client uses the browser's proxy settings for its WebSocket gateway connection;
 the native CLI flag does not configure the browser.
 
-<p align="center">
-  <strong>Sponsored by <a href="https://sx.org/en/proxy/">SX.org</a>.</strong>
-</p>
-
 ### Data transport selection
 
 The native CLI defaults to `--transport auto`. After the normal three-word-code
@@ -485,6 +504,27 @@ croc relay
 ```
 
 By default, it uses TCP ports 9009-9013. You can customize the ports (e.g., `croc relay --ports 1111,1112`), but at least **2** ports are required.
+
+Each relay port allows 64 incomplete handshakes in total and 32 per source IP.
+Clients must send their first complete protocol message within 60 seconds and
+finish the handshake within 5 minutes. Croc sends the first message automatically;
+these deadlines do not limit how long an authenticated sender can wait for a
+receiver or how long a transfer can run. Existing room and connection timeouts
+still apply.
+
+Use `--max-pending-handshakes`, `--max-pending-handshakes-per-source`,
+`--first-message-timeout`, and `--handshake-timeout` to adjust these limits.
+Their environment variables are `CROC_MAX_PENDING_HANDSHAKES`,
+`CROC_MAX_PENDING_HANDSHAKES_PER_SOURCE`, `CROC_FIRST_MESSAGE_TIMEOUT`, and
+`CROC_HANDSHAKE_TIMEOUT`. All values must be positive; the total limit and overall
+timeout always bound the per-source allowance and first-message timeout.
+
+Users behind the same NAT or proxy share a source allowance, including browser
+users connecting through the same croc-web bridge. Raising the per-source limit
+to the total limit removes the protection against one source filling the pool.
+These concurrent handshake limits are separate from the source and room join
+rate limits. Fast-admission tokens also use the bounded handshake pool; several
+source IPs can still fill it.
 
 To send files using your relay:
 
@@ -565,6 +605,32 @@ maps it to unused container port 65535. This deliberate port collision makes
 Disco stop the previous volume-owning web service before starting its
 replacement, avoiding concurrent access to the store. Port 9020 carries no
 application traffic and should remain blocked by the server firewall.
+
+Stored-upload policy can be set per deployment without editing `disco.json`:
+
+```bash
+disco env:set \
+  CROC_STORE_CREATE_RATE=60 \
+  CROC_STORE_ACTIVE_UPLOADS=10 \
+  CROC_STORE_UPLOAD_TIMEOUT=5m \
+  CROC_STORE_TRUSTED_PROXY=VERIFIED_PROXY_IP/32 \
+  --project croc --disco YOUR_DISCO_HOST
+```
+
+Replace the proxy placeholder with the socket source address seen by croc.
+With Docker Swarm routing, this can be the `lb-disco-main` endpoint shown by
+`docker network inspect disco-main`, rather than Caddy's container address.
+Verify the source on each instance and again after Docker network changes.
+Caddy's normal forwarding configuration supplies `X-Forwarded-For`; verify
+that different external clients remain distinct and that a forged incoming
+header cannot choose their accounting IP. Do not edit Disco-generated Caddy
+configuration or trust an entire private network to work around a mismatch.
+
+The values above are deployment overrides; croc's defaults remain five creation
+attempts per hour and two unfinished uploads per IP. `CROC_STORE_DOWNLOADS`
+controls downloads from each link and does not raise upload limits. See the
+[stored-transfer operator guide](src/docs/STORED_TRANSFERS.md) for timeout,
+cleanup, and rate-limit response behavior.
 
 The ports in `CROC_RELAY_PORTS` must match the `publishedPorts` entries in
 the `relay` service in [`disco.json`](disco.json); do not include the web

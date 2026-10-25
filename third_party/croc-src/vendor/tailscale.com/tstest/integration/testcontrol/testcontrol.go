@@ -1,7 +1,8 @@
 // Copyright (c) Tailscale Inc & contributors
 // SPDX-License-Identifier: BSD-3-Clause
 
-// Package testcontrol contains a minimal control plane server for testing purposes.
+//go:build !experiment.reco
+
 package testcontrol
 
 import (
@@ -33,6 +34,8 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/syncs"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
+	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/tka"
 	"tailscale.com/tstest/tkatest"
 	"tailscale.com/types/key"
@@ -125,10 +128,10 @@ type Server struct {
 	ExplicitBaseURL string           // e.g. "http://127.0.0.1:1234" with no trailing URL
 	HTTPTestServer  *httptest.Server // if non-nil, used to get BaseURL
 
-	// MaybeRateLimitRegister, if non-nil, is called before processing
-	// register requests. If it returns true, a 429 response is sent
-	// with the given Retry-After header value and body string.
-	MaybeRateLimitRegister func() (reject bool, retryAfter string, msg string)
+	// MaybeRejectRequest, if non-nil, is called before processing
+	// machine requests. If it returns a non-zero status, the request is rejected
+	// with that status code, the given Retry-After header value, and body string.
+	MaybeRejectRequest func(*http.Request) (status int, retryAfter string, msg string)
 
 	// ModifyFirstMapResponse, if non-nil, is called exactly once per
 	// MapResponse stream to modify the first MapResponse sent in response to it.
@@ -536,6 +539,16 @@ func (s *Server) serveMachine(w http.ResponseWriter, r *http.Request) {
 	mkey, ok := ctx.Value(peerMachinePublicContextKey{}).(key.MachinePublic)
 	if !ok {
 		panic("no peer machine public key in context")
+	}
+
+	if fn := s.MaybeRejectRequest; fn != nil {
+		if status, retryAfter, msg := fn(r); status != 0 {
+			if retryAfter != "" {
+				w.Header().Set("Retry-After", retryAfter)
+			}
+			http.Error(w, msg, status)
+			return
+		}
 	}
 
 	switch r.URL.Path {
@@ -951,16 +964,6 @@ func (s *Server) CompleteDeviceApproval(controlUrl string, urlStr string, nodeKe
 }
 
 func (s *Server) serveRegister(w http.ResponseWriter, r *http.Request, mkey key.MachinePublic) {
-	if fn := s.MaybeRateLimitRegister; fn != nil {
-		if reject, retryAfter, msg := fn(); reject {
-			if retryAfter != "" {
-				w.Header().Set("Retry-After", retryAfter)
-			}
-			http.Error(w, msg, http.StatusTooManyRequests)
-			return
-		}
-	}
-
 	msg, err := io.ReadAll(io.LimitReader(r.Body, msgLimit))
 	r.Body.Close()
 	if err != nil {
@@ -1057,10 +1060,10 @@ func (s *Server) serveRegister(w http.ResponseWriter, r *http.Request, mkey key.
 			capMap = *s.DefaultNodeCapabilities
 		} else {
 			capMap = tailcfg.NodeCapMap{
-				tailcfg.CapabilityHTTPS:                           []tailcfg.RawMessage{},
-				tailcfg.NodeAttrFunnel:                            []tailcfg.RawMessage{},
-				tailcfg.CapabilityFileSharing:                     []tailcfg.RawMessage{},
-				tailcfg.CapabilityFunnelPorts + "?ports=8080,443": []tailcfg.RawMessage{},
+				nodecap.HTTPS:                           []tailcfg.RawMessage{},
+				nodecap.Funnel:                          []tailcfg.RawMessage{},
+				nodecap.FileSharing:                     []tailcfg.RawMessage{},
+				nodecap.FunnelPorts + "?ports=8080,443": []tailcfg.RawMessage{},
 			}
 		}
 
@@ -1460,7 +1463,7 @@ func (s *Server) serveMap(w http.ResponseWriter, r *http.Request, mkey key.Machi
 		}
 		endpoints := filterInvalidIPv6Endpoints(req.Endpoints)
 		var hi tailcfg.HostinfoView
-		var newDERP int
+		var newDERP tailcfg.DERPRegionID
 		if req.Hostinfo != nil {
 			hi = req.Hostinfo.View()
 			if ni := hi.NetInfo(); ni.Valid() {
@@ -1605,12 +1608,12 @@ var keepAliveMsg = &struct {
 func packetFilterWithIngress(addRelayCaps bool, allowSrcs []string) []tailcfg.FilterRule {
 	out := slices.Clone(tailcfg.FilterAllowAll)
 	out[0].SrcIPs = allowSrcs
-	caps := []tailcfg.PeerCapability{
-		tailcfg.PeerCapabilityIngress,
+	caps := []peercap.Cap{
+		peercap.Ingress,
 	}
 	if addRelayCaps {
-		caps = append(caps, tailcfg.PeerCapabilityRelay)
-		caps = append(caps, tailcfg.PeerCapabilityRelayTarget)
+		caps = append(caps, peercap.Relay)
+		caps = append(caps, peercap.RelayTarget)
 	}
 	out = append(out, tailcfg.FilterRule{
 		SrcIPs: []string{"*"},
@@ -1647,9 +1650,9 @@ func (s *Server) MapResponse(req *tailcfg.MapRequest) (res *tailcfg.MapResponse,
 	s.mu.Unlock()
 
 	node.CapMap = nodeCapMap
-	node.Capabilities = append(node.Capabilities, tailcfg.NodeAttrDisableUPnP)
+	node.Capabilities = append(node.Capabilities, nodecap.DisableUPnP)
 	if sshPolicy != nil {
-		mak.Set(&node.CapMap, tailcfg.CapabilitySSH, nil)
+		mak.Set(&node.CapMap, nodecap.SSH, nil)
 	}
 
 	t := time.Date(2020, 8, 3, 0, 0, 0, 1, time.UTC)
@@ -1981,4 +1984,16 @@ func breakSameNodeMapResponseStreams(req *tailcfg.MapRequest) bool {
 		return false
 	}
 	return true
+}
+
+// RejectRequestForPath returns a request rejection for requests matching
+// the given path.
+func RejectRequestForPath(path string, fn func() (status int, retryAfter string, msg string)) func(*http.Request) (status int, retryAfter string, msg string) {
+	return func(r *http.Request) (status int, retryAfter string, msg string) {
+		if r.URL.Path != path {
+			return 0, "", ""
+		}
+
+		return fn()
+	}
 }

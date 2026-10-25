@@ -23,11 +23,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	gliderssh "github.com/tailscale/gliderssh"
@@ -749,11 +747,11 @@ type sshSession struct {
 	agentListener net.Listener // non-nil if agent-forwarding requested+allowed
 
 	// initialized by launchProcess:
-	cmd      *exec.Cmd
-	wrStdin  io.WriteCloser
-	rdStdout io.ReadCloser
-	rdStderr io.ReadCloser  // rdStderr is nil for pty sessions
-	ptyReq   *gliderssh.Pty // non-nil for pty sessions
+	osSessionState // the process itself; see process_*.go
+	wrStdin        io.WriteCloser
+	rdStdout       io.ReadCloser
+	rdStderr       io.ReadCloser  // rdStderr is nil for pty sessions
+	ptyReq         *gliderssh.Pty // non-nil for pty sessions
 
 	// childPipes is a list of pipes that need to be closed when the process exits.
 	// For pty sessions, this is the tty fd.
@@ -769,35 +767,6 @@ type sshSession struct {
 	// ss.Exit to ensure the message is flushed before the SSH channel is torn
 	// down. It is initialized by run() before starting killProcessOnContextDone.
 	exitHandled chan struct{}
-}
-
-// forwardedEnvChildFD is the fd the incubator child reads the forwarded environment from, sent via
-// --env-fd. It must match the payload file's index in launchProcess's ExtraFiles (fd = 3 + index).
-const forwardedEnvChildFD = 3
-
-// forwardedEnvFile returns the read end of a pipe holding the JSON-encoded forwarded pairs.
-// The read end is passed to the incubator child via exec.Cmd.ExtraFiles to communicate
-// secrets and config; the payload only ever exists in memory, never on any filesystem. A
-// goroutine writes the payload and closes the write end. Caller must close the read end
-// after the child starts.
-func forwardedEnvFile(forwardedEnv []string) (*os.File, error) {
-	if len(forwardedEnv) == 0 {
-		return nil, errors.New("no forwarded environment")
-	}
-	b, err := json.Marshal(forwardedEnv)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling forwarded environment: %w", err)
-	}
-	r, w, err := os.Pipe()
-	if err != nil {
-		return nil, fmt.Errorf("creating forwarded environment pipe: %w", err)
-	}
-	go func() {
-		defer w.Close()
-		// A short read fails the session child-side
-		_, _ = w.Write(b)
-	}()
-	return r, nil
 }
 
 func (ss *sshSession) vlogf(format string, args ...any) {
@@ -906,12 +875,16 @@ func (ss *sshSession) killProcessOnContextDone() {
 			}
 		}
 		ss.logf("terminating SSH session from %v: %v", ss.conn.info.src.Addr(), err)
-		// We don't need to Process.Wait here, sshSession.run() does
-		// the waiting regardless of termination reason.
-
-		// TODO(maisem): should this be a SIGTERM followed by a SIGKILL?
-		ss.cmd.Process.Kill()
+		// We don't need to wait for the process here, sshSession.run()
+		// does the waiting regardless of termination reason.
+		ss.hangupProcess()
 	})
+}
+
+// isNotFoundOrExecutable reports whether err is a launchProcess
+// failure caused by the command not existing on disk.
+func isNotFoundOrExecutable(err error) bool {
+	return errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist)
 }
 
 // attachSession registers ss as an active session.
@@ -940,57 +913,6 @@ func (c *conn) detachSession(ss *sshSession) {
 
 var errSessionDone = errors.New("session is done")
 
-// handleSSHAgentForwarding starts a Unix socket listener and in the background
-// forwards agent connections between the listener and the gliderssh.Session.
-// On success, it assigns ss.agentListener.
-func (ss *sshSession) handleSSHAgentForwarding(s gliderssh.Session, lu *userMeta) error {
-	if !gliderssh.AgentRequested(ss) || !ss.conn.finalAction.AllowAgentForwarding {
-		return nil
-	}
-	if sshDisableForwarding() {
-		// TODO(bradfitz): or do we want to return an error here instead so the user
-		// gets an error if they ran with ssh -A? But for now we just silently
-		// don't work, like the condition above.
-		return nil
-	}
-	ss.logf("ssh: agent forwarding requested")
-	ln, err := gliderssh.NewAgentListener()
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil && ln != nil {
-			ln.Close()
-		}
-	}()
-
-	uid, err := strconv.ParseUint(lu.Uid, 10, 32)
-	if err != nil {
-		return err
-	}
-	gid, err := strconv.ParseUint(lu.Gid, 10, 32)
-	if err != nil {
-		return err
-	}
-	socket := ln.Addr().String()
-	dir := filepath.Dir(socket)
-	// Make sure the socket is accessible only by the user.
-	if err := os.Chmod(socket, 0600); err != nil {
-		return err
-	}
-	if err := os.Chown(socket, int(uid), int(gid)); err != nil {
-		return err
-	}
-	// Make sure the dir is also accessible.
-	if err := os.Chmod(dir, 0755); err != nil {
-		return err
-	}
-
-	go gliderssh.ForwardAgentConnections(ln, s)
-	ss.agentListener = ln
-	return nil
-}
-
 // run is the entrypoint for a newly accepted SSH session.
 //
 // It handles ss once it's been accepted and determined
@@ -999,10 +921,21 @@ func (ss *sshSession) run() {
 	metricActiveSessions.Add(1)
 	defer metricActiveSessions.Add(-1)
 	defer ss.cancelCtx(errSessionDone)
+	defer ss.Close() // CHANNEL_CLOSE, last on the wire; see ss.Exit below.
 
 	if attached := ss.conn.srv.attachSessionToConnIfNotShutdown(ss); !attached {
 		fmt.Fprintf(ss, "Tailscale SSH is shutting down\r\n")
-		ss.Exit(1)
+		// 255 signals an SSH-layer failure (the session never reached the
+		// user's command), distinct from any exit status the remote
+		// program might produce. The ssh(1) EXIT STATUS section
+		// documents this as the value the client reports "if an error
+		// occurred", and OpenSSH's own ssh.c uses exit(255) for every
+		// transport/protocol fatal path. Wrappers and CI use the 255
+		// boundary to tell "connection broke" from "command exited N".
+		// See:
+		//   https://man.openbsd.org/ssh#EXIT_STATUS
+		//   https://github.com/openssh/openssh-portable/blob/V_10_2_P1/ssh.c#L1693
+		ss.Exit(255)
 		return
 	}
 	defer ss.conn.detachSession(ss)
@@ -1020,13 +953,13 @@ func (ss *sshSession) run() {
 		defer t.Stop()
 	}
 
-	if euid := os.Geteuid(); euid != 0 && runtime.GOOS != "plan9" {
-		if lu.Uid != fmt.Sprint(euid) {
-			ss.logf("can't switch to user %q from process euid %v", lu.Username, euid)
-			fmt.Fprintf(ss, "can't switch user\r\n")
-			ss.Exit(1)
-			return
-		}
+	if err := canSwitchToLocalUser(lu); err != nil {
+		ss.logf("%v", err)
+		fmt.Fprintf(ss, "can't switch user\r\n")
+		// 255: SSH-layer failure, no user command ever ran. See the
+		// attachSession branch above for the full citation.
+		ss.Exit(255)
+		return
 	}
 
 	// Take control of the PTY so that we can configure it below.
@@ -1052,7 +985,27 @@ func (ss *sshSession) run() {
 					fmt.Fprintf(ss, "can't start new recording\r\n")
 				}
 				ss.logf("startNewRecording: %v", err)
-				ss.Exit(1)
+				// 254 is Tailscale-specific: the SSH transport is fine
+				// and the user's command is well-formed, but the session
+				// recording policy could not be satisfied (recorder
+				// unreachable, upload denied, etc.) so we refuse to run
+				// the command at all. We need a code that operators can
+				// alert on without collapsing it into the generic buckets:
+				//   - 1   is overloaded; any program can produce it
+				//         (Bash exit-code conventions, codes 1-2)
+				//   - 127 means "command not found" (POSIX 2018, sh
+				//         §2.8.2)
+				//   - 130 is Ctrl-C (128 + SIGINT)
+				//   - 255 means "SSH itself failed" (ssh(1) EXIT STATUS)
+				// 254 sits in the reserved >128 region but is not claimed
+				// by any of the above, so it is unambiguous for
+				// "recording-required session denied".
+				// Refs:
+				//   https://man.openbsd.org/ssh#EXIT_STATUS
+				//   https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_08_02
+				//   https://tldp.org/LDP/abs/html/exitcodes.html
+				//   https://github.com/tailscale/tailscale/issues/18256
+				ss.Exit(254)
 				return
 			}
 			ss.logf("startNewRecording: <nil>")
@@ -1065,6 +1018,7 @@ func (ss *sshSession) run() {
 	err := ss.launchProcess()
 	if err != nil {
 		logf("start failed: %v", err.Error())
+		exitCode := 1
 		if errors.Is(err, context.Canceled) {
 			cause := context.Cause(ss.ctx)
 			if serr, ok := cause.(SSHTerminationError); ok {
@@ -1072,14 +1026,35 @@ func (ss *sshSession) run() {
 					io.WriteString(ss.Stderr(), "\r\n\r\n"+msg+"\r\n\r\n")
 				}
 			}
+		} else if isNotFoundOrExecutable(err) {
+			// 127 = "command not found" per POSIX 2018 sh §2.8.2
+			// ("if a command is not found, the exit status shall be
+			// 127"). 126 is reserved for "found but not executable";
+			// we collapse both into 127 because exec.ErrNotFound and
+			// os.ErrNotExist don't distinguish the underlying cause
+			// reliably across platforms, and 127 is what users
+			// recognise (it's what bash / dash / zsh report).
+			// Refs:
+			//   https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_08_02
+			//   https://tldp.org/LDP/abs/html/exitcodes.html
+			exitCode = 127
 		}
-		ss.Exit(1)
+		ss.Exit(exitCode)
 		return
 	}
 	ss.exitHandled = make(chan struct{})
 	go ss.killProcessOnContextDone()
 
-	var processDone atomic.Bool
+	// wg covers stdout and stderr only: their close ordering is
+	// load-bearing for the wire-level frame sequence below.
+	//
+	// The stdin copier is deliberately NOT in wg. It blocks reading from
+	// the SSH channel until the client half-closes its write side; many
+	// clients (go-scp, non-SFTP exec) don't half-close before they
+	// receive CHANNEL_CLOSE from us. Including it would deadlock. It
+	// self-cleans when deferred ss.Close runs.
+	var wg sync.WaitGroup
+
 	go func() {
 		defer ss.wrStdin.Close()
 		if _, err := io.Copy(rec.writer("i", ss.wrStdin), ss); err != nil {
@@ -1087,52 +1062,36 @@ func (ss *sshSession) run() {
 			ss.cancelCtx(err)
 		}
 	}()
-	outputDone := make(chan struct{})
-	var openOutputStreams atomic.Int32
-	if ss.rdStderr != nil {
-		openOutputStreams.Store(2)
-	} else {
-		openOutputStreams.Store(1)
-	}
-	go func() {
+
+	wg.Go(func() {
 		defer ss.rdStdout.Close()
-		_, err := io.Copy(rec.writer("o", ss), ss.rdStdout)
-		if err != nil && !errors.Is(err, io.EOF) {
-			isErrBecauseProcessExited := processDone.Load() && errors.Is(err, syscall.EIO)
-			if !isErrBecauseProcessExited {
-				logf("stdout copy: %v", err)
-				ss.cancelCtx(err)
-			}
+		if _, err := io.Copy(rec.writer("o", ss), ss.rdStdout); err != nil && !errors.Is(err, io.EOF) {
+			logf("stdout copy: %v", err)
 		}
-		if openOutputStreams.Add(-1) == 0 {
-			ss.CloseWrite()
-			close(outputDone)
-		}
-	}()
+	})
+
 	// rdStderr is nil for ptys.
 	if ss.rdStderr != nil {
-		go func() {
+		wg.Go(func() {
 			defer ss.rdStderr.Close()
-			_, err := io.Copy(ss.Stderr(), ss.rdStderr)
-			if err != nil {
+			// Record stderr under the "o" (output) direction: the
+			// asciinema cast format has no separate stderr channel,
+			// and pty sessions already fold stdout+stderr into the
+			// single recorded "o" stream. Wrapping it in rec.writer
+			// (rather than copying raw) is what keeps stderr in the
+			// recording for non-pty sessions.
+			if _, err := io.Copy(rec.writer("o", ss.Stderr()), ss.rdStderr); err != nil {
 				logf("stderr copy: %v", err)
 			}
-			if openOutputStreams.Add(-1) == 0 {
-				ss.CloseWrite()
-				close(outputDone)
-			}
-		}()
+		})
 	}
 
-	err = ss.cmd.Wait()
-	processDone.Store(true)
+	exitCode, err := ss.waitProcess()
 
 	if ss.ctx.Err() != nil {
-		// Context was canceled (e.g., recording upload failure).
-		// Wait for killProcessOnContextDone to finish writing any
-		// termination message before we proceed. This must happen
-		// before closeAll and CloseWrite so the SSH channel is
-		// still writable.
+		// Cancellation (e.g. recording upload failure) wrote a
+		// termination message via killProcessOnContextDone; wait
+		// for it before Exit closes the channel for writes.
 		<-ss.exitHandled
 	}
 
@@ -1141,31 +1100,25 @@ func (ss *sshSession) run() {
 	// aforementioned goroutine.
 	ss.exitOnce.Do(func() {})
 
-	// Close the process-side of all pipes to signal the asynchronous
-	// io.Copy routines reading/writing from the pipes to terminate.
-	// Block for the io.Copy to finish before calling ss.Exit below.
-	closeAll(ss.childPipes...)
-	select {
-	case <-outputDone:
-	case <-ss.ctx.Done():
-		<-ss.exitHandled
-	}
-
-	if err == nil {
+	switch {
+	case err != nil:
+		ss.logf("Wait: %v", err)
+		exitCode = 1
+	case exitCode == 0:
 		ss.logf("Session complete")
-		ss.Exit(0)
-		return
-	}
-	if ee, ok := err.(*exec.ExitError); ok {
-		code := ee.ProcessState.ExitCode()
-		ss.logf("Wait: code=%v", code)
-		ss.Exit(code)
-		return
+	default:
+		ss.logf("Wait: code=%v", exitCode)
 	}
 
-	ss.logf("Wait: %v", err)
-	ss.Exit(1)
-	return
+	// Order on the wire: exit-status, remaining output, EOF,
+	// CHANNEL_CLOSE (deferred ss.Close). RFC 4254 §6.10. CloseWrite
+	// (CHANNEL_EOF) must wait for both output copiers: a write on
+	// either stream after EOF fails and silently truncates that
+	// stream's tail.
+	ss.Exit(exitCode)
+	closeAll(ss.childPipes...)
+	wg.Wait()
+	ss.CloseWrite()
 }
 
 // recordSSHToLocalDisk is a deprecated dev knob to allow recording SSH sessions
@@ -1298,7 +1251,7 @@ func mapLocalUser(ruleSSHUsers map[string]string, reqSSHUser string) (localUser 
 			return ""
 		}
 		// Don't match as root for autogroup:nonroot
-		if lu.Uid == "0" || lu.Username == "root" {
+		if isRootUser(lu) {
 			return ""
 		}
 		return reqSSHUser
