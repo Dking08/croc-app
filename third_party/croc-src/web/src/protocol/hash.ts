@@ -1,4 +1,5 @@
-import { wasm } from "../wasm/client";
+import { protocolEngine } from "./engine";
+import { hashSHA256Blob } from "./sha256";
 
 export type FileHashAlgorithm = "xxhash" | "sha256";
 export type FileHashProvider = (file: File) => Promise<Uint8Array>;
@@ -23,14 +24,14 @@ function checkAbort(signal?: AbortSignal) {
 }
 
 export async function hashFileContents(
-  file: File,
+  file: Blob,
   algorithm: FileHashAlgorithm,
   signal?: AbortSignal,
 ) {
   checkAbort(signal);
-  const engine = wasm();
-  const handle =
-    algorithm === "sha256" ? await engine.sha256Init() : await engine.hashInit();
+  if (algorithm === "sha256") return hashSHA256Blob(file, signal);
+  const engine = protocolEngine();
+  const handle = await engine.hashInit(signal);
   const reader = file.stream().getReader();
   let finalized = false;
   try {
@@ -39,29 +40,20 @@ export async function hashFileContents(
       const { done, value } = await reader.read();
       checkAbort(signal);
       if (done) break;
-      if (algorithm === "sha256") await engine.sha256Update(handle, value);
-      else await engine.hashUpdate(handle, value);
+      await engine.hashUpdate(handle, value);
     }
     finalized = true;
-    return algorithm === "sha256"
-      ? await engine.sha256Final(handle)
-      : await engine.hashFinal(handle);
+    return await engine.hashFinal(handle);
   } finally {
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
     if (!finalized) {
-      const cleanup =
-        algorithm === "sha256"
-          ? engine.sha256Final(handle)
-          : engine.hashFinal(handle);
-      await cleanup.catch(() => undefined);
+      await engine.hashRelease(handle).catch(() => undefined);
     }
   }
 }
 
-export function waitForHash(
-  hash: Promise<Uint8Array>,
-  signal?: AbortSignal,
-) {
+export function waitForHash(hash: Promise<Uint8Array>, signal?: AbortSignal) {
   checkAbort(signal);
   if (!signal) return hash;
   return new Promise<Uint8Array>((resolve, reject) => {
@@ -94,7 +86,13 @@ export class FileHashCache {
       checkAbort(controller.signal);
       return this.hashFile(file, algorithm, controller.signal);
     });
-    this.tails.set(algorithm, promise.then(() => undefined, () => undefined));
+    this.tails.set(
+      algorithm,
+      promise.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
     const job = { controller, promise };
     algorithms.set(algorithm, job);
     void promise.catch(() => {

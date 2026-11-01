@@ -15,6 +15,7 @@ import (
 
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/tka"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
@@ -30,7 +31,7 @@ type NetworkMap struct {
 	Cached bool // whether this NetworkMap was loaded from disk cache (as opposed to live from network)
 
 	SelfNode tailcfg.NodeView
-	AllCaps  set.Set[tailcfg.NodeCapability] // set version of SelfNode.Capabilities + SelfNode.CapMap
+	AllCaps  set.Set[nodecap.Cap] // set version of SelfNode.Capabilities + SelfNode.CapMap
 	NodeKey  key.NodePublic
 
 	MachineKey key.MachinePublic
@@ -112,7 +113,7 @@ func (nm *NetworkMap) GetVIPServiceIPMap() tailcfg.ServiceIPMappings {
 		return nil
 	}
 
-	ipMaps, err := tailcfg.UnmarshalNodeCapViewJSON[tailcfg.ServiceIPMappings](nm.SelfNode.CapMap(), tailcfg.NodeAttrServiceHost)
+	ipMaps, err := tailcfg.UnmarshalNodeCapViewJSON[tailcfg.ServiceIPMappings](nm.SelfNode.CapMap(), nodecap.ServiceHost)
 	if len(ipMaps) != 1 || err != nil {
 		return nil
 	}
@@ -160,7 +161,7 @@ func (nm *NetworkMap) Services() map[tailcfg.ServiceName]tailcfg.ServiceDetails 
 	}
 	result := make(map[tailcfg.ServiceName]tailcfg.ServiceDetails)
 	for cap := range nm.SelfNode.CapMap().All() {
-		if !strings.HasPrefix(string(cap), string(tailcfg.NodeAttrPrefixServices)) {
+		if !strings.HasPrefix(string(cap), string(nodecap.ServicesPrefix)) {
 			continue
 		}
 		svcs, err := tailcfg.UnmarshalNodeCapViewJSON[tailcfg.ServiceDetails](nm.SelfNode.CapMap(), cap)
@@ -207,7 +208,7 @@ func (nm *NetworkMap) GetMachineStatus() tailcfg.MachineStatus {
 }
 
 // HasCap reports whether nm is non-nil and nm.AllCaps contains c.
-func (nm *NetworkMap) HasCap(c tailcfg.NodeCapability) bool {
+func (nm *NetworkMap) HasCap(c nodecap.Cap) bool {
 	return nm != nil && nm.AllCaps.Contains(c)
 }
 
@@ -296,6 +297,16 @@ func (nm *NetworkMap) DomainName() string {
 	return nm.Domain
 }
 
+// StableTailnetID returns the stable ID of the tailnet the current node is a
+// member of, as sent by control on the self node. It returns the empty string
+// if nm is nil or nm.SelfNode is invalid.
+func (nm *NetworkMap) StableTailnetID() tailcfg.StableTailnetID {
+	if nm == nil || !nm.SelfNode.Valid() {
+		return ""
+	}
+	return nm.SelfNode.StableTailnetID()
+}
+
 // TailnetDisplayName returns the admin-editable name contained in
 // NodeAttrTailnetDisplayName. If the capability is not present it
 // returns an empty string.
@@ -304,7 +315,7 @@ func (nm *NetworkMap) TailnetDisplayName() string {
 		return ""
 	}
 
-	tailnetDisplayNames, err := tailcfg.UnmarshalNodeCapViewJSON[string](nm.SelfNode.CapMap(), tailcfg.NodeAttrTailnetDisplayName)
+	tailnetDisplayNames, err := tailcfg.UnmarshalNodeCapViewJSON[string](nm.SelfNode.CapMap(), nodecap.TailnetDisplayName)
 	if err != nil || len(tailnetDisplayNames) == 0 {
 		return ""
 	}

@@ -3,10 +3,12 @@ import type {
   OfferedFile,
   ReceiveDestination,
   ReceiveSink,
+  ReceivePayload,
   TransferOffer,
 } from "./types";
 import { maxTextTransferBytes } from "./types";
-import { wasm } from "../wasm/client";
+import { protocolEngine } from "./engine";
+import { hashSHA256Blob, SHA256Hasher } from "./sha256";
 
 declare global {
   interface Navigator {
@@ -22,23 +24,30 @@ declare global {
   }
 }
 
-async function hashBlob(blob: Blob, algorithm: "xxhash" | "sha256" = "xxhash") {
-  const engine = wasm();
-  const handle =
-    algorithm === "sha256" ? await engine.sha256Init() : await engine.hashInit();
+async function hashBlob(
+  blob: Blob,
+  algorithm: "xxhash" | "sha256" = "xxhash",
+  signal?: AbortSignal,
+) {
+  if (algorithm === "sha256") return hashSHA256Blob(blob, signal);
+  const engine = protocolEngine();
+  const handle = await engine.hashInit(signal);
   const reader = blob.stream().getReader();
   try {
     for (;;) {
+      if (signal?.aborted)
+        throw new DOMException("Transfer cancelled", "AbortError");
       const { done, value } = await reader.read();
+      if (signal?.aborted)
+        throw new DOMException("Transfer cancelled", "AbortError");
       if (done) break;
-      if (algorithm === "sha256") await engine.sha256Update(handle, value);
-      else await engine.hashUpdate(handle, value);
+      await engine.hashUpdate(handle, value);
     }
-    return algorithm === "sha256"
-      ? await engine.sha256Final(handle)
-      : await engine.hashFinal(handle);
+    return await engine.hashFinal(handle);
   } finally {
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
+    await engine.hashRelease(handle).catch(() => undefined);
   }
 }
 
@@ -66,7 +75,8 @@ async function fileExists(root: FileSystemDirectoryHandle, file: OfferedFile) {
     await directory.getFileHandle(name);
     return true;
   } catch (error) {
-    if (error instanceof DOMException && error.name === "NotFoundError") return false;
+    if (error instanceof DOMException && error.name === "NotFoundError")
+      return false;
     throw error;
   }
 }
@@ -97,9 +107,10 @@ class DirectorySink implements ReceiveSink {
     await this.writable.close();
   }
 
-  async hash(algorithm: "xxhash" | "sha256" = "xxhash") {
-    if (!this.closed) throw new Error("Destination must be closed before hashing");
-    return hashBlob(await this.handle.getFile(), algorithm);
+  async hash(algorithm: "xxhash" | "sha256" = "xxhash", signal?: AbortSignal) {
+    if (!this.closed)
+      throw new Error("Destination must be closed before hashing");
+    return hashBlob(await this.handle.getFile(), algorithm, signal);
   }
 
   async commit() {}
@@ -138,7 +149,7 @@ class DownloadSink implements ReceiveSink {
 
   constructor(
     private name: string,
-    private onDownload: (name: string, blob: Blob) => void,
+    private onDownload: (name: string, blob: Blob) => void | Promise<void>,
   ) {}
 
   async writeAt(position: number, bytes: Uint8Array) {
@@ -157,16 +168,18 @@ class DownloadSink implements ReceiveSink {
     this.chunks.clear();
   }
 
-  async hash(algorithm: "xxhash" | "sha256" = "xxhash") {
-    if (!this.blob) throw new Error("Destination must be finalized before hashing");
-    return hashBlob(this.blob, algorithm);
+  async hash(algorithm: "xxhash" | "sha256" = "xxhash", signal?: AbortSignal) {
+    if (!this.blob)
+      throw new Error("Destination must be finalized before hashing");
+    return hashBlob(this.blob, algorithm, signal);
   }
 
   async commit() {
-    if (!this.blob) throw new Error("Destination must be finalized before download");
+    if (!this.blob)
+      throw new Error("Destination must be finalized before download");
     if (this.committed) return;
     this.committed = true;
-    this.onDownload(this.name, this.blob);
+    await this.onDownload(this.name, this.blob);
   }
 
   async abort() {
@@ -200,7 +213,8 @@ class TextSink implements ReceiveSink {
     );
     let offset = 0;
     for (const [position, bytes] of ordered) {
-      if (position !== offset) throw new Error("Text payload has a missing chunk");
+      if (position !== offset)
+        throw new Error("Text payload has a missing chunk");
       offset += bytes.byteLength;
     }
     if (offset !== this.expectedSize) {
@@ -211,26 +225,37 @@ class TextSink implements ReceiveSink {
     this.chunks.clear();
   }
 
-  async hash(algorithm: "xxhash" | "sha256" = "xxhash") {
-    if (!this.bytes) throw new Error("Text destination must be finalized before hashing");
-    const engine = wasm();
-    const handle =
-      algorithm === "sha256" ? await engine.sha256Init() : await engine.hashInit();
-    if (algorithm === "sha256") await engine.sha256Update(handle, this.bytes);
-    else await engine.hashUpdate(handle, this.bytes);
-    return algorithm === "sha256"
-      ? engine.sha256Final(handle)
-      : engine.hashFinal(handle);
+  async hash(algorithm: "xxhash" | "sha256" = "xxhash", signal?: AbortSignal) {
+    if (!this.bytes)
+      throw new Error("Text destination must be finalized before hashing");
+    if (algorithm === "sha256") {
+      const hasher = new SHA256Hasher(signal);
+      try {
+        await hasher.update(this.bytes);
+        return await hasher.digest();
+      } finally {
+        hasher.dispose();
+      }
+    }
+    const engine = protocolEngine();
+    const handle = await engine.hashInit(signal);
+    try {
+      if (signal?.aborted)
+        throw new DOMException("Transfer cancelled", "AbortError");
+      await engine.hashUpdate(handle, this.bytes);
+      return await engine.hashFinal(handle);
+    } finally {
+      await engine.hashRelease(handle).catch(() => undefined);
+    }
   }
 
   async commit() {
-    if (!this.bytes) throw new Error("Text destination must be finalized before display");
+    if (!this.bytes)
+      throw new Error("Text destination must be finalized before display");
     if (this.committed) return;
     let text: string;
     try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(
-        this.bytes,
-      );
+      text = new TextDecoder("utf-8", { fatal: true }).decode(this.bytes);
     } catch {
       throw new Error("The received text is not valid UTF-8");
     }
@@ -254,7 +279,8 @@ export class TextDestination implements ReceiveDestination {
   }
 
   async openFile(file: OfferedFile) {
-    if (this.opened) throw new Error("Text transfers can contain only one payload");
+    if (this.opened)
+      throw new Error("Text transfers can contain only one payload");
     if (file.size <= 0 || file.size > maxTextTransferBytes) {
       throw new Error("Text payload must be between 1 byte and 1 MiB");
     }
@@ -303,7 +329,10 @@ function waitForDownloadController() {
 
 async function streamingWorker() {
   downloadWorker ??= (async () => {
-    if (!("serviceWorker" in navigator) || typeof MessageChannel === "undefined") {
+    if (
+      !("serviceWorker" in navigator) ||
+      typeof MessageChannel === "undefined"
+    ) {
       throw new Error("Streaming browser downloads are unavailable");
     }
     await navigator.serviceWorker.register(
@@ -326,40 +355,55 @@ class StreamingDownloadSink implements ReceiveSink {
   private offset = 0;
   private closed = false;
   private digest?: Uint8Array;
+  private frame?: HTMLIFrameElement;
+  private failure?: Error;
   private pending?: {
     resolve(): void;
     reject(error: Error): void;
+    timer: ReturnType<typeof setTimeout>;
   };
 
   private constructor(
     private port: MessagePort,
-    private hashHandle: number,
+    private hasher: SHA256Hasher,
   ) {
     this.port.addEventListener("message", (event) => {
       const pending = this.pending;
       if (!pending) return;
       this.pending = undefined;
-      if (event.data?.error) pending.reject(new Error(event.data.error));
-      else pending.resolve();
+      clearTimeout(pending.timer);
+      if (event.data?.error) {
+        this.failure = new Error(event.data.error);
+        pending.reject(this.failure);
+      } else pending.resolve();
     });
     this.port.start();
   }
 
-  static async create(name: string, size: number) {
+  static async create(name: string, size: number, signal?: AbortSignal) {
     const worker = await streamingWorker();
     const id = crypto.randomUUID();
     const channel = new MessageChannel();
-    const hashHandle = await wasm().sha256Init();
-    const sink = new StreamingDownloadSink(channel.port1, hashHandle);
-    await sink.send({ type: "prepare", id, name, size }, [channel.port2], worker);
+    const hasher = new SHA256Hasher(signal);
+    const sink = new StreamingDownloadSink(channel.port1, hasher);
+    try {
+      await sink.send(
+        { type: "prepare", id, name, size },
+        [channel.port2],
+        worker,
+      );
+    } catch (error) {
+      hasher.dispose();
+      channel.port1.close();
+      throw error;
+    }
 
-    const anchor = document.createElement("a");
-    anchor.href = `${import.meta.env.BASE_URL}__croc_download__/${id}`;
-    anchor.download = name;
-    anchor.hidden = true;
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
+    // A download-attributed anchor can bypass the controlling service worker.
+    // Navigate a hidden frame instead; Content-Disposition supplies the name.
+    sink.frame = document.createElement("iframe");
+    sink.frame.hidden = true;
+    sink.frame.src = `${import.meta.env.BASE_URL}__croc_download__/${id}`;
+    document.body.append(sink.frame);
     return sink;
   }
 
@@ -368,9 +412,18 @@ class StreamingDownloadSink implements ReceiveSink {
     transfer: Transferable[] = [],
     target?: ServiceWorker,
   ) {
-    if (this.pending) throw new Error("Streaming download write is already pending");
+    if (this.failure) throw this.failure;
+    if (this.pending)
+      throw new Error("Streaming download write is already pending");
     return new Promise<void>((resolve, reject) => {
-      this.pending = { resolve, reject };
+      const timer = setTimeout(() => {
+        this.pending = undefined;
+        this.failure = new Error(
+          "The streaming browser download stopped responding",
+        );
+        reject(this.failure);
+      }, 15_000);
+      this.pending = { resolve, reject, timer };
       if (target) target.postMessage(message, transfer);
       else this.port.postMessage(message, transfer);
     });
@@ -381,7 +434,7 @@ class StreamingDownloadSink implements ReceiveSink {
     if (position !== this.offset) {
       throw new Error("Streaming browser downloads require sequential chunks");
     }
-    await wasm().sha256Update(this.hashHandle, bytes);
+    await this.hasher.update(bytes);
     const copy = Uint8Array.from(bytes);
     await this.send({ type: "chunk", bytes: copy.buffer }, [copy.buffer]);
     this.offset += bytes.byteLength;
@@ -389,46 +442,61 @@ class StreamingDownloadSink implements ReceiveSink {
 
   async finalize() {
     if (this.closed) return;
-    this.closed = true;
-    this.digest = await wasm().sha256Final(this.hashHandle);
+    this.digest = await this.hasher.digest();
     await this.send({ type: "end" });
+    this.closed = true;
+    this.port.close();
+    this.frame?.remove();
   }
 
   async hash(algorithm: "xxhash" | "sha256" = "sha256") {
     if (algorithm !== "sha256") {
       throw new Error("Streaming downloads support SHA-256 verification only");
     }
-    if (!this.digest) throw new Error("Destination must be finalized before hashing");
+    if (!this.digest)
+      throw new Error("Destination must be finalized before hashing");
     return this.digest;
   }
 
   async commit() {}
 
   async abort() {
+    this.hasher.dispose();
     if (this.closed) return;
     this.closed = true;
-    await this.send({ type: "abort" }).catch(() => undefined);
+    if (this.pending) {
+      clearTimeout(this.pending.timer);
+      this.pending.reject(new DOMException("Transfer cancelled", "AbortError"));
+      this.pending = undefined;
+    }
+    // A failed/cancelled browser navigation may never acknowledge another
+    // message. Cleanup must not prevent the transfer error from reaching UI.
+    this.port.postMessage({ type: "abort" });
+    this.port.close();
+    this.frame?.remove();
   }
 }
 
 export class StreamingDownloadDestination implements ReceiveDestination {
   async createEmptyFolder() {}
 
-  async openFile(file: OfferedFile) {
-    return StreamingDownloadSink.create(file.name, file.size);
+  async openFile(file: OfferedFile, signal?: AbortSignal) {
+    if (file.size === 0) return new DownloadDestination().openFile(file);
+    return StreamingDownloadSink.create(file.name, file.size, signal);
   }
 }
 
 export class DownloadDestination implements ReceiveDestination {
+  private lastDownloadAt = -Infinity;
   private usedNames = new Set<string>();
 
   async createEmptyFolder() {
     // Browser downloads cannot represent an empty folder.
   }
 
-  async openFile(file: OfferedFile) {
+  async openFile(file: OfferedFile, signal?: AbortSignal) {
     return new DownloadSink(this.uniqueName(file.name), (name, blob) =>
-      this.download(name, blob),
+      this.download(name, blob, signal),
     );
   }
 
@@ -450,7 +518,15 @@ export class DownloadDestination implements ReceiveDestination {
     return candidate;
   }
 
-  private download(name: string, blob: Blob) {
+  private async download(name: string, blob: Blob, signal?: AbortSignal) {
+    // Chromium drops automatic download bursts after ten files per second.
+    // Bundles still save individual files, with a bounded gap between clicks.
+    const delay = Math.max(0, 150 - (performance.now() - this.lastDownloadAt));
+    if (delay > 0)
+      await new Promise<void>((resolve) => window.setTimeout(resolve, delay));
+    if (signal?.aborted)
+      throw new DOMException("Transfer cancelled", "AbortError");
+    this.lastDownloadAt = performance.now();
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -538,8 +614,14 @@ export async function chooseStoredReceiveDestination(offer: TransferOffer) {
   return blobDownloadDestination(offer);
 }
 
-export async function verifySink(sink: ReceiveSink, expected: Uint8Array) {
-  const actual = await sink.hash();
+export async function verifySink(
+  sink: ReceivePayload,
+  expected: Uint8Array,
+  signal?: AbortSignal,
+) {
+  const actual = await sink.hash("xxhash", signal);
+  if (signal?.aborted)
+    throw new DOMException("Transfer cancelled", "AbortError");
   if (!bytesEqual(actual, expected)) {
     throw new Error(
       `The sender advertised xxhash ${hex(expected)}, but the received file hashes to ${hex(actual)}`,
@@ -550,8 +632,9 @@ export async function verifySink(sink: ReceiveSink, expected: Uint8Array) {
 export async function verifySinkSHA256(
   sink: ReceiveSink,
   expected: Uint8Array,
+  signal?: AbortSignal,
 ) {
-  const actual = await sink.hash("sha256");
+  const actual = await sink.hash("sha256", signal);
   if (!bytesEqual(actual, expected)) {
     throw new Error(
       `The stored file failed SHA-256 verification (${hex(actual)} != ${hex(expected)})`,

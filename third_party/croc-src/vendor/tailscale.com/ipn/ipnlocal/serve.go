@@ -35,11 +35,13 @@ import (
 
 	"github.com/pires/go-proxyproto"
 	"go4.org/mem"
+	"tailscale.com/envknob"
 	"tailscale.com/ipn"
 	"tailscale.com/net/netmon"
 	"tailscale.com/net/netutil"
 	"tailscale.com/syncs"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/types/lazy"
 	"tailscale.com/types/logger"
 	"tailscale.com/types/views"
@@ -92,7 +94,7 @@ type serveHTTPContext struct {
 	// provides funnel-specific context, nil if not funneled
 	Funnel *funnelFlow
 	// AppCapabilities lists all PeerCapabilities that should be forwarded by serve
-	AppCapabilities views.Slice[tailcfg.PeerCapability]
+	AppCapabilities views.Slice[peercap.Cap]
 }
 
 // funnelFlow represents a funneled connection initiated via IngressPeer
@@ -122,7 +124,21 @@ type localListener struct {
 
 	handler       func(net.Conn) error            // handler for inbound connections
 	closeListener syncs.AtomicValue[func() error] // Listener's Close method, if any
+
+	// allowAllInterfaces, if set, stops the listener from being bound to the
+	// Tailscale interface, so it answers traffic arriving on any interface.
+	// Only serve listeners set it, and only when serveAllowAllInterfaces is
+	// set; the web client listener always stays bound.
+	allowAllInterfaces bool
 }
+
+// serveAllowAllInterfaces, when set, stops serve's kernel listeners from
+// being bound to the Tailscale interface, so they answer traffic arriving on
+// any interface. It applies only to serve listeners, not the web client
+// listener. This re-exposes serve to the local network; it is set only by the
+// Kubernetes operator's experimental cluster-traffic ingress feature, which
+// forwards cluster traffic to the node's Tailscale IP via another interface.
+var serveAllowAllInterfaces = envknob.RegisterBool("TS_SERVE_ALLOW_ALL_INTERFACES")
 
 func (b *LocalBackend) newServeListener(ctx context.Context, ap netip.AddrPort, logf logger.Logf) *localListener {
 	ctx, cancel := context.WithCancel(ctx)
@@ -132,6 +148,8 @@ func (b *LocalBackend) newServeListener(ctx context.Context, ap netip.AddrPort, 
 		ctx:    ctx,
 		cancel: cancel,
 		logf:   logf,
+
+		allowAllInterfaces: serveAllowAllInterfaces(),
 
 		handler: func(conn net.Conn) error {
 			srcAddr := conn.RemoteAddr().(*net.TCPAddr).AddrPort()
@@ -167,7 +185,7 @@ func (s *localListener) Run() {
 		ipStr := ip.String()
 
 		var lc net.ListenConfig
-		if initListenConfig != nil {
+		if initListenConfig != nil && !s.allowAllInterfaces {
 			ifIndex, err := netmon.TailscaleInterfaceIndex()
 			if err != nil {
 				s.logf("localListener failed to get Tailscale interface index %v, backing off: %v", s.ap, err)
@@ -221,14 +239,13 @@ func (s *localListener) Run() {
 		s.closeListener.Store(ln.Close)
 
 		s.logf("listening on %v", s.ap)
+		// handleListenersAccept always returns a non-nil error.
 		err = s.handleListenersAccept(ln)
 		if s.ctx.Err() != nil {
 			// context canceled, we're done
 			return
 		}
-		if err != nil {
-			s.logf("localListener accept error, retrying: %v", err)
-		}
+		s.logf("localListener accept error, retrying: %v", err)
 	}
 }
 
@@ -1001,6 +1018,8 @@ func (rp *reverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // to the backend. The Transport gets created lazily, at most once.
 func (rp *reverseProxy) getTransport() *http.Transport {
 	return rp.httpTransport.Get(func() *http.Transport {
+		// Zero preserves http.Transport's default MaxIdleConnsPerHost value.
+		maxIdleConnsPerHost, _ := envknob.LookupInt("TS_DEBUG_SERVE_MAX_IDLE_CONNS_PER_HOST")
 		dial := rp.lb.dialer.SystemDial
 		if rp.socketPath != "" {
 			dial = func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -1017,6 +1036,7 @@ func (rp *reverseProxy) getTransport() *http.Transport {
 			// Values for the following parameters have been copied from http.DefaultTransport.
 			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   maxIdleConnsPerHost,
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
@@ -1138,7 +1158,7 @@ func (b *LocalBackend) addAppCapabilitiesHeader(r *httputil.ProxyRequest) error 
 		return nil
 	}
 
-	peerCapsFiltered := make(map[tailcfg.PeerCapability][]tailcfg.RawMessage, acceptCaps.Len())
+	peerCapsFiltered := make(map[peercap.Cap][]tailcfg.RawMessage, acceptCaps.Len())
 	for _, cap := range acceptCaps.AsSlice() {
 		if peerCaps.HasCapability(cap) {
 			peerCapsFiltered[cap] = peerCaps[cap]

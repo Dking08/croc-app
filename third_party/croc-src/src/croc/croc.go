@@ -35,6 +35,7 @@ import (
 	"github.com/skip2/go-qrcode"
 	"golang.org/x/time/rate"
 
+	"github.com/schollz/croc/v11/src/bundle"
 	"github.com/schollz/croc/v11/src/codephrase"
 	"github.com/schollz/croc/v11/src/comm"
 	"github.com/schollz/croc/v11/src/compress"
@@ -51,8 +52,9 @@ import (
 )
 
 var (
-	ipRequest        = []byte("ips?")
-	handshakeRequest = []byte("handshake")
+	ipRequest            = []byte("ips?")
+	handshakeRequest     = []byte("handshake")
+	errLocalProbeExpired = errors.New("local probe exceeded discovery budget")
 )
 
 const defaultAlternateSenderRouteTimeout = 10 * time.Second
@@ -186,6 +188,9 @@ type SimpleMessage struct {
 
 // Client holds the state of the croc transfer
 type Client struct {
+	receiveChoices                  map[int]bool
+	bundleCommitted                 map[string]FileInfo
+	bundles                         bundleClientState
 	Options                         Options
 	Pake                            *pake.Pake
 	Key                             []byte
@@ -265,6 +270,7 @@ type Client struct {
 
 	barMu              sync.RWMutex
 	bar                *progressbar.ProgressBar
+	progressDisplay    *transferProgressDisplay
 	longestFilename    int
 	firstSend          bool
 	receiveStatusWidth int
@@ -279,6 +285,10 @@ type Client struct {
 	finishedNum              int
 	numberOfTransferredFiles int
 	numberOfUnchangedFiles   int
+	// filesWrittenByReceiver tracks destination indexes this session opened
+	// or created. --stdout cleanup must not remove a skipped or unchanged file:
+	// FilesToTransferCurrentNum stays at zero when nothing was written.
+	filesWrittenByReceiver   map[int]struct{}
 	preparedHashAlgorithm    string
 	sourceSnapshots          []os.FileInfo
 	remainingPreparationOnce sync.Once
@@ -327,6 +337,10 @@ type FileInfo struct {
 	TempFile     bool        `json:"tf,omitempty"`
 	IsIgnored    bool        `json:"ig,omitempty"`
 	Prepared     bool        `json:"p,omitempty"`
+
+	// declined is set on the receiver when the user refuses to overwrite
+	// or resume the file, so nothing was written for it.
+	declined bool
 }
 
 // RemoteFileRequest requests specific bytes
@@ -341,6 +355,7 @@ type RemoteFileRequest struct {
 
 // SenderInfo lists the files to be transferred
 type SenderInfo struct {
+	BundleLimits           *bundle.Limits `json:",omitempty"`
 	FilesToTransfer        []FileInfo
 	EmptyFoldersToTransfer []FileInfo
 	TotalNumberFolders     int
@@ -363,7 +378,8 @@ const (
 	implicitTailcatReadyFeature = "implicit-tailcat-ready-v1"
 	selectedTransportUnset      = 0
 	selectedTransportRelay      = 2
-	localProbeResponseTimeout   = 2500 * time.Millisecond
+	localProbeResponseTimeout   = 500 * time.Millisecond
+	localProbeReadTimeout       = 5 * time.Second
 	// Keep in sync with web/src/protocol/types.ts maxTextTransferBytes.
 	maxTextTransferBytes = 1 << 20
 )
@@ -547,10 +563,17 @@ func (e pakeHandshakeError) Unwrap() error {
 }
 
 type transferAttemptState struct {
-	errc    chan error
-	control *comm.Comm
-	once    sync.Once
-	tailcat tailcatAttemptState
+	bundles        bundleAttemptState
+	ctx            context.Context
+	cancel         context.CancelCauseFunc
+	bundleReceived chan *bundleReceiveUnit
+	dataMu         sync.Mutex
+	dataClosed     bool
+	dataWorkers    sync.WaitGroup
+	errc           chan error
+	control        *comm.Comm
+	once           sync.Once
+	tailcat        tailcatAttemptState
 }
 
 func (a *transferAttemptState) report(err error) {
@@ -558,6 +581,9 @@ func (a *transferAttemptState) report(err error) {
 		return
 	}
 	a.once.Do(func() {
+		if a.cancel != nil {
+			a.cancel(err)
+		}
 		select {
 		case a.errc <- err:
 		default:
@@ -591,6 +617,9 @@ func reconnectBackoff(attempt int) time.Duration {
 }
 
 func isTransferDisconnectError(err error) bool {
+	if _, ok := errors.AsType[bundleCleanupError](err); ok {
+		return false
+	}
 	var disconnect transferDisconnectError
 	return err != nil && errors.As(err, &disconnect)
 }
@@ -732,11 +761,13 @@ func (c *Client) closeAttempt() {
 		c.CurrentFileIsClosed = true
 	}
 	c.receiveMutex.Unlock()
-	if c.fread != nil {
-		if err := c.fread.Close(); err != nil {
+	c.senderDataMu.Lock()
+	sendFile := c.senderDataFile
+	c.senderDataMu.Unlock()
+	if sendFile != nil {
+		if err := sendFile.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
 			log.Tracef("closing current send file: %v", err)
 		}
-		c.fread = nil
 	}
 }
 
@@ -760,6 +791,9 @@ func (c *Client) resetForReconnectAttempt(attempt int) error {
 	c.peerChunkedFileInfo = false
 	c.peerStagedTransport = false
 	c.peerImplicitTailcatReady = false
+	c.retainCompletedReceiveIdentities()
+	c.bundles = bundleClientState{}
+	c.receiveChoices = nil
 	c.clearIncomingFileManifest()
 	c.tailcat.peerCapable = false
 	c.tailcat.peerRequired = false
@@ -1191,13 +1225,6 @@ func GetFilesInfoWithExactExclusionsContext(ctx context.Context, fnames []string
 					if err != nil {
 						return err
 					}
-					absPathWithSeparator := filepath.Dir(absPath)
-					if !strings.HasSuffix(absPathWithSeparator, string(os.PathSeparator)) {
-						absPathWithSeparator += string(os.PathSeparator)
-					}
-					if strings.HasSuffix(absPathWithSeparator, string(os.PathSeparator)+string(os.PathSeparator)) {
-						absPathWithSeparator = strings.TrimSuffix(absPathWithSeparator, string(os.PathSeparator))
-					}
 					relPath, relErr := filepath.Rel(absPath, pathName)
 					if relErr == nil && exactPathExcluded(exactExclusions, relPath) {
 						if info.IsDir() {
@@ -1205,11 +1232,10 @@ func GetFilesInfoWithExactExclusionsContext(ctx context.Context, fnames []string
 						}
 						return nil
 					}
-					remoteFolder := strings.TrimPrefix(filepath.Dir(pathName), absPathWithSeparator)
 					if !info.IsDir() {
 						fInfo := FileInfo{
 							Name:         info.Name(),
-							FolderRemote: strings.ReplaceAll(remoteFolder, string(os.PathSeparator), "/") + "/",
+							FolderRemote: remoteFolderPath(filepath.Dir(absPath), filepath.Dir(pathName), string(os.PathSeparator)),
 							FolderSource: filepath.Dir(pathName),
 							Size:         info.Size(),
 							ModTime:      info.ModTime(),
@@ -1231,8 +1257,7 @@ func GetFilesInfoWithExactExclusionsContext(ctx context.Context, fnames []string
 						if isEmptyFolder {
 							emptyFolders = append(emptyFolders, FileInfo{
 								// Name: info.Name(),
-								FolderRemote: strings.ReplaceAll(strings.TrimPrefix(pathName,
-									filepath.Dir(absPath)+string(os.PathSeparator)), string(os.PathSeparator), "/") + "/",
+								FolderRemote: remoteFolderPath(filepath.Dir(absPath), pathName, string(os.PathSeparator)),
 							})
 						}
 					}
@@ -1264,6 +1289,17 @@ func GetFilesInfoWithExactExclusionsContext(ctx context.Context, fnames []string
 		}
 	}
 	return
+}
+
+// remoteFolderPath returns folderPath relative to parentDir, using forward
+// slashes and a trailing slash, as sent to the receiver. parentDir may be a
+// filesystem root such as "/" or `D:\` that already ends in a separator.
+func remoteFolderPath(parentDir, folderPath, separator string) string {
+	prefix := parentDir
+	if !strings.HasSuffix(prefix, separator) {
+		prefix += separator
+	}
+	return strings.ReplaceAll(strings.TrimPrefix(folderPath, prefix), separator, "/") + "/"
 }
 
 func exactPathExcluded(exclusions []string, candidate string) bool {
@@ -1388,40 +1424,6 @@ func (c *Client) currentFileUsesCompression() bool {
 	return c.FilesToTransferCurrentNum >= 0 &&
 		c.FilesToTransferCurrentNum < len(c.FilesToTransfer) &&
 		c.FilesToTransfer[c.FilesToTransferCurrentNum].IsCompressed
-}
-
-func (c *Client) setupLocalRelay() {
-	// setup the relay locally
-	firstPort, _ := strconv.Atoi(c.Options.RelayPorts[0])
-	openPorts := utils.FindOpenPorts("127.0.0.1", firstPort, len(c.Options.RelayPorts))
-	if len(openPorts) < len(c.Options.RelayPorts) {
-		panic("not enough open ports to run local relay")
-	}
-	for i, port := range openPorts {
-		c.Options.RelayPorts[i] = fmt.Sprint(port)
-	}
-	// Capture the local relay control port before any goroutine that handles
-	// the external relay can overwrite c.Options.RelayPorts.
-	c.localRelayPort = c.Options.RelayPorts[0]
-	localRelayPorts := append([]string(nil), c.Options.RelayPorts...)
-	localRelayBanner := strings.Join(localRelayPorts[1:], ",")
-	for _, port := range localRelayPorts {
-		go func(portStr string) {
-			debugString := "warn"
-			if c.Options.Debug {
-				debugString = "debug"
-			}
-			err := c.stop.run(
-				debugString,
-				"",
-				portStr,
-				c.Options.RelayPassword,
-				localRelayBanner)
-			if err != nil {
-				panic(err)
-			}
-		}(port)
-	}
 }
 
 func (c *Client) broadcastOnLocalNetwork(useipv6 bool) {
@@ -1581,17 +1583,6 @@ func (c *Client) senderWaitForHandshake(conn *comm.Comm) error {
 			}
 		} else if dataMessage.Kind == "pake1" {
 			log.Trace("got pake1")
-			if c.Options.DisableLocal {
-				log.Trace("local probe disabled, declining pake1")
-				dataMessage.Kind = "no-local"
-				dataMessage.Bytes = nil
-				dataMessage.Bytes2 = nil
-				data, _ = json.Marshal(dataMessage)
-				if sendErr := conn.Send(data); sendErr != nil {
-					return sendErr
-				}
-				continue
-			}
 			if dataMessage.Version != pakekey.ProtocolVersion {
 				return incompatiblePakeVersionError{got: dataMessage.Version}
 			}
@@ -1660,8 +1651,14 @@ func (c *Client) senderWaitForHandshake(conn *comm.Comm) error {
 // receiveControlFrame ignores relay keepalives while a pre-transfer control
 // exchange is waiting for its next application frame. A keepalive may be
 // queued immediately after room admission, before the peer's PAKE response.
+// Always consume the whole reply before reporting an expired discovery budget:
+// abandoning a read can leave a late reply or partial frame in the connection
+// that will next be used for compressed transfer messages. An actual read error
+// makes the connection unusable and must abort the transfer.
 func receiveControlFrame(conn *comm.Comm) ([]byte, error) {
-	deadline := time.Now().Add(localProbeResponseTimeout)
+	started := time.Now()
+	budget := started.Add(localProbeResponseTimeout)
+	deadline := started.Add(localProbeReadTimeout)
 	for {
 		data, err := conn.ReceiveWithDeadline(deadline)
 		if err != nil {
@@ -1670,6 +1667,9 @@ func receiveControlFrame(conn *comm.Comm) ([]byte, error) {
 		if bytes.Equal(data, []byte{1}) {
 			log.Trace("got ping")
 			continue
+		}
+		if time.Now().After(budget) {
+			return nil, errLocalProbeExpired
 		}
 		return data, nil
 	}
@@ -1836,7 +1836,9 @@ func (c *Client) Send(filesInfo []FileInfo, emptyFoldersToTransfer []FileInfo, t
 	if !c.Options.DisableLocal {
 		// add two things to the error channel
 		errchan = make(chan error, 2)
-		c.setupLocalRelay()
+		if err := c.setupLocalRelay(); err != nil {
+			return fmt.Errorf("start local relay: %w", err)
+		}
 		// broadcast on ipv4
 		go c.broadcastOnLocalNetwork(false)
 		// broadcast on ipv6
@@ -2058,6 +2060,9 @@ func (c *Client) Receive() (err error) {
 	if usingLocal {
 		c.ExternalIPConnected = route.address
 	}
+	stopClose := context.AfterFunc(c.stop.ctx, route.connection.Close)
+	defer stopClose()
+	defer route.connection.Close()
 	c.setConnection(0, route.connection)
 	c.setRelayControlRoute(route.address, route.capability, usingLocal || isIPset)
 	log.Debugf("receiver connection established: %+v", c.connection(0))
@@ -2101,10 +2106,6 @@ func (c *Client) Receive() (err error) {
 				return
 			}
 			err = json.Unmarshal(data, &dataMessage)
-			if dataMessage.Kind == "no-local" {
-				log.Debug("peer declined local probe (local transfers disabled)")
-				return fmt.Errorf("peer declined local probe")
-			}
 			if err != nil || dataMessage.Kind != "pake2" {
 				log.Debugf("received invalid local PAKE response (%d bytes)", len(data))
 				return fmt.Errorf("dataMessage %s pake failed", ipRequest)
@@ -2148,6 +2149,7 @@ func (c *Client) Receive() (err error) {
 			log.Debug("sending ips?")
 			if err = c.connection(0).Send(data); err != nil {
 				log.Errorf("ips send error: %v", err)
+				return
 			}
 			data, err = receiveControlFrame(c.connection(0))
 			if err != nil {
@@ -2163,6 +2165,12 @@ func (c *Client) Receive() (err error) {
 			}
 			return
 		}()
+		if err != nil {
+			if !errors.Is(err, errLocalProbeExpired) {
+				return fmt.Errorf("local discovery failed: %w", err)
+			}
+			log.Debug("local discovery exceeded its budget; using relay")
+		}
 
 		if len(ips) > 1 {
 			port := ips[0]
@@ -2246,13 +2254,41 @@ func (c *Client) transfer() (err error) {
 
 	// quit with c.quit <- true
 	c.quit = make(chan bool)
+	attemptContext, cancelAttempt := context.WithCancelCause(c.clientContext())
+	defer cancelAttempt(nil)
 	attempt := &transferAttemptState{
-		errc:    make(chan error, 1),
-		control: c.connection(0),
-		tailcat: tailcatAttemptState{setupDone: make(chan struct{})},
+		ctx: attemptContext, cancel: cancelAttempt,
+		errc:           make(chan error, 1),
+		control:        c.connection(0),
+		tailcat:        tailcatAttemptState{setupDone: make(chan struct{})},
+		bundleReceived: make(chan *bundleReceiveUnit, 1),
 	}
-	defer attempt.closeTailcatPending()
-	defer attempt.cancelTailcatSetup()
+	attempt.bundles.attempt = attempt
+	c.bundles.active = &attempt.bundles
+	defer func() {
+		cleanupErr := c.finishTransferAttempt(attempt)
+		if cleanupErr != nil {
+			err = errors.Join(err, cleanupErr)
+			c.updateLifecycle(func(state *transferLifecycle) { state.Successful = false })
+		}
+		if c.bundleState().lifecycle.LastID > 0 {
+			select {
+			case workerErr := <-attempt.errc:
+				if !isTransferDisconnectError(workerErr) && c.ctxErr() == nil {
+					c.updateLifecycle(func(state *transferLifecycle) { state.Successful = false })
+					err = errors.Join(err, workerErr)
+				}
+			default:
+			}
+			err = bundleVisibleError(err)
+		}
+		if display := c.progressDisplaySnapshot(); display != nil {
+			display.close(err == nil && c.lifecycleSnapshot().Successful)
+			c.barMu.Lock()
+			c.progressDisplay = nil
+			c.barMu.Unlock()
+		}
+	}()
 
 	// if recipient, initialize with sending pake information
 	log.Debug("ready")
@@ -2271,7 +2307,40 @@ func (c *Client) transfer() (err error) {
 		}
 	}
 
-	// listen for incoming messages and process them
+	type controlResult struct {
+		data []byte
+		err  error
+	}
+	frames := make(chan controlResult)
+	readRequests := make(chan struct{})
+	readPending := false
+	readerStop := make(chan struct{})
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		for {
+			select {
+			case <-readRequests:
+			case <-readerStop:
+				return
+			}
+			data, receiveErr := attempt.control.Receive()
+			if receiveErr != nil {
+				cancelAttempt(transferDisconnectError{err: receiveErr})
+			}
+			select {
+			case frames <- controlResult{data, receiveErr}:
+			case <-readerStop:
+				return
+			}
+			if receiveErr != nil {
+				return
+			}
+		}
+	}()
+	defer func() { close(readerStop); attempt.control.Close(); <-readerDone }()
+	// The control owner serializes both peer messages and bundle worker results.
+controlLoop:
 	for {
 		if e := c.ctxErr(); e != nil {
 			log.Tracef("transfer: %v", e)
@@ -2280,7 +2349,29 @@ func (c *Client) transfer() (err error) {
 		}
 		var data []byte
 		var done bool
-		data, err = c.connection(0).Receive()
+		if !readPending {
+			readRequests <- struct{}{}
+			readPending = true
+		}
+		select {
+		case frame := <-frames:
+			readPending = false
+			data, err = frame.data, frame.err
+		case unit := <-attempt.bundleReceived:
+			if finishErr := c.finishReceivedBundle(unit); finishErr != nil {
+				err = bundleVisibleError(finishErr)
+				if isTransferDisconnectError(finishErr) {
+					select {
+					case err = <-attempt.errc:
+					default:
+					}
+				}
+				break controlLoop
+			}
+			continue
+		case <-c.stop.ctx.Done():
+			err = c.stop.ctx.Err()
+		}
 		if err != nil {
 			log.Debugf("got error receiving: %v", c.redactError(err))
 			if ctxErr := c.ctxErr(); ctxErr != nil {
@@ -2343,17 +2434,19 @@ func (c *Client) transfer() (err error) {
 		}
 	}
 
-	if c.Options.Stdout && !c.Options.IsSender && len(c.FilesToTransfer) > 0 && c.FilesToTransferCurrentNum < len(c.FilesToTransfer) {
+	if c.Options.Stdout && !c.Options.IsSender && c.receiverWroteFile(c.FilesToTransferCurrentNum) {
 		pathToFile := path.Join(
 			c.FilesToTransfer[c.FilesToTransferCurrentNum].FolderRemote,
 			c.FilesToTransfer[c.FilesToTransferCurrentNum].Name,
 		)
 		log.Debugf("pathToFile: %s", pathToFile)
 		// close if not closed already
-		if !c.CurrentFileIsClosed {
+		c.receiveMutex.Lock()
+		if !c.CurrentFileIsClosed && c.CurrentFile != nil {
 			c.CurrentFile.Close()
 			c.CurrentFileIsClosed = true
 		}
+		c.receiveMutex.Unlock()
 		root, rootErr := c.receiveFilesystem()
 		if rootErr != nil {
 			return rootErr
@@ -2391,7 +2484,7 @@ func (c *Client) extractReceivedArchives() error {
 		return err
 	}
 	for _, file := range c.FilesToTransfer {
-		if !file.TempFile {
+		if !file.TempFile || file.declined {
 			continue
 		}
 		_, archivePath, pathErr := normalizeReceiveFilePath(file.FolderRemote, file.Name)
@@ -2436,7 +2529,9 @@ func (c *Client) createEmptyFolder(i int) (err error) {
 		return
 	}
 	output, colorEnabled := termui.Output(os.Stderr)
-	fmt.Fprintln(output, termui.Filename(c.EmptyFoldersToTransfer[i].FolderRemote, colorEnabled))
+	if c.ensureProgressDisplay(false) == nil {
+		fmt.Fprintln(output, termui.Filename(c.EmptyFoldersToTransfer[i].FolderRemote, colorEnabled))
+	}
 	c.setProgressBar(c.newProgressBar(1, " ", 0))
 	c.finishProgress()
 	return
@@ -2463,6 +2558,9 @@ func (c *Client) processSenderInfo(senderInfo SenderInfo) (done bool, err error)
 		return true, errors.New("file metadata was already finalized")
 	}
 	c.clearReceiveStatus()
+	if err = c.acceptBundleManifest(senderInfo); err != nil {
+		return true, err
+	}
 	c.Options.NoCompress = senderInfo.NoCompress
 	c.peerPerFileCompression = supportsFeature(senderInfo.Features, perFileCompressionFeature)
 	c.Options.HashAlgorithm, err = receiveHashAlgorithm(senderInfo.HashAlgorithm, c.peerProgressiveHash)
@@ -2475,8 +2573,22 @@ func (c *Client) processSenderInfo(senderInfo SenderInfo) (done bool, err error)
 	}
 	c.nextReconnectRoom = senderInfo.NextReconnectRoom
 	c.TotalNumberFolders = senderInfo.TotalNumberFolders
+	// a reconnect offers the file list again, keep what the user already declined
+	declined := make(map[string]bool)
+	c.retainCompletedReceiveIdentities()
+	for _, fi := range c.FilesToTransfer {
+		if fi.declined {
+			declined[path.Join(fi.FolderRemote, fi.Name)] = true
+		}
+	}
 	c.FilesToTransfer, c.EmptyFoldersToTransfer, err = validateReceiveMetadata(senderInfo.FilesToTransfer, senderInfo.EmptyFoldersToTransfer)
 	if err != nil {
+		return true, err
+	}
+	for i, fi := range c.FilesToTransfer {
+		c.FilesToTransfer[i].declined = declined[path.Join(fi.FolderRemote, fi.Name)]
+	}
+	if err = c.restoreBundleDestinations(); err != nil {
 		return true, err
 	}
 	if err = validateSendingTextOffer(senderInfo.SendingText, c.FilesToTransfer, c.EmptyFoldersToTransfer, c.TotalNumberFolders); err != nil {
@@ -2656,6 +2768,7 @@ func (c *Client) processMessagePake(m message.Message, attempt *transferAttemptS
 	c.peerChunkedFileInfo = supportsFeature(m.Features, chunkedFileInfoFeature)
 	c.peerStagedTransport = supportsFeature(m.Features, stagedTransportFeature)
 	c.peerImplicitTailcatReady = supportsFeature(m.Features, implicitTailcatReadyFeature)
+	c.bundles.peerHandshake = supportsFeature(m.Features, bundle.Feature)
 	if c.pakeConfirmationPending || c.Key != nil {
 		return pakeHandshakeError{err: fmt.Errorf("unexpected duplicate PAKE payload")}
 	}
@@ -2840,7 +2953,15 @@ func (c *Client) openRelayDataChannels(attempt *transferAttemptState, indices []
 				errc <- connErr
 				return
 			}
-			if !c.installRelayDataConnection(j+1, dataConn) {
+			attempt.dataMu.Lock()
+			if attempt.dataClosed {
+				attempt.dataMu.Unlock()
+				dataConn.Close()
+				return
+			}
+			installed := c.installRelayDataConnection(j+1, dataConn)
+			attempt.dataMu.Unlock()
+			if !installed {
 				return
 			}
 			log.Debugf("connected to %s", server)
@@ -2848,9 +2969,9 @@ func (c *Client) openRelayDataChannels(attempt *transferAttemptState, indices []
 				log.Debugf("used fast relay admission on data port %d", j)
 			}
 			if startReceive && !c.Options.IsSender {
-				go c.receiveData(j, dataConn, attempt)
+				c.startReceiveData(j, dataConn, attempt)
 			} else if c.Options.IsSender {
-				c.startLateSenderWorker(dataConn)
+				c.startLateSenderWorker(dataConn, attempt)
 			}
 		}(index)
 	}
@@ -2929,26 +3050,9 @@ func (c *Client) processExternalIP(m message.Message) (done bool, err error) {
 	return
 }
 
-func isStaleControlFrame(payload []byte) bool {
-	if bytes.Equal(payload, ipRequest) || bytes.Equal(payload, handshakeRequest) {
-		return true
-	}
-	var sm SimpleMessage
-	if err := json.Unmarshal(payload, &sm); err == nil {
-		if sm.Kind == "pake1" || sm.Kind == "pake2" || sm.Kind == "no-local" {
-			return true
-		}
-	}
-	return false
-}
-
 func (c *Client) processMessage(payload []byte, attempt *transferAttemptState) (done bool, err error) {
 	m, err := message.Decode(c.Key, payload)
 	if err != nil {
-		if c.Key == nil && isStaleControlFrame(payload) {
-			log.Debug("discarding stale pre-transfer control frame")
-			return false, nil
-		}
 		err = fmt.Errorf("problem with decoding: %w", err)
 		log.Debug(err)
 		return
@@ -2961,7 +3065,15 @@ func (c *Client) processMessage(payload []byte, attempt *transferAttemptState) (
 		return
 	}
 
+	if c.bundleState().lifecycle.ActiveID != 0 {
+		switch m.Type {
+		case message.TypeFinished, message.TypeRecipientReady, message.TypeCloseSender, message.TypeCloseRecipient:
+			return false, errors.New("legacy transfer message during active bundle")
+		}
+	}
 	switch m.Type {
+	case message.TypeBundleRequest, message.TypeBundleOffer, message.TypeBundleReady, message.TypeBundleDone, message.TypeBundleClosed:
+		err = bundleVisibleError(c.processBundleMessage(m, attempt))
 	case message.TypeFinished:
 		err = message.Send(c.connection(0), c.Key, message.Message{
 			Type: message.TypeFinished,
@@ -3123,7 +3235,8 @@ func (c *Client) updateIfSenderChannelSecured() (err error) {
 			HashAlgorithm:          c.Options.HashAlgorithm,
 			ReconnectVersion:       c.reconnectVersion,
 			NextReconnectRoom:      nextReconnectRoom,
-			Features:               []string{perFileCompressionFeature},
+			Features:               c.senderManifestFeatures(),
+			BundleLimits:           c.senderBundleLimits(),
 		})
 		if err != nil {
 			log.Error(err)
@@ -3138,6 +3251,7 @@ func (c *Client) updateIfSenderChannelSecured() (err error) {
 	return
 }
 
+// The control owner holds receiveMutex while installing the next file handle.
 func (c *Client) recipientInitializeFile() (err error) {
 	// start initiating the process to receive a new file
 	log.Debugf("working on file %d", c.FilesToTransferCurrentNum)
@@ -3203,6 +3317,7 @@ func (c *Client) recipientInitializeFile() (err error) {
 			return err
 		}
 	}
+	c.markFileWrittenByReceiver(c.FilesToTransferCurrentNum)
 	return
 }
 
@@ -3222,16 +3337,17 @@ func (c *Client) recipientGetFileReady(finished bool) (err error) {
 		return
 	}
 
-	err = c.recipientInitializeFile()
-	if err != nil {
-		return
-	}
-
 	c.receiveMutex.Lock()
-	c.TotalSent = 0
-	c.TotalChunksTransferred = 0
-	c.CurrentFileIsClosed = false
+	err = c.recipientInitializeFile()
+	if err == nil {
+		c.TotalSent = 0
+		c.TotalChunksTransferred = 0
+		c.CurrentFileIsClosed = false
+	}
 	c.receiveMutex.Unlock()
+	if err != nil {
+		return err
+	}
 	machID, _ := machineid.ID()
 	externalIP := ""
 	if c.peerInlineMetadata {
@@ -3324,7 +3440,23 @@ func (c *Client) createEmptyFileAndFinish(fileInfo FileInfo, i int) (err error) 
 	}
 	c.setProgressBar(c.newProgressBar(1, formatDescription(description), 0))
 	c.finishProgress()
+	c.markFileWrittenByReceiver(i)
 	return
+}
+
+func (c *Client) markFileWrittenByReceiver(index int) {
+	if c.filesWrittenByReceiver == nil {
+		c.filesWrittenByReceiver = make(map[int]struct{})
+	}
+	c.filesWrittenByReceiver[index] = struct{}{}
+}
+
+func (c *Client) receiverWroteFile(index int) bool {
+	if index < 0 || index >= len(c.FilesToTransfer) {
+		return false
+	}
+	_, wrote := c.filesWrittenByReceiver[index]
+	return wrote
 }
 
 var receiveFileHash = utils.HashFileCtx
@@ -3382,126 +3514,57 @@ func askReceiveOverwrite(ctx context.Context, fileInfo FileInfo, resumable bool)
 
 func (c *Client) updateIfRecipientHasFileInfo() (err error) {
 	state := c.lifecycleSnapshot()
+	if c.bundleState().lifecycle.ActiveID != 0 {
+		return nil
+	}
 	if c.Options.IsSender || !state.FileInfoTransferred || state.RecipientRequested {
 		return
 	}
-	// find the next file to transfer and send that number
-	// if the files are the same size, then look for missing chunks
-	finished := true
-	root, err := c.receiveFilesystem()
-	if err != nil {
-		return err
+	if c.bundleSessionEligible() {
+		return c.requestNextBundleUnit()
 	}
-	for i, fileInfo := range c.FilesToTransfer {
-		if _, ok := c.FilesHasFinished[i]; ok {
-			continue
-		}
+	for i, file := range c.FilesToTransfer {
 		if i < c.FilesToTransferCurrentNum {
 			continue
 		}
-		if c.progressiveHashActive() && !fileInfo.Prepared {
-			log.Debugf("waiting for file %d preparation", i)
+		decision, err := c.preflightReceiveFile(i)
+		if err != nil {
+			return err
+		}
+		if decision.pending {
 			return nil
 		}
-		log.Debugf("checking %+v", fileInfo)
-		destination := path.Join(fileInfo.FolderRemote, fileInfo.Name)
-		recipientFileInfo, errRecipientFile := root.Lstat(destination)
-		if errRecipientFile != nil && !os.IsNotExist(errRecipientFile) {
-			return errRecipientFile
+		if !decision.requested {
+			continue
 		}
-		destinationExists := errRecipientFile == nil
-		var fileHash []byte
-		if destinationExists && fileInfo.Size > 0 && fileInfo.Symlink == "" && recipientFileInfo.Mode().IsRegular() && recipientFileInfo.Size() == fileInfo.Size {
-			// the file exists, but is same size, so hash it
-			fileHash, err = receiveFileHash(c.clientContext(), destination, c.Options.HashAlgorithm, !c.Options.SendingText)
-			if err != nil {
-				return fmt.Errorf("hash existing destination %q: %w", destination, err)
+		file = c.FilesToTransfer[i]
+		if file.Size == 0 || file.Symlink != "" {
+			if err := c.createEmptyFileAndFinish(file, i); err != nil {
+				return err
 			}
-		}
-		hashesEqual := destinationExists && fileInfo.Size > 0 && fileInfo.Symlink == "" &&
-			recipientFileInfo.Mode().IsRegular() && recipientFileInfo.Size() == fileInfo.Size &&
-			bytes.Equal(fileHash, fileInfo.Hash)
-		if hashesEqual && c.progressiveHashActive() {
-			known, exactMatch, pending := c.exactHashDecision(i)
-			switch {
-			case known:
-				hashesEqual = exactMatch
-				if !exactMatch {
-					fileHash = nil
-				}
-			case pending:
-				return nil
-			default:
-				if err := c.beginExactHash(i, path.Join(fileInfo.FolderRemote, fileInfo.Name)); err != nil {
-					return err
-				}
-				return nil
-			}
-		}
-		log.Debugf("%s %+x %+x", fileInfo.Name, fileHash, fileInfo.Hash)
-		if !hashesEqual {
-			log.Debugf("hashed %s to %x using %s", fileInfo.Name, fileHash, c.Options.HashAlgorithm)
-			log.Debugf("hashes are not equal %x != %x", fileHash, fileInfo.Hash)
-			// The croc-stdin- exemption is reserved for validated text transfers,
-			// whose destination names are generated by the receiver.
-			isTextArtifact := c.Options.SendingText && strings.HasPrefix(filepath.Base(fileInfo.Name), "croc-stdin-")
-			if destinationExists && !isTextArtifact && c.Options.Rename {
-				newName := utils.UnusedFilename(fileInfo.FolderRemote, fileInfo.Name)
-				output, colorEnabled := termui.Output(os.Stderr)
-				fmt.Fprintf(output, "Receiving %s as %s\n", quotedFilename(fileInfo.Name, colorEnabled), quotedFilename(newName, colorEnabled))
-				c.FilesToTransfer[i].Name = newName
-				fileInfo.Name = newName
-				destinationExists = false
-			}
-			if destinationExists && !c.Options.Overwrite && !c.Options.Rename && !isTextArtifact {
-				resumable := fileInfo.Size > 0 && fileInfo.Symlink == "" && recipientFileInfo.Mode().IsRegular()
-				overwrite, promptErr := askReceiveOverwrite(c.clientContext(), fileInfo, resumable)
-				if promptErr != nil {
-					return promptErr
-				}
-				if !overwrite {
-					continue
-				}
-			}
-			if fileInfo.Size == 0 || fileInfo.Symlink != "" {
-				err = c.createEmptyFileAndFinish(fileInfo, i)
-				if err != nil {
-					return err
-				}
-				c.numberOfTransferredFiles++
-				continue
-			}
-		} else {
-			log.Debugf("hashes are equal %x == %x", fileHash, fileInfo.Hash)
-			c.numberOfUnchangedFiles++
-
-			if !fileInfo.ModTime.IsZero() {
-				if err := root.Chtimes(path.Join(fileInfo.FolderRemote, fileInfo.Name), fileInfo.ModTime, fileInfo.ModTime); err != nil {
-					log.Warnf("chtimes %v: %v", fileInfo.ModTime, err)
-				} else {
-					log.Debugf("chtimes %v", fileInfo.ModTime)
-				}
-			}
-		}
-		if !hashesEqual {
-			finished = false
-			c.FilesToTransferCurrentNum = i
+			c.FilesHasFinished[i] = struct{}{}
 			c.numberOfTransferredFiles++
-			newFolder, _ := filepath.Split(fileInfo.FolderRemote)
-			if newFolder != c.LastFolder && len(c.FilesToTransfer) > 0 && !c.Options.SendingText && newFolder != "./" {
-				output, colorEnabled := termui.Output(os.Stderr)
-				fmt.Fprintf(output, "\r%s\n", termui.Filename(newFolder, colorEnabled))
-			}
-			c.LastFolder = newFolder
-			break
+			continue
 		}
+		c.FilesToTransferCurrentNum = i
+		c.numberOfTransferredFiles++
+		folder, _ := filepath.Split(file.FolderRemote)
+		if folder != c.LastFolder && !c.Options.SendingText && folder != "./" {
+			output, color := termui.Output(os.Stderr)
+			fmt.Fprintf(output, "\r%s\n", termui.Filename(folder, color))
+		}
+		c.LastFolder = folder
+		return c.recipientGetFileReady(false)
 	}
-	c.recipientGetFileReady(finished)
-	return
+	return c.recipientGetFileReady(true)
 }
 
 func (c *Client) fmtPrintUpdate() {
 	c.finishedNum++
+	if display := c.progressDisplaySnapshot(); display != nil {
+		display.completeFile(c.finishedNum)
+		return
+	}
 	if c.TotalNumberOfContents > 1 {
 		output, colorEnabled := termui.Output(os.Stderr)
 		fmt.Fprintln(output, termui.Success(fmt.Sprintf(" %d/%d", c.finishedNum, c.TotalNumberOfContents), colorEnabled))
@@ -3525,25 +3588,8 @@ func (c *Client) updateState(attempt *transferAttemptState) (err error) {
 	if c.Options.IsSender && state.RecipientRequested && !state.FileTransferred {
 		log.Debug("start sending data!")
 
-		if !c.firstSend {
-			output, _ := termui.Output(os.Stderr)
-			fmt.Fprintf(output, "\nSending (%s)\n", c.transferDirection())
-			c.firstSend = true
-			// if there are empty files, show them as already have been transferred now
-			for i := range c.FilesToTransfer {
-				if c.FilesToTransfer[i].Size == 0 {
-					// setup the progressbar and takedown the progress bar for empty files
-					description := fmt.Sprintf("%-*s", c.longestFilename, c.FilesToTransfer[i].Name)
-					if len(c.FilesToTransfer) == 1 {
-						description = c.FilesToTransfer[i].Name
-						// description = ""
-					}
+		c.startSendProgress()
 
-					c.setProgressBar(c.newProgressBar(1, formatDescription(description), 0))
-					c.finishProgress()
-				}
-			}
-		}
 		c.updateLifecycle(func(state *transferLifecycle) { state.FileTransferred = true })
 		c.markTransferStarted()
 		// setup the progressbar
@@ -3637,6 +3683,21 @@ func (c *Client) receiveData(i int, dataConn *comm.Comm, attempt *transferAttemp
 			return
 		}
 		c.markStartup("first-decrypted-data-byte")
+		if unit := attempt.bundles.receive.Load(); unit != nil {
+			if unit.compressed {
+				data, err = compress.DecompressTo(decompressedBuffer, data, maxDecompressedChunkSize)
+				if err != nil {
+					attempt.report(err)
+					return
+				}
+				decompressedBuffer = data
+			}
+			if err = unit.accept(data, attempt); err != nil {
+				attempt.report(err)
+				return
+			}
+			continue
+		}
 		if c.currentFileUsesCompression() {
 			data, err = compress.DecompressTo(decompressedBuffer, data, maxDecompressedChunkSize)
 			if err != nil {
@@ -3791,6 +3852,9 @@ func (c *Client) sendData(i int, dataConn *comm.Comm, fread *os.File, queue *req
 			log.Tracef("stopping send %d: %v", i, err)
 			return
 		}
+		if attempt.ctx != nil && attempt.ctx.Err() != nil {
+			return
+		}
 		readingPos, ok := queue.claim()
 		if !ok {
 			return
@@ -3798,6 +3862,9 @@ func (c *Client) sendData(i int, dataConn *comm.Comm, fread *os.File, queue *req
 
 		n, errRead := fread.ReadAt(payload[8:], readingPos)
 		if n == 0 {
+			if attempt.ctx != nil && attempt.ctx.Err() != nil {
+				return
+			}
 			if errRead == nil {
 				errRead = io.ErrUnexpectedEOF
 			}
@@ -3814,6 +3881,10 @@ func (c *Client) sendData(i int, dataConn *comm.Comm, fread *os.File, queue *req
 				r.Cancel()
 				timer.Stop()
 				return
+			case <-attempt.contextDone():
+				r.Cancel()
+				timer.Stop()
+				return
 			}
 		}
 		if n > 0 {
@@ -3821,7 +3892,7 @@ func (c *Client) sendData(i int, dataConn *comm.Comm, fread *os.File, queue *req
 			plain := payload[:8+n]
 			var dataToSend []byte
 			var err error
-			if c.currentFileUsesCompression() {
+			if queue.compressed {
 				compressedBuffer = compress.CompressTo(compressedBuffer, plain)
 				dataToSend, err = crypt.EncryptAEADTo(encryptedBuffer, compressedBuffer, c.dataAEAD)
 			} else {
@@ -3838,7 +3909,11 @@ func (c *Client) sendData(i int, dataConn *comm.Comm, fread *os.File, queue *req
 				}
 				return
 			}
-			c.addProgress(int64(n))
+			if queue.progress != nil {
+				queue.progress(readingPos, n)
+			} else {
+				c.addProgress(int64(n))
+			}
 			c.mutex.Lock()
 			c.TotalSent += int64(n)
 			c.mutex.Unlock()
@@ -3846,6 +3921,9 @@ func (c *Client) sendData(i int, dataConn *comm.Comm, fread *os.File, queue *req
 		}
 
 		if errRead != nil {
+			if attempt.ctx != nil && attempt.ctx.Err() != nil {
+				return
+			}
 			if errRead == io.EOF {
 				break
 			}

@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"runtime"
@@ -202,12 +203,17 @@ again:
 	return fns, uint16(port), nil
 }
 
-func (s *StdNetBind) putMessages(msgs *[]ipv6.Message) {
-	for i := range *msgs {
-		// Non coalesced write paths access only batch.msgs[i].Buffers[0],
-		// but we append more during [coalesceMessages].
-		// Leave index zero accessible:
-		(*msgs)[i] = ipv6.Message{Buffers: (*msgs)[i].Buffers[:1], OOB: (*msgs)[i].OOB}
+// putMessages resets each message in (*msgs)[:usedMsgs] for reuse, then returns
+// msgs to its [sync.Pool].
+func (s *StdNetBind) putMessages(msgs *[]ipv6.Message, usedMsgs int) {
+	for i := range (*msgs)[:usedMsgs] {
+		// Clear references to previously used packet buffers, otherwise they
+		// may never be GC'd.
+		clear((*msgs)[i].Buffers)
+		(*msgs)[i] = ipv6.Message{
+			Buffers: (*msgs)[i].Buffers[:1], // Non-coalesced write paths require a single element.
+			OOB:     (*msgs)[i].OOB,
+		}
 	}
 	s.msgsPool.Put(msgs)
 }
@@ -229,69 +235,62 @@ type batchWriter interface {
 	WriteBatch([]ipv6.Message, int) (int, error)
 }
 
+const maxDatagramSize = 1<<16 - 1
+
 func (s *StdNetBind) receiveIP(
 	br batchReader,
 	conn *net.UDPConn,
 	rxOffload bool,
-	bufs [][]byte,
-	sizes []int,
-	eps []Endpoint,
+	slab []byte,
+	packets []ReceivedPacket,
 ) (n int, err error) {
 	msgs := s.getMessages()
-	for i := range bufs {
-		(*msgs)[i].Buffers[0] = bufs[i]
-		(*msgs)[i].OOB = (*msgs)[i].OOB[:cap((*msgs)[i].OOB)]
+	usedMsgs := 1
+	if runtime.GOOS == "linux" {
+		// set a floor of 1 in case len(slab) < maxDatagramSize
+		usedMsgs = max(1, len(slab)/maxDatagramSize)
+		// we can't read more datagrams than what we can describe in packets
+		usedMsgs = min(len(packets), usedMsgs)
 	}
-	defer s.putMessages(msgs)
+	defer s.putMessages(msgs, usedMsgs)
 	var numMsgs int
 	if runtime.GOOS == "linux" {
-		if rxOffload {
-			readAt := len(*msgs) - 2
-			numMsgs, err = br.ReadBatch((*msgs)[readAt:], 0)
-			if err != nil {
-				return 0, err
+		rem := slab
+		for i := range usedMsgs {
+			end := maxDatagramSize
+			if len(rem) < maxDatagramSize {
+				end = len(rem)
 			}
-			numMsgs, err = splitCoalescedMessages(*msgs, readAt, getGSOSize)
-			if err != nil {
-				return 0, err
-			}
-		} else {
-			numMsgs, err = br.ReadBatch(*msgs, 0)
-			if err != nil {
-				return 0, err
-			}
+			(*msgs)[i].Buffers[0] = rem[:end]
+			(*msgs)[i].OOB = (*msgs)[i].OOB[:cap((*msgs)[i].OOB)]
+			rem = rem[end:]
+		}
+		numMsgs, err = br.ReadBatch((*msgs)[:usedMsgs], 0)
+		if err != nil {
+			return 0, err
 		}
 	} else {
 		msg := &(*msgs)[0]
+		msg.Buffers[0] = slab
+		msg.OOB = msg.OOB[:cap(msg.OOB)]
 		msg.N, msg.NN, _, msg.Addr, err = conn.ReadMsgUDP(msg.Buffers[0], msg.OOB)
 		if err != nil {
 			return 0, err
 		}
 		numMsgs = 1
 	}
-	for i := 0; i < numMsgs; i++ {
-		msg := &(*msgs)[i]
-		sizes[i] = msg.N
-		if sizes[i] == 0 {
-			continue
-		}
-		addrPort := msg.Addr.(*net.UDPAddr).AddrPort()
-		ep := &StdNetEndpoint{AddrPort: addrPort} // TODO: remove allocation
-		getSrcFromControl(msg.OOB[:msg.NN], ep)
-		eps[i] = ep
-	}
-	return numMsgs, nil
+	return fillReceivedPackets((*msgs)[:numMsgs], maxDatagramSize, packets, rxOffload, getGSOSize)
 }
 
 func (s *StdNetBind) makeReceiveIPv4(pc *ipv4.PacketConn, conn *net.UDPConn, rxOffload bool) ReceiveFunc {
-	return func(bufs [][]byte, sizes []int, eps []Endpoint) (n int, err error) {
-		return s.receiveIP(pc, conn, rxOffload, bufs, sizes, eps)
+	return func(slab []byte, packets []ReceivedPacket) (n int, err error) {
+		return s.receiveIP(pc, conn, rxOffload, slab, packets)
 	}
 }
 
 func (s *StdNetBind) makeReceiveIPv6(pc *ipv6.PacketConn, conn *net.UDPConn, rxOffload bool) ReceiveFunc {
-	return func(bufs [][]byte, sizes []int, eps []Endpoint) (n int, err error) {
-		return s.receiveIP(pc, conn, rxOffload, bufs, sizes, eps)
+	return func(slab []byte, packets []ReceivedPacket) (n int, err error) {
+		return s.receiveIP(pc, conn, rxOffload, slab, packets)
 	}
 }
 
@@ -368,7 +367,8 @@ func (s *StdNetBind) Send(bufs [][]byte, endpoint Endpoint, offset int) error {
 	}
 
 	msgs := s.getMessages()
-	defer s.putMessages(msgs)
+	usedMsgs := len(bufs)
+	defer s.putMessages(msgs, usedMsgs)
 	ua := s.udpAddrPool.Get().(*net.UDPAddr)
 	defer s.udpAddrPool.Put(ua)
 	if is6 {
@@ -524,45 +524,41 @@ func coalesceMessages(addr *net.UDPAddr, ep *StdNetEndpoint, bufs [][]byte, offs
 
 type getGSOFunc func(control []byte) (int, error)
 
-func splitCoalescedMessages(msgs []ipv6.Message, firstMsgAt int, getGSO getGSOFunc) (n int, err error) {
-	for i := firstMsgAt; i < len(msgs); i++ {
-		msg := &msgs[i]
-		if msg.N == 0 {
-			return n, err
-		}
+func fillReceivedPackets(msgs []ipv6.Message, slabOffset int, packets []ReceivedPacket, rxOffload bool, getGSO getGSOFunc) (n int, err error) {
+	for i, msg := range msgs {
 		var (
 			gsoSize    int
 			start      int
-			end        = msg.N
 			numToSplit = 1
 		)
-		gsoSize, err = getGSO(msg.OOB[:msg.NN])
-		if err != nil {
-			return n, err
-		}
-		if gsoSize > 0 {
-			numToSplit = (msg.N + gsoSize - 1) / gsoSize
-			end = gsoSize
-		}
-		for j := 0; j < numToSplit; j++ {
-			if n > i {
-				return n, errors.New("splitting coalesced packet resulted in overflow")
+		if rxOffload {
+			gsoSize, err = getGSO(msg.OOB[:msg.NN])
+			if err != nil {
+				return n, err
 			}
-			copied := copy(msgs[n].Buffers[0], msg.Buffers[0][start:end])
-			msgs[n].N = copied
-			msgs[n].Addr = msg.Addr
-			start = end
-			end += gsoSize
-			if end > msg.N {
-				end = msg.N
+			if gsoSize > 0 {
+				numToSplit = (msg.N + gsoSize - 1) / gsoSize
+			}
+		}
+		addrPort := msg.Addr.(*net.UDPAddr).AddrPort()
+		ep := &StdNetEndpoint{AddrPort: addrPort} // TODO: remove allocation
+		getSrcFromControl(msg.OOB[:msg.NN], ep)
+		regionOffset := i * slabOffset // region may contain multiple coalesced packets
+		for j := 0; j < numToSplit; j++ {
+			if n >= len(packets) {
+				return n, fmt.Errorf("%w: filling received packet metadata resulted in overflow", io.ErrShortBuffer)
+			}
+			end := msg.N
+			if gsoSize > 0 && start+gsoSize < end {
+				end = start + gsoSize
+			}
+			packets[n] = ReceivedPacket{
+				Offset:   regionOffset + start,
+				Size:     end - start,
+				Endpoint: ep,
 			}
 			n++
-		}
-		if i != n-1 {
-			// It is legal for bytes to move within msg.Buffers[0] as a result
-			// of splitting, so we only zero the source msg len when it is not
-			// the destination of the last split operation above.
-			msg.N = 0
+			start = end
 		}
 	}
 	return n, nil

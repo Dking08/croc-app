@@ -4,14 +4,11 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Updates an existing maintenance window. Only specified parameters are modified.
+//
 // The value you specify for Duration determines the specific end time for the
 // maintenance window based on the time it begins. No maintenance window tasks are
 // permitted to start after the resulting endtime minus the number of hours you
@@ -65,30 +62,39 @@ type UpdateMaintenanceWindowInput struct {
 	// The name of the maintenance window.
 	Name *string
 
-	// If True , then all fields that are required by the CreateMaintenanceWindow
-	// operation are also required for this API request. Optional fields that aren't
-	// specified are set to null.
+	// If True , then all fields that are required by the CreateMaintenanceWindow operation are also required
+	// for this API request. Optional fields that aren't specified are set to null.
 	Replace *bool
 
 	// The schedule of the maintenance window in the form of a cron or rate expression.
 	Schedule *string
 
 	// The number of days to wait after the date and time specified by a cron
-	// expression before running the maintenance window. For example, the following
-	// cron expression schedules a maintenance window to run the third Tuesday of every
-	// month at 11:30 PM. cron(30 23 ? * TUE#3 *) If the schedule offset is 2 , the
-	// maintenance window won't run until two days later.
+	// expression before running the maintenance window.
+	//
+	// For example, the following cron expression schedules a maintenance window to
+	// run the third Tuesday of every month at 11:30 PM.
+	//
+	//     cron(30 23 ? * TUE#3 *)
+	//
+	// If the schedule offset is 2 , the maintenance window won't run until two days
+	// later.
 	ScheduleOffset *int32
 
 	// The time zone that the scheduled maintenance window executions are based on, in
 	// Internet Assigned Numbers Authority (IANA) format. For example:
-	// "America/Los_Angeles", "UTC", or "Asia/Seoul". For more information, see the
-	// Time Zone Database (https://www.iana.org/time-zones) on the IANA website.
+	// "America/Los_Angeles", "UTC", or "Asia/Seoul". For more information, see the [Time Zone Database]on
+	// the IANA website.
+	//
+	// [Time Zone Database]: https://www.iana.org/time-zones
 	ScheduleTimezone *string
 
 	// The date and time, in ISO-8601 Extended format, for when you want the
 	// maintenance window to become active. StartDate allows you to delay activation
 	// of the maintenance window until the specified future date.
+	//
+	// When using a rate schedule, if you provide a start date that occurs in the
+	// past, the current date and time are used as the start date.
 	StartDate *string
 
 	noSmithyDocumentSerde
@@ -130,8 +136,10 @@ type UpdateMaintenanceWindowOutput struct {
 
 	// The time zone that the scheduled maintenance window executions are based on, in
 	// Internet Assigned Numbers Authority (IANA) format. For example:
-	// "America/Los_Angeles", "UTC", or "Asia/Seoul". For more information, see the
-	// Time Zone Database (https://www.iana.org/time-zones) on the IANA website.
+	// "America/Los_Angeles", "UTC", or "Asia/Seoul". For more information, see the [Time Zone Database]on
+	// the IANA website.
+	//
+	// [Time Zone Database]: https://www.iana.org/time-zones
 	ScheduleTimezone *string
 
 	// The date and time, in ISO-8601 Extended format, for when the maintenance window
@@ -149,9 +157,6 @@ type UpdateMaintenanceWindowOutput struct {
 }
 
 func (c *Client) addOperationUpdateMaintenanceWindowMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpUpdateMaintenanceWindow{}, middleware.After)
 	if err != nil {
 		return err
@@ -160,56 +165,20 @@ func (c *Client) addOperationUpdateMaintenanceWindowMiddlewares(stack *middlewar
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "UpdateMaintenanceWindow"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpUpdateMaintenanceWindowValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opUpdateMaintenanceWindow(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -224,13 +193,8 @@ func (c *Client) addOperationUpdateMaintenanceWindowMiddlewares(stack *middlewar
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opUpdateMaintenanceWindow(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "UpdateMaintenanceWindow",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

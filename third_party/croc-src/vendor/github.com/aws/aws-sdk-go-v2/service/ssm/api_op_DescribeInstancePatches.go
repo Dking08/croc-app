@@ -5,11 +5,8 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Retrieves information about the patches on the specified managed node and their
@@ -36,14 +33,30 @@ type DescribeInstancePatchesInput struct {
 	// This member is required.
 	InstanceId *string
 
-	// Each element in the array is a structure containing a key-value pair. Supported
-	// keys for DescribeInstancePatches include the following:
-	//   - Classification Sample values: Security | SecurityUpdates
-	//   - KBId Sample values: KB4480056 | java-1.7.0-openjdk.x86_64
-	//   - Severity Sample values: Important | Medium | Low
-	//   - State Sample values: Installed | InstalledOther | InstalledPendingReboot For
-	//   lists of all State values, see Understanding patch compliance state values (https://docs.aws.amazon.com/systems-manager/latest/userguide/patch-manager-compliance-states.html)
-	//   in the Amazon Web Services Systems Manager User Guide.
+	// Each element in the array is a structure containing a key-value pair.
+	//
+	// Supported keys for DescribeInstancePatches include the following:
+	//
+	//   - Classification
+	//
+	// Sample values: Security | SecurityUpdates
+	//
+	//   - KBId
+	//
+	// Sample values: KB4480056 | java-1.7.0-openjdk.x86_64
+	//
+	//   - Severity
+	//
+	// Sample values: Important | Medium | Low
+	//
+	//   - State
+	//
+	// Sample values: Installed | InstalledOther | InstalledPendingReboot
+	//
+	// For lists of all State values, see [Patch compliance state values]in the Amazon Web Services Systems Manager
+	//   User Guide.
+	//
+	// [Patch compliance state values]: https://docs.aws.amazon.com/systems-manager/latest/userguide/patch-manager-compliance-states.html
 	Filters []types.PatchOrchestratorFilter
 
 	// The maximum number of patches to return (per page).
@@ -63,12 +76,19 @@ type DescribeInstancePatchesOutput struct {
 	NextToken *string
 
 	// Each entry in the array is a structure containing:
+	//
 	//   - Title (string)
+	//
 	//   - KBId (string)
+	//
 	//   - Classification (string)
+	//
 	//   - Severity (string)
+	//
 	//   - State (string, such as "INSTALLED" or "FAILED")
+	//
 	//   - InstalledTime (DateTime)
+	//
 	//   - InstalledBy (string)
 	Patches []types.PatchComplianceData
 
@@ -79,9 +99,6 @@ type DescribeInstancePatchesOutput struct {
 }
 
 func (c *Client) addOperationDescribeInstancePatchesMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeInstancePatches{}, middleware.After)
 	if err != nil {
 		return err
@@ -90,56 +107,20 @@ func (c *Client) addOperationDescribeInstancePatchesMiddlewares(stack *middlewar
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeInstancePatches"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeInstancePatchesValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeInstancePatches(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -154,16 +135,11 @@ func (c *Client) addOperationDescribeInstancePatchesMiddlewares(stack *middlewar
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribeInstancePatchesAPIClient is a client that implements the
-// DescribeInstancePatches operation.
-type DescribeInstancePatchesAPIClient interface {
-	DescribeInstancePatches(context.Context, *DescribeInstancePatchesInput, ...func(*Options)) (*DescribeInstancePatchesOutput, error)
-}
-
-var _ DescribeInstancePatchesAPIClient = (*Client)(nil)
 
 // DescribeInstancePatchesPaginatorOptions is the paginator options for
 // DescribeInstancePatches
@@ -230,6 +206,9 @@ func (p *DescribeInstancePatchesPaginator) NextPage(ctx context.Context, optFns 
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeInstancePatches(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -249,10 +228,10 @@ func (p *DescribeInstancePatchesPaginator) NextPage(ctx context.Context, optFns 
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribeInstancePatches(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeInstancePatches",
-	}
+// DescribeInstancePatchesAPIClient is a client that implements the
+// DescribeInstancePatches operation.
+type DescribeInstancePatchesAPIClient interface {
+	DescribeInstancePatches(context.Context, *DescribeInstancePatchesInput, ...func(*Options)) (*DescribeInstancePatchesOutput, error)
 }
+
+var _ DescribeInstancePatchesAPIClient = (*Client)(nil)
