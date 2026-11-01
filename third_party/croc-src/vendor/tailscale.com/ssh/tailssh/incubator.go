@@ -34,14 +34,13 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/pkg/sftp"
 	gliderssh "github.com/tailscale/gliderssh"
 	"github.com/u-root/u-root/pkg/termios"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/sys/unix"
 	"tailscale.com/cmd/tailscaled/childproc"
 	"tailscale.com/hostinfo"
-	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/logger"
 	"tailscale.com/version/distro"
 )
@@ -54,7 +53,10 @@ const (
 	windows = "windows"
 )
 
-func init() {
+// registerIncubator registers the incubator child process handlers.
+// It is called from [Register], which is called from the init of
+// tailscale.com/feature/ssh.
+func registerIncubator() {
 	childproc.Add("ssh", beIncubator)
 	childproc.Add("sftp", beSFTP)
 }
@@ -209,7 +211,7 @@ func (ss *sshSession) newIncubatorCommand(logf logger.Logf) (cmd *exec.Cmd, forw
 	}
 
 	nm := ss.conn.srv.lb.NetMapNoPeers()
-	forceV1Behavior := nm.HasCap(tailcfg.NodeAttrSSHBehaviorV1) && !nm.HasCap(tailcfg.NodeAttrSSHBehaviorV2)
+	forceV1Behavior := nm.HasCap(nodecap.SSHBehaviorV1) && !nm.HasCap(nodecap.SSHBehaviorV2)
 	if forceV1Behavior {
 		incubatorArgs = append(incubatorArgs, "--force-v1-behavior")
 	}
@@ -233,7 +235,7 @@ func (ss *sshSession) newIncubatorCommand(logf logger.Logf) (cmd *exec.Cmd, forw
 		incubatorArgs = append(incubatorArgs, "--cmd="+ss.RawCommand())
 	}
 
-	allowSendEnv := nm.HasCap(tailcfg.NodeAttrSSHEnvironmentVariables)
+	allowSendEnv := nm.HasCap(nodecap.SSHEnvironmentVariables)
 	if allowSendEnv {
 		env, err := filterEnv(ss.conn.acceptEnv, ss.Session.Environ())
 		if err != nil {
@@ -258,21 +260,6 @@ var (
 	debugIncubator bool
 	debugTest      atomic.Bool
 )
-
-type stdRWC struct{}
-
-func (stdRWC) Read(p []byte) (n int, err error) {
-	return os.Stdin.Read(p)
-}
-
-func (stdRWC) Write(b []byte) (n int, err error) {
-	return os.Stdout.Write(b)
-}
-
-func (stdRWC) Close() error {
-	os.Exit(0)
-	return nil
-}
 
 type incubatorArgs struct {
 	loginShell         string
@@ -485,24 +472,6 @@ func handleSFTPInProcess(dlogf logger.Logf, ia incubatorArgs) error {
 	}
 
 	return serveSFTP()
-}
-
-// beSFTP serves SFTP in-process.
-func beSFTP(args []string) error {
-	return serveSFTP()
-}
-
-func serveSFTP() error {
-	server, err := sftp.NewServer(stdRWC{})
-	if err != nil {
-		return err
-	}
-	// TODO(https://github.com/pkg/sftp/pull/554): Revert the check for io.EOF,
-	// when sftp is patched to report clean termination.
-	if err := server.Serve(); err != nil && err != io.EOF {
-		return err
-	}
-	return nil
 }
 
 // shouldAttemptLoginShell decides whether we should attempt to get a full

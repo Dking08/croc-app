@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,7 +21,6 @@ import (
 	"time"
 
 	"github.com/schollz/croc/v11/src/comm"
-	"github.com/schollz/croc/v11/src/models"
 	"github.com/schollz/croc/v11/src/receivefs"
 	"github.com/schollz/croc/v11/src/storecrypto"
 )
@@ -35,8 +33,12 @@ const (
 )
 
 // Client talks to one croc stored-transfer HTTP service.
+// It must not be copied after first use.
 type Client struct {
 	HTTP *http.Client
+
+	defaultHTTPOnce sync.Once
+	defaultHTTP     *http.Client
 }
 
 // Progress reports plaintext bytes processed.
@@ -104,7 +106,7 @@ type downloadState struct {
 	ID           string          `json:"id"`
 	ManifestHash string          `json:"manifestHash"`
 	ClaimToken   string          `json:"claimToken"`
-	Completed    map[int]bool    `json:"completed"`
+	Completed    map[int64]bool  `json:"completed"`
 	Renamed      map[string]bool `json:"renamed"`
 	Verified     bool            `json:"verified"`
 }
@@ -143,45 +145,38 @@ func (c *Client) httpClient() *http.Client {
 		return c.HTTP
 	}
 
-	baseDialer := &net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}
+	c.defaultHTTPOnce.Do(func() {
+		// Snapshot proxy settings on first use and share the connection pool
+		// across requests, including concurrent chunk transfers.
+		transport := http.DefaultTransport.(*http.Transport).Clone()
 
-	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           models.FallbackDialContext(baseDialer.DialContext),
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
+		// Match the SOCKS5-first precedence used by regular transfers.
+		if comm.Socks5Proxy != "" {
+			proxyStr := comm.Socks5Proxy
+			if !strings.Contains(proxyStr, "://") {
+				proxyStr = "socks5://" + proxyStr
+			}
+			if proxyURL, err := url.Parse(proxyStr); err == nil {
+				transport.Proxy = http.ProxyURL(proxyURL)
+			}
+		} else if comm.HttpProxy != "" {
+			proxyStr := comm.HttpProxy
+			if !strings.Contains(proxyStr, "://") {
+				proxyStr = "http://" + proxyStr
+			}
+			if proxyURL, err := url.Parse(proxyStr); err == nil {
+				transport.Proxy = http.ProxyURL(proxyURL)
+			}
+		}
 
-	if comm.HttpProxy != "" {
-		pStr := comm.HttpProxy
-		if !strings.Contains(pStr, "://") {
-			pStr = "http://" + pStr
+		c.defaultHTTP = &http.Client{
+			Transport: transport,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return errors.New("stored-transfer redirects are not allowed")
+			},
 		}
-		if pURL, err := url.Parse(pStr); err == nil {
-			transport.Proxy = http.ProxyURL(pURL)
-		}
-	} else if comm.Socks5Proxy != "" {
-		pStr := comm.Socks5Proxy
-		if !strings.Contains(pStr, "://") {
-			pStr = "socks5://" + pStr
-		}
-		if pURL, err := url.Parse(pStr); err == nil {
-			transport.Proxy = http.ProxyURL(pURL)
-		}
-	}
-
-	return &http.Client{
-		Transport: transport,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return errors.New("stored-transfer redirects are not allowed")
-		},
-	}
+	})
+	return c.defaultHTTP
 }
 
 func apiURL(origin, suffix string) string {
@@ -911,7 +906,7 @@ func (c *Client) startDownload(
 		Version:      storecrypto.Version,
 		ID:           share.ID,
 		ManifestHash: storecrypto.EncodedSHA256(manifestBytes),
-		Completed:    make(map[int]bool),
+		Completed:    make(map[int64]bool),
 		Renamed:      make(map[string]bool),
 	}
 	if existing, readErr := readDownloadStateRoot(root, statePath); readErr == nil &&
@@ -1197,7 +1192,7 @@ func withFreshClaim[T any](
 func (c *Client) getChunkWithClaimRetry(
 	ctx context.Context,
 	session *downloadSession,
-	index int,
+	index int64,
 ) ([]byte, error) {
 	return withFreshClaim(ctx, c, session, func(token string) ([]byte, error) {
 		return c.getChunk(ctx, session.share, token, index)
@@ -1242,7 +1237,7 @@ func readDownloadStateRoot(root *receivefs.Root, path string) (downloadState, er
 	var state downloadState
 	err = json.Unmarshal(bytes, &state)
 	if state.Completed == nil {
-		state.Completed = make(map[int]bool)
+		state.Completed = make(map[int64]bool)
 	}
 	if state.Renamed == nil {
 		state.Renamed = make(map[string]bool)
@@ -1304,7 +1299,7 @@ func (c *Client) getChunk(
 	ctx context.Context,
 	share storecrypto.Share,
 	claimToken string,
-	index int,
+	index int64,
 ) ([]byte, error) {
 	request, err := jsonRequest(
 		ctx,

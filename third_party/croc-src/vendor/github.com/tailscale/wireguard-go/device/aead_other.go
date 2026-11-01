@@ -1,4 +1,4 @@
-//go:build !arm
+//go:build !arm && !(amd64 && gc && !purego)
 
 /* SPDX-License-Identifier: MIT
  *
