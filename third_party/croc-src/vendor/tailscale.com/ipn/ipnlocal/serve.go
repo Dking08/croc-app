@@ -35,11 +35,13 @@ import (
 
 	"github.com/pires/go-proxyproto"
 	"go4.org/mem"
+	"tailscale.com/envknob"
 	"tailscale.com/ipn"
 	"tailscale.com/net/netmon"
 	"tailscale.com/net/netutil"
 	"tailscale.com/syncs"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/types/lazy"
 	"tailscale.com/types/logger"
 	"tailscale.com/types/views"
@@ -78,12 +80,23 @@ const (
 // current etag of a resource.
 var ErrETagMismatch = errors.New("etag mismatch")
 
-// ErrProxyToTailscaledSocket is returned when attempting to proxy
-// to the tailscaled socket itself, which would create a loop.
+// ErrProxyToTailscaledSocket is returned when attempting to proxy to the
+// tailscaled socket itself. The LocalAPI authorizes a unix-socket caller by
+// the peer credentials of the dialing process, which would be tailscaled
+// running as root, so such a proxy would hand a remote client a
+// root-authorized LocalAPI.
 var ErrProxyToTailscaledSocket = errors.New("cannot proxy to tailscaled socket")
 
 var serveHTTPContextKey ctxkey.Key[*serveHTTPContext]
 
+// appCapsContextKey holds the app capabilities accepted by the mount handling
+// the current request. It is per-request state: serveHTTPContext is shared by
+// all streams of a connection, so mount state must not be stored on it.
+var appCapsContextKey = ctxkey.New("ipnlocal.appCapsContextKey", views.Slice[peercap.Cap]{})
+
+// serveHTTPContext is connection-scoped: one value is shared by all requests on
+// the connection, including concurrent h2 streams. Do not add per-request state
+// to it, use a separate context key like appCapsContextKey instead.
 type serveHTTPContext struct {
 	SrcAddr       netip.AddrPort
 	ForVIPService tailcfg.ServiceName // "" means local
@@ -91,8 +104,6 @@ type serveHTTPContext struct {
 
 	// provides funnel-specific context, nil if not funneled
 	Funnel *funnelFlow
-	// AppCapabilities lists all PeerCapabilities that should be forwarded by serve
-	AppCapabilities views.Slice[tailcfg.PeerCapability]
 }
 
 // funnelFlow represents a funneled connection initiated via IngressPeer
@@ -122,7 +133,21 @@ type localListener struct {
 
 	handler       func(net.Conn) error            // handler for inbound connections
 	closeListener syncs.AtomicValue[func() error] // Listener's Close method, if any
+
+	// allowAllInterfaces, if set, stops the listener from being bound to the
+	// Tailscale interface, so it answers traffic arriving on any interface.
+	// Only serve listeners set it, and only when serveAllowAllInterfaces is
+	// set; the web client listener always stays bound.
+	allowAllInterfaces bool
 }
+
+// serveAllowAllInterfaces, when set, stops serve's kernel listeners from
+// being bound to the Tailscale interface, so they answer traffic arriving on
+// any interface. It applies only to serve listeners, not the web client
+// listener. This re-exposes serve to the local network; it is set only by the
+// Kubernetes operator's experimental cluster-traffic ingress feature, which
+// forwards cluster traffic to the node's Tailscale IP via another interface.
+var serveAllowAllInterfaces = envknob.RegisterBool("TS_SERVE_ALLOW_ALL_INTERFACES")
 
 func (b *LocalBackend) newServeListener(ctx context.Context, ap netip.AddrPort, logf logger.Logf) *localListener {
 	ctx, cancel := context.WithCancel(ctx)
@@ -132,6 +157,8 @@ func (b *LocalBackend) newServeListener(ctx context.Context, ap netip.AddrPort, 
 		ctx:    ctx,
 		cancel: cancel,
 		logf:   logf,
+
+		allowAllInterfaces: serveAllowAllInterfaces(),
 
 		handler: func(conn net.Conn) error {
 			srcAddr := conn.RemoteAddr().(*net.TCPAddr).AddrPort()
@@ -167,7 +194,7 @@ func (s *localListener) Run() {
 		ipStr := ip.String()
 
 		var lc net.ListenConfig
-		if initListenConfig != nil {
+		if initListenConfig != nil && !s.allowAllInterfaces {
 			ifIndex, err := netmon.TailscaleInterfaceIndex()
 			if err != nil {
 				s.logf("localListener failed to get Tailscale interface index %v, backing off: %v", s.ap, err)
@@ -221,14 +248,13 @@ func (s *localListener) Run() {
 		s.closeListener.Store(ln.Close)
 
 		s.logf("listening on %v", s.ap)
+		// handleListenersAccept always returns a non-nil error.
 		err = s.handleListenersAccept(ln)
 		if s.ctx.Err() != nil {
 			// context canceled, we're done
 			return
 		}
-		if err != nil {
-			s.logf("localListener accept error, retrying: %v", err)
-		}
+		s.logf("localListener accept error, retrying: %v", err)
 	}
 }
 
@@ -357,6 +383,10 @@ func (b *LocalBackend) setServeConfigLocked(config *ipn.ServeConfig, etag string
 
 	if err := validateServeConfigUpdate(prevConfig, config.View()); err != nil {
 		return err
+	}
+
+	if b.serveTargetsTailscaledSocket(config.View()) {
+		return errors.New("serving to the tailscaled socket is prohibited for security reasons")
 	}
 
 	var bs []byte
@@ -675,15 +705,17 @@ func (b *LocalBackend) tcpHandlerForServeTCP(tcph ipn.TCPPortHandlerView, dport 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			var backConn net.Conn
 			var err error
-			if socketPath, ok := strings.CutPrefix(backDst, "unix:"); ok {
-				var d net.Dialer
-				backConn, err = d.DialContext(ctx, "unix", socketPath)
+			if socketPath, isUnix := strings.CutPrefix(backDst, "unix:"); isUnix {
+				backConn, err = b.dialServeUnixSocket(ctx, socketPath)
 			} else {
 				backConn, err = b.dialer.SystemDial(ctx, "tcp", backDst)
 			}
 			cancel()
 			if err != nil {
-				b.logf("localbackend: failed to TCP proxy port %v (from %v) to %s: %v", dport, srcAddr, backDst, err)
+				// dialServeUnixSocket already logged a refusal; don't double-log.
+				if !errors.Is(err, ErrProxyToTailscaledSocket) {
+					b.logf("localbackend: failed to TCP proxy port %v (from %v) to %s: %v", dport, srcAddr, backDst, err)
+				}
 				return nil
 			}
 			defer backConn.Close()
@@ -997,15 +1029,59 @@ func (rp *reverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.ServeHTTP(w, r)
 }
 
+// dialServeUnixSocket dials a unix-socket serve/funnel backend. It returns
+// ErrProxyToTailscaledSocket if the backend is tailscaled's own socket,
+// which would give the caller a root-authorized LocalAPI.
+//
+// The configured path can be replaced by anyone who can write to its
+// directory, so the socket is re-checked on every dial, not only at
+// config time. dialServeUnixSocketSafe avoids re-resolving the path
+// where the platform allows it. On the remaining dials,
+// refuseIfConnectedToTailscaledSocket re-checks the connected peer.
+func (b *LocalBackend) dialServeUnixSocket(ctx context.Context, socketPath string) (net.Conn, error) {
+	if b.isTailscaledSocket(socketPath) {
+		b.logf("serve: refusing to proxy to the tailscaled socket %q", socketPath)
+		return nil, ErrProxyToTailscaledSocket
+	}
+	conn, err := b.dialServeUnixSocketSafe(ctx, socketPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.refuseIfConnectedToTailscaledSocket(conn); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
+// refuseIfConnectedToTailscaledSocket returns ErrProxyToTailscaledSocket
+// if conn is a unix connection to the tailscaled socket. The peer address
+// is the path the listening socket was bound to, not the path that was
+// dialed, so the check still sees the tailscaled socket through a symlink
+// swapped in before the dial. This check is best-effort: connections
+// that have no determinable peer name are allowed.
+func (b *LocalBackend) refuseIfConnectedToTailscaledSocket(conn net.Conn) error {
+	ua, ok := conn.RemoteAddr().(*net.UnixAddr)
+	if !ok || ua.Name == "" {
+		return nil
+	}
+	if ua.Name == b.sys.SocketPath || b.isTailscaledSocket(ua.Name) {
+		b.logf("serve: refusing connected unix backend peer %q: it is the tailscaled socket", ua.Name)
+		return ErrProxyToTailscaledSocket
+	}
+	return nil
+}
+
 // getTransport returns the Transport used for regular (non-GRPC) requests
 // to the backend. The Transport gets created lazily, at most once.
 func (rp *reverseProxy) getTransport() *http.Transport {
 	return rp.httpTransport.Get(func() *http.Transport {
+		// Zero preserves http.Transport's default MaxIdleConnsPerHost value.
+		maxIdleConnsPerHost, _ := envknob.LookupInt("TS_DEBUG_SERVE_MAX_IDLE_CONNS_PER_HOST")
 		dial := rp.lb.dialer.SystemDial
 		if rp.socketPath != "" {
 			dial = func(ctx context.Context, _, _ string) (net.Conn, error) {
-				var d net.Dialer
-				return d.DialContext(ctx, "unix", rp.socketPath)
+				return rp.lb.dialServeUnixSocket(ctx, rp.socketPath)
 			}
 		}
 
@@ -1017,6 +1093,7 @@ func (rp *reverseProxy) getTransport() *http.Transport {
 			// Values for the following parameters have been copied from http.DefaultTransport.
 			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   maxIdleConnsPerHost,
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
@@ -1034,8 +1111,7 @@ func (rp *reverseProxy) getH2CTransport() http.RoundTripper {
 			Protocols: &p,
 			DialTLSContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
 				if rp.socketPath != "" {
-					var d net.Dialer
-					return d.DialContext(ctx, "unix", rp.socketPath)
+					return rp.lb.dialServeUnixSocket(ctx, rp.socketPath)
 				}
 				return rp.lb.dialer.SystemDial(ctx, "tcp", rp.url.Host)
 			},
@@ -1129,8 +1205,8 @@ func (b *LocalBackend) addAppCapabilitiesHeader(r *httputil.ProxyRequest) error 
 	if !ok || c.Funnel != nil {
 		return nil
 	}
-	acceptCaps := c.AppCapabilities
-	if acceptCaps.IsNil() {
+	acceptCaps, ok := appCapsContextKey.ValueOk(r.Out.Context())
+	if !ok || acceptCaps.IsNil() {
 		return nil
 	}
 	peerCaps := b.PeerCaps(c.SrcAddr.Addr())
@@ -1138,7 +1214,7 @@ func (b *LocalBackend) addAppCapabilitiesHeader(r *httputil.ProxyRequest) error 
 		return nil
 	}
 
-	peerCapsFiltered := make(map[tailcfg.PeerCapability][]tailcfg.RawMessage, acceptCaps.Len())
+	peerCapsFiltered := make(map[peercap.Cap][]tailcfg.RawMessage, acceptCaps.Len())
 	for _, cap := range acceptCaps.AsSlice() {
 		if peerCaps.HasCapability(cap) {
 			peerCapsFiltered[cap] = peerCaps[cap]
@@ -1198,12 +1274,8 @@ func (b *LocalBackend) serveWebHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unknown proxy destination", http.StatusInternalServerError)
 			return
 		}
-		// Inject app capabilities to forward into the request context
-		c, ok := serveHTTPContextKey.ValueOk(r.Context())
-		if !ok {
-			return
-		}
-		c.AppCapabilities = h.AcceptAppCaps()
+		// Mount-accepted capabilities are per-request state
+		r = r.WithContext(appCapsContextKey.WithValue(r.Context(), h.AcceptAppCaps()))
 		h := p.(http.Handler)
 		// Trim the mount point from the URL path before proxying. (#6571)
 		if r.URL.Path != "/" {
@@ -1731,6 +1803,47 @@ func vipServiceHash(logf logger.Logf, services []*tailcfg.VIPService) string {
 	var buf [sha256.Size]byte
 	h.Sum(buf[:0])
 	return hex.EncodeToString(buf[:])
+}
+
+// serveTargetsTailscaledSocket reports whether sc has any TCP-forward or web
+// handler that proxies to tailscaled's own socket.
+//
+// The local API authorizes a unix-socket caller by the peer credentials of the
+// dialing process, which is tailscaled itself, running as root. Proxying serve
+// to it would hand a tailnet peer a root-authorized local API, so it is
+// refused -- the same reason proxyHandlerForBackend and the TCP-forward dial
+// return ErrProxyToTailscaledSocket. Foreground and VIP-service handlers are as
+// exposed as background ones, so all are checked.
+func (b *LocalBackend) serveTargetsTailscaledSocket(sc ipn.ServeConfigView) bool {
+	if !sc.Valid() {
+		return false
+	}
+	isProhibitedSock := func(target string) bool {
+		p, ok := strings.CutPrefix(target, "unix:")
+		return ok && b.isTailscaledSocket(p)
+	}
+	// Webs covers top-level, foreground and service handlers; TCPs covers
+	// top-level and foreground but not services, so those are checked below.
+	for _, wc := range sc.Webs() {
+		for _, h := range wc.Handlers().All() {
+			if isProhibitedSock(h.Proxy()) {
+				return true
+			}
+		}
+	}
+	for _, h := range sc.TCPs() {
+		if isProhibitedSock(h.TCPForward()) {
+			return true
+		}
+	}
+	for _, svc := range sc.Services().All() {
+		for _, h := range svc.TCP().All() {
+			if isProhibitedSock(h.TCPForward()) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // validateServeConfigUpdate validates changes proposed by incoming serve

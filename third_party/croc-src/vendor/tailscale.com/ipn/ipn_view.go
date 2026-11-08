@@ -15,6 +15,7 @@ import (
 	"github.com/go-json-experiment/json/jsontext"
 	"tailscale.com/drive"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/types/opt"
 	"tailscale.com/types/persist"
 	"tailscale.com/types/preftype"
@@ -387,7 +388,7 @@ func (v PrefsView) Sync() opt.Bool { return v.ж.Sync }
 // network to route Tailscale traffic back to the subnet relay
 // machine.
 //
-// Linux-only.
+// Linux and FreeBSD only.
 func (v PrefsView) NoSNAT() bool { return v.ж.NoSNAT }
 
 // NoStatefulFiltering specifies whether to apply stateful filtering when
@@ -932,7 +933,7 @@ func (v HTTPHandlerView) Proxy() string { return v.ж.Proxy }
 func (v HTTPHandlerView) Text() string { return v.ж.Text }
 
 // peer capabilities to forward in grant header, e.g. example.com/cap/mon
-func (v HTTPHandlerView) AcceptAppCaps() views.Slice[tailcfg.PeerCapability] {
+func (v HTTPHandlerView) AcceptAppCaps() views.Slice[peercap.Cap] {
 	return views.SliceOf(v.ж.AcceptAppCaps)
 }
 
@@ -950,7 +951,7 @@ var _HTTPHandlerViewNeedsRegeneration = HTTPHandler(struct {
 	Path          string
 	Proxy         string
 	Text          string
-	AcceptAppCaps []tailcfg.PeerCapability
+	AcceptAppCaps []peercap.Cap
 	Redirect      string
 }{})
 

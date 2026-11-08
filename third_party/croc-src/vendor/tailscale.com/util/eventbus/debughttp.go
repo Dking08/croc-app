@@ -62,9 +62,6 @@ func serveStatic(name string) http.Handler {
 		switch {
 		case strings.HasSuffix(name, ".css"):
 			w.Header().Set("Content-Type", "text/css")
-		case strings.HasSuffix(name, ".min.js.gz"):
-			w.Header().Set("Content-Type", "text/javascript")
-			w.Header().Set("Content-Encoding", "gzip")
 		case strings.HasSuffix(name, ".js"):
 			w.Header().Set("Content-Type", "text/javascript")
 		default:

@@ -3,16 +3,18 @@ package ssh
 import (
 	"context"
 	"net"
+	"sync/atomic"
 	"time"
 )
 
 type serverConn struct {
 	net.Conn
 
-	idleTimeout       time.Duration
-	handshakeDeadline time.Time
-	maxDeadline       time.Time
-	closeCanceler     context.CancelFunc
+	idleTimeout   time.Duration
+	maxDeadline   time.Time
+	closeCanceler context.CancelFunc
+
+	handshakeDeadline atomic.Pointer[time.Time] // during the handshake; nil once it completes
 }
 
 func (c *serverConn) Write(p []byte) (n int, err error) {
@@ -48,8 +50,9 @@ func (c *serverConn) Close() (err error) {
 func (c *serverConn) updateDeadline() {
 	deadline := c.maxDeadline
 
-	if !c.handshakeDeadline.IsZero() && (deadline.IsZero() || c.handshakeDeadline.Before(deadline)) {
-		deadline = c.handshakeDeadline
+	// handshakeDeadline is nil once the handshake completes.
+	if hsDeadline := c.handshakeDeadline.Load(); hsDeadline != nil && (deadline.IsZero() || hsDeadline.Before(deadline)) {
+		deadline = *hsDeadline
 	}
 
 	if c.idleTimeout > 0 {

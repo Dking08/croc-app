@@ -47,24 +47,24 @@ var (
 )
 
 func sysAllocString(str *uint16) (ret BSTR) {
-	r0, _, _ := syscall.Syscall(procSysAllocString.Addr(), 1, uintptr(unsafe.Pointer(str)), 0, 0)
+	r0, _, _ := syscall.SyscallN(procSysAllocString.Addr(), uintptr(unsafe.Pointer(str)))
 	ret = BSTR(r0)
 	return
 }
 
 func sysAllocStringLen(str *uint16, strLen uint32) (ret BSTR) {
-	r0, _, _ := syscall.Syscall(procSysAllocStringLen.Addr(), 2, uintptr(unsafe.Pointer(str)), uintptr(strLen), 0)
+	r0, _, _ := syscall.SyscallN(procSysAllocStringLen.Addr(), uintptr(unsafe.Pointer(str)), uintptr(strLen))
 	ret = BSTR(r0)
 	return
 }
 
 func sysFreeString(bstr BSTR) {
-	syscall.Syscall(procSysFreeString.Addr(), 1, uintptr(bstr), 0, 0)
+	syscall.SyscallN(procSysFreeString.Addr(), uintptr(bstr))
 	return
 }
 
 func sysStringLen(bstr BSTR) (ret uint32) {
-	r0, _, _ := syscall.Syscall(procSysStringLen.Addr(), 1, uintptr(bstr), 0, 0)
+	r0, _, _ := syscall.SyscallN(procSysStringLen.Addr(), uintptr(bstr))
 	ret = uint32(r0)
 	return
 }

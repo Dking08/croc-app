@@ -1,0 +1,6 @@
+# Local multi-module experiments.
+/go.work
+/go.work.sum
+
+# Editor backup files.
+*~

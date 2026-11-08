@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT
  *
- * Copyright (C) 2019-2021 WireGuard LLC. All Rights Reserved.
+ * Copyright (C) 2019-2026 WireGuard LLC. All Rights Reserved.
  */
 
 package winipcfg
@@ -52,6 +52,7 @@ func RegisterInterfaceChangeCallback(callback func(notificationType MibNotificat
 
 // Unregister unregisters the callback.
 func (callback *InterfaceChangeCallback) Unregister() error {
+	defer callback.wait.Wait()
 	interfaceChangeAddRemoveMutex.Lock()
 	defer interfaceChangeAddRemoveMutex.Unlock()
 
@@ -59,8 +60,6 @@ func (callback *InterfaceChangeCallback) Unregister() error {
 	delete(interfaceChangeCallbacks, callback)
 	removeIt := len(interfaceChangeCallbacks) == 0 && interfaceChangeHandle != 0
 	interfaceChangeMutex.Unlock()
-
-	callback.wait.Wait()
 
 	if removeIt {
 		err := cancelMibChangeNotify2(interfaceChangeHandle)

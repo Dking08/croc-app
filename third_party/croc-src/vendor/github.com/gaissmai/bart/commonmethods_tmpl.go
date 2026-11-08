@@ -1,6 +1,6 @@
 //go:build generate
 
-// Copyright (c) 2025 Karl Gaissmaier
+// Copyright (c) 2026 Karl Gaissmaier
 // SPDX-License-Identifier: MIT
 
 //go:generate ./scripts/generate-table-methods.sh
@@ -22,6 +22,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gaissmai/bart/internal/art"
+	"github.com/gaissmai/bart/internal/lpm"
 	"github.com/gaissmai/bart/internal/nodes"
 	"github.com/gaissmai/bart/internal/value"
 )
@@ -65,8 +67,9 @@ func (n *_NODE_TYPE[V]) Lookup(uint8) (_ V, _ bool)                             
 func (n *_NODE_TYPE[V]) LookupIdx(uint8) (_ uint8, _ V, _ bool)                          { return }
 func (n *_NODE_TYPE[V]) Supernets(netip.Prefix, func(netip.Prefix, V) bool)              { return }
 func (n *_NODE_TYPE[V]) Subnets(netip.Prefix, func(netip.Prefix, V) bool)                { return }
-func (n *_NODE_TYPE[V]) FprintRec(io.Writer, nodes.TrieItem[V], string) (_ error)        { return }
 func (n *_NODE_TYPE[V]) DumpRec(io.Writer, stridePath, int, bool)                        { return }
+func (n *_NODE_TYPE[V]) FprintRec(io.Writer, nodes.TrieItem[V], string) (_ error)        { return }
+
 func (n *_NODE_TYPE[V]) AllRec(stridePath, int, bool, func(netip.Prefix, V) bool) (_ bool) {
 	return
 }
@@ -75,10 +78,15 @@ func (n *_NODE_TYPE[V]) AllRecSorted(stridePath, int, bool, func(netip.Prefix, V
 	return
 }
 
-func (t *_TABLE_TYPE[V]) rootNodeByVersion(is4 bool) (_ *_NODE_TYPE[V])     { return }
-func (t *_TABLE_TYPE[V]) InsertPersist(netip.Prefix, V) (_ *_TABLE_TYPE[V]) { return }
-
 // ### GENERATE DELETE END ###
+
+// rootNodeByVersion, root node getter for ip version.
+func (f *_TABLE_TYPE[V]) rootNodeByVersion(is4 bool) *nodes._NODE_TYPE[V] {
+	if is4 {
+		return &f.root4
+	}
+	return &f.root6
+}
 
 func (t *_TABLE_TYPE[V]) sizeUpdate(is4 bool, delta int) {
 	if is4 {
@@ -88,13 +96,309 @@ func (t *_TABLE_TYPE[V]) sizeUpdate(is4 bool, delta int) {
 	t.size6 += delta
 }
 
-// insert adds or updates a prefix-value pair in the routing table.
+// Contains reports whether any stored prefix covers the given IP address.
+// It returns false for invalid IP addresses.
+//
+// This method performs longest-prefix matching and returns true if any prefix
+// in the routing table contains the IP address, regardless of the associated value.
+//
+// It does not return the value or prefix of the matching item, but as a test
+// against an allow/deny list, it is often sufficient and a few nanoseconds
+// faster than Lookup.
+//
+// Any IPv6 zone identifier is stripped and has no effect on the lookup result.
+func (f *_TABLE_TYPE[V]) Contains(ip netip.Addr) bool {
+	// speed is top priority: no explicit test for ip.IsValid
+	// if ip is invalid, AsSlice() returns nil, Contains returns false.
+	is4 := ip.Is4()
+
+	n := f.rootNodeByVersion(is4)
+
+	for _, octet := range ip.AsSlice() {
+		// for contains, any lpm match is good enough, no backtracking needed
+		if n.PrefixCount() != 0 && n.Contains(art.OctetToIdx(octet)) {
+			return true
+		}
+
+		// stop traversing?
+		if !n.Children.Test(octet) {
+			return false
+		}
+		kid := n.MustGetChild(octet)
+
+		// kid is node or leaf or fringe at octet
+		switch kid := kid.(type) {
+		case *nodes._NODE_TYPE[V]:
+			n = kid // descend down to next trie level
+
+		case *nodes.FringeNode[V]:
+			// fringe is the default-route for all possible octets below
+			return true
+
+		case *nodes.LeafNode[V]:
+			// Strip IPv6 zone before netip.Prefix.Contains to prevent false returns.
+			if !is4 {
+				// but netip.Addr.withoutZone  is not exported :-(
+				// and netip.Addr.WithZone("") is not inlinable, so we have to resort to this clever trick:
+				// https://github.com/gaissmai/bart/pull/418#issuecomment-5735613506
+				ip = netip.PrefixFrom(ip, 0).Addr()
+			}
+
+			return kid.Prefix.Contains(ip)
+		}
+	}
+
+	return false
+}
+
+// Lookup performs a longest-prefix match (LPM) lookup for the given address.
+// It returns the associated value (payload) and true if a matching prefix is found.
+// It returns the zero value and false for invalid IP addresses or if no prefix contains the address.
+//
+// This is the fundamental operation for IP routing decisions, finding the
+// best matching route (the most specific longest prefix) for a destination address.
+//
+// Any IPv6 zone identifier is stripped and has no effect on the lookup result.
+func (t *_TABLE_TYPE[V]) Lookup(ip netip.Addr) (val V, ok bool) {
+	is4 := ip.Is4()
+	octets := ip.AsSlice()
+	n := t.rootNodeByVersion(is4)
+
+	// stack of the traversed nodes for fast backtracking, if needed
+	stack := [nodes.MaxTreeDepth]*nodes._NODE_TYPE[V]{}
+
+	// run variable, used after for loop
+	var depth int
+	var octet byte
+
+LOOP:
+	// find leaf node
+	for depth, octet = range octets {
+		depth &= nodes.DepthMask // BCE, Lookup must be fast
+
+		// push current node on stack for fast backtracking
+		stack[depth] = n
+
+		// go down in tight loop to last octet
+		if !n.Children.Test(octet) {
+			// no more nodes below octet
+			break LOOP
+		}
+		kid := n.MustGetChild(octet)
+
+		// kid is node or leaf or fringe at octet
+		switch kid := kid.(type) {
+		case *nodes._NODE_TYPE[V]:
+			n = kid
+			continue LOOP // descend down to next trie level
+
+		case *nodes.FringeNode[V]:
+			// fringe is the default-route for all possible nodes below
+			return kid.Value, true
+
+		case *nodes.LeafNode[V]:
+			// Strip IPv6 zone before netip.Prefix.Contains to prevent false returns.
+			if !is4 {
+				// but netip.Addr.withoutZone  is not exported :-(
+				// and netip.Addr.WithZone("") is not inlinable, so we have to resort to this clever trick:
+				// https://github.com/gaissmai/bart/pull/418#issuecomment-5735613506
+				ip = netip.PrefixFrom(ip, 0).Addr()
+			}
+
+			if kid.Prefix.Contains(ip) {
+				return kid.Value, true
+			}
+			// reached a path compressed prefix, stop traversing
+			break LOOP
+		}
+	}
+
+	// Hot-path optimization: delay ip.IsValid() check until after traversal.
+	// Fast path: if a Fringe or Leaf matches early in LOOP, we return without ever checking IsValid().
+	// Slow path: for invalid IPs, range over nil octets is a no-op (stack[0] stays nil).
+	// We validate now before backtracking to avoid a nil pointer panic on n.PrefixCount().
+	if !ip.IsValid() {
+		return val, ok
+	}
+
+	// start backtracking, unwind the stack, bounds check eliminated
+	for ; depth >= 0; depth-- {
+		depth &= nodes.DepthMask // BCE
+
+		n = stack[depth]
+
+		// longest prefix match, skip if node has no prefixes
+		if n.PrefixCount() != 0 {
+			idx := art.OctetToIdx(octets[depth])
+			// lookupIdx() manually inlined
+			if lpmIdx, ok2 := n.Prefixes.AndTop(&lpm.LookupTbl[idx]); ok2 {
+				return n.MustGetPrefix(lpmIdx), ok2
+			}
+		}
+	}
+
+	return val, ok
+}
+
+// LookupPrefix performs a longest prefix match lookup for any address within
+// the given prefix. It finds the most specific routing table entry that would
+// match any address in the provided prefix range.
+//
+// This is functionally identical to LookupPrefixLPM but returns only the
+// associated value, not the matching prefix itself.
+//
+// Returns the value and true if a matching prefix is found.
+// Returns zero value and false if no match exists.
+func (t *_TABLE_TYPE[V]) LookupPrefix(pfx netip.Prefix) (val V, ok bool) {
+	_, val, ok = t.lookupPrefixLPM(pfx, false)
+	return val, ok
+}
+
+// LookupPrefixLPM performs a longest prefix match lookup for any address within
+// the given prefix. It finds the most specific routing table entry that would
+// match any address in the provided prefix range.
+//
+// This is functionally identical to LookupPrefix but additionally returns the
+// matching LPM prefix itself along with the value.
+//
+// This method is slower than LookupPrefix and should only be used if the
+// matching lpm entry is also required for other reasons.
+//
+// Returns the matching prefix, its associated value, and true if found.
+// Returns zero values and false if no match exists.
+func (t *_TABLE_TYPE[V]) LookupPrefixLPM(pfx netip.Prefix) (lpmPfx netip.Prefix, val V, ok bool) {
+	return t.lookupPrefixLPM(pfx, true)
+}
+
+func (t *_TABLE_TYPE[V]) lookupPrefixLPM(pfx netip.Prefix, withLPM bool) (lpmPfx netip.Prefix, val V, ok bool) {
+	if !pfx.IsValid() {
+		return lpmPfx, val, ok
+	}
+
+	// canonicalize the prefix
+	pfx = pfx.Masked()
+
+	ip := pfx.Addr()
+	pfxLen := pfx.Bits()
+	is4 := ip.Is4()
+	octets := ip.AsSlice()
+	strideCount, modBits := nodes.DivMod8(pfxLen)
+
+	n := t.rootNodeByVersion(is4)
+
+	// record path to leaf node
+	stack := [nodes.MaxTreeDepth]*nodes._NODE_TYPE[V]{}
+
+	var depth int
+	var octet byte
+
+LOOP:
+	// find the last node on the octets path in the trie,
+	for depth, octet = range octets {
+		depth &= nodes.DepthMask // BCE
+
+		// stepped one past the last stride of interest; back up to last and break
+		if depth > strideCount {
+			depth--
+			break
+		}
+		// push current node on stack
+		stack[depth] = n
+
+		// go down in tight loop to leaf node
+		if !n.Children.Test(octet) {
+			break LOOP
+		}
+		kid := n.MustGetChild(octet)
+
+		// kid is node or leaf or fringe at octet
+		switch kid := kid.(type) {
+		case *nodes._NODE_TYPE[V]:
+			n = kid
+			continue LOOP // descend down to next trie level
+
+		case *nodes.LeafNode[V]:
+			// reached a path compressed prefix, stop traversing
+			if kid.Prefix.Bits() > pfxLen || !kid.Prefix.Contains(ip) {
+				break LOOP
+			}
+			return kid.Prefix, kid.Value, true
+
+		case *nodes.FringeNode[V]:
+			// the bits of the fringe are defined by the depth
+			// maybe the LPM isn't needed, saves some cycles
+			fringeBits := (depth + 1) << 3
+			if fringeBits > pfxLen {
+				break LOOP
+			}
+
+			// the LPM isn't needed, saves some cycles
+			if !withLPM {
+				return netip.Prefix{}, kid.Value, true
+			}
+
+			// get the LPM prefix back from ip and depth
+			// it's a fringe, bits are always /8, /16, /24, ...
+			fringePfx, _ := ip.Prefix((depth + 1) << 3)
+			return fringePfx, kid.Value, true
+		}
+	}
+
+	// start backtracking, unwind the stack
+	for ; depth >= 0; depth-- {
+		depth &= nodes.DepthMask // BCE
+
+		n = stack[depth]
+
+		// longest prefix match, skip if node has no prefixes
+		if n.PrefixCount() == 0 {
+			continue
+		}
+
+		var idx uint8
+		octet = octets[depth]
+
+		// only the final stride may have a different prefix len
+		// all others are just host routes
+		if depth == strideCount {
+			idx = art.PfxToIdx(octet, modBits)
+		} else {
+			idx = art.OctetToIdx(octet)
+		}
+
+		// manually inlined: lookupIdx(idx)
+		var topIdx uint8
+		if topIdx, ok = n.Prefixes.AndTop(&lpm.LookupTbl[idx]); ok {
+			val = n.MustGetPrefix(topIdx)
+
+			// called from LookupPrefix
+			if !withLPM {
+				return netip.Prefix{}, val, ok
+			}
+
+			// called from LookupPrefixLPM
+
+			// get the bits from depth and top idx
+			pfxBits := int(art.PfxBits(depth, topIdx))
+
+			// calculate the lpmPfx from incoming ip and new mask
+			// netip.Addr.Prefix canonicalizes. Invariant: art.PfxBits(depth, topIdx)
+			// yields a valid mask (v4: 0..32, v6: 0..128), so error is impossible.
+			lpmPfx, _ = ip.Prefix(pfxBits)
+			return lpmPfx, val, ok
+		}
+	}
+
+	return lpmPfx, val, ok
+}
+
+// Insert adds or updates a prefix-value pair in the routing table.
 // If the prefix already exists, its value is updated; otherwise a new entry is created.
 // Invalid prefixes are silently ignored.
 //
 // The prefix is automatically canonicalized using pfx.Masked() to ensure
 // consistent behavior regardless of host bits in the input.
-func (t *_TABLE_TYPE[V]) insert(pfx netip.Prefix, val V) {
+func (t *_TABLE_TYPE[V]) Insert(pfx netip.Prefix, val V) {
 	if !pfx.IsValid() {
 		return
 	}
@@ -113,23 +417,18 @@ func (t *_TABLE_TYPE[V]) insert(pfx netip.Prefix, val V) {
 	t.sizeUpdate(is4, 1)
 }
 
-// insertPersist is similar to insert but the receiver isn't modified.
+// InsertPersist is similar to Insert but the receiver isn't modified.
 //
-// All nodes touched during insert are cloned and a new _TABLE_TYPE is returned.
+// All nodes touched during insert are cloned and a new trie is returned.
 // This is not a full [_TABLE_TYPE.Clone], all untouched nodes are still referenced
-// from both Tables.
+// from both tries.
 //
 // If the payload type V contains pointers or needs deep copying,
-// implement:
+// it must implement the Clone method to support correct cloning.
 //
-//	func (v V) Clone() V
-//
-// The bart package detects this via structural typing and deep‑copies
-// values during persistent ops.
-//
-// Due to cloning overhead this is significantly slower than insert,
+// Due to cloning overhead this is significantly slower than Insert,
 // typically taking μsec instead of nsec.
-func (t *_TABLE_TYPE[V]) insertPersist(pfx netip.Prefix, val V) *_TABLE_TYPE[V] {
+func (t *_TABLE_TYPE[V]) InsertPersist(pfx netip.Prefix, val V) *_TABLE_TYPE[V] {
 	if !pfx.IsValid() {
 		return t
 	}
@@ -269,6 +568,50 @@ func (t *_TABLE_TYPE[V]) DeletePersist(pfx netip.Prefix) *_TABLE_TYPE[V] {
 	return pt
 }
 
+// Modify applies an insert, update, or delete operation for the value
+// associated with the given prefix. The supplied callback decides the
+// operation: it is called with the current value (or zero if not found)
+// and a boolean indicating whether the prefix exists. The callback must
+// return a new value and a delete flag: del == false inserts or updates,
+// del == true deletes the entry if it exists (otherwise no-op).
+//
+// The callback is invoked at most once per call.
+//
+// The operation is determined by the callback function, which is called with:
+//
+//	val:   the current value (or zero value if not found)
+//	found: true if the prefix currently exists, false otherwise
+//
+// The callback returns:
+//
+//	val: the new value to insert or update (ignored if del == true)
+//	del: true to delete the entry, false to insert or update
+//
+// Summary of callback semantics:
+//
+//	| cb-input        | cb-return       | Ops    |
+//	------------------------------------- --------
+//	| (zero,   false) | (_,      true)  | no-op  |
+//	| (zero,   false) | (newVal, false) | insert |
+//	| (oldVal, true)  | (newVal, false) | update |
+//	| (oldVal, true)  | (_,      true)  | delete |
+//	------------------------------------- --------
+func (t *_TABLE_TYPE[V]) Modify(pfx netip.Prefix, cb func(_ V, ok bool) (_ V, del bool)) {
+	if !pfx.IsValid() {
+		return
+	}
+
+	// canonicalize prefix
+	pfx = pfx.Masked()
+
+	is4 := pfx.Addr().Is4()
+
+	n := t.rootNodeByVersion(is4)
+
+	delta := n.Modify(pfx, cb)
+	t.sizeUpdate(is4, delta)
+}
+
 // ModifyPersist is similar to Modify but the receiver isn't modified and
 // a new *_TABLE_TYPE is returned.
 func (t *_TABLE_TYPE[V]) ModifyPersist(pfx netip.Prefix, cb func(_ V, ok bool) (_ V, del bool)) *_TABLE_TYPE[V] {
@@ -327,9 +670,6 @@ func (t *_TABLE_TYPE[V]) ModifyPersist(pfx netip.Prefix, cb func(_ V, ok bool) (
 // Returns an empty iterator if the prefix is invalid.
 func (t *_TABLE_TYPE[V]) Supernets(pfx netip.Prefix) iter.Seq2[netip.Prefix, V] {
 	return func(yield func(netip.Prefix, V) bool) {
-		if t == nil {
-			return
-		}
 		if !pfx.IsValid() {
 			return
 		}
@@ -359,9 +699,6 @@ func (t *_TABLE_TYPE[V]) Supernets(pfx netip.Prefix) iter.Seq2[netip.Prefix, V] 
 // Returns an empty iterator if the prefix is invalid.
 func (t *_TABLE_TYPE[V]) Subnets(pfx netip.Prefix) iter.Seq2[netip.Prefix, V] {
 	return func(yield func(netip.Prefix, V) bool) {
-		if t == nil {
-			return
-		}
 		if !pfx.IsValid() {
 			return
 		}
@@ -412,15 +749,12 @@ func (t *_TABLE_TYPE[V]) OverlapsPrefix(pfx netip.Prefix) bool {
 // This is useful for conflict detection, policy enforcement,
 // or validating mutually exclusive routing domains.
 func (t *_TABLE_TYPE[V]) Overlaps(o *_TABLE_TYPE[V]) bool {
-	if o == nil {
-		return false
-	}
 	return t.Overlaps4(o) || t.Overlaps6(o)
 }
 
 // Overlaps4 is like [_TABLE_TYPE.Overlaps] but for the v4 routing table only.
 func (t *_TABLE_TYPE[V]) Overlaps4(o *_TABLE_TYPE[V]) bool {
-	if o == nil || t.size4 == 0 || o.size4 == 0 {
+	if t.size4 == 0 || o.size4 == 0 {
 		return false
 	}
 	return t.root4.Overlaps(&o.root4, 0)
@@ -428,7 +762,7 @@ func (t *_TABLE_TYPE[V]) Overlaps4(o *_TABLE_TYPE[V]) bool {
 
 // Overlaps6 is like [_TABLE_TYPE.Overlaps] but for the v6 routing table only.
 func (t *_TABLE_TYPE[V]) Overlaps6(o *_TABLE_TYPE[V]) bool {
-	if o == nil || t.size6 == 0 || o.size6 == 0 {
+	if t.size6 == 0 || o.size6 == 0 {
 		return false
 	}
 	return t.root6.Overlaps(&o.root6, 0)
@@ -441,7 +775,15 @@ func (t *_TABLE_TYPE[V]) Overlaps6(o *_TABLE_TYPE[V]) bool {
 // This duplicate is shallow-copied by default, but if the value type V implements the
 // Clone method, the value is deeply cloned before insertion. See also _TABLE_TYPE.Clone.
 func (t *_TABLE_TYPE[V]) Union(o *_TABLE_TYPE[V]) {
-	if o == nil || o == t || (o.size4 == 0 && o.size6 == 0) {
+	// panics on nil receiver
+	_ = t.size4
+
+	// panics on nil argument
+	if o.size4 == 0 && o.size6 == 0 {
+		return
+	}
+	// t is unchanged
+	if o == t {
 		return
 	}
 
@@ -459,10 +801,17 @@ func (t *_TABLE_TYPE[V]) Union(o *_TABLE_TYPE[V]) {
 // UnionPersist is similar to [Union] but the receiver isn't modified.
 //
 // All nodes touched during union are cloned and a new *_TABLE_TYPE is returned.
-// If o is nil or empty, no nodes are touched and the receiver may be
+// If o is empty, no nodes are touched and the receiver may be
 // returned unchanged.
 func (t *_TABLE_TYPE[V]) UnionPersist(o *_TABLE_TYPE[V]) *_TABLE_TYPE[V] {
-	if o == nil || o == t || (o.size4 == 0 && o.size6 == 0) {
+	// panics on nil receiver
+	_ = t.size4
+
+	// panics on nil argument
+	if o.size4 == 0 && o.size6 == 0 {
+		return t
+	}
+	if o == t {
 		return t
 	}
 
@@ -500,21 +849,16 @@ func (t *_TABLE_TYPE[V]) UnionPersist(o *_TABLE_TYPE[V]) *_TABLE_TYPE[V] {
 // It ensures both trees (IPv4-based and IPv6-based) have the same sizes and
 // recursively compares their root nodes.
 //
-// Value comparisons use reflect.DeepEqual by default. To avoid the potentially
-// expensive reflect.DeepEqual, the payload type V can provide custom equality
-// by implementing the following method:
+// If V implements an `Equal(V) bool` method, its custom equality logic is used.
+// Otherwise, values are compared directly using the == operator.
 //
-//	Equal(other V) bool
+// Note: If V implements `Equal(V) bool` with a pointer receiver, the Equal
+// method should handle nil receivers gracefully.
 //
-// Example:
-//
-//	type MyValue struct { ID int }
-//	func (v MyValue) Equal(other MyValue) bool { return v.ID == other.ID }
-//
-// The bart package will automatically detect and use this method via Go's
-// structural typing.
+// ATTENTION: If V is not comparable at runtime (such as a slice or map without an `Equal`
+// method), a runtime panic will occur.
 func (t *_TABLE_TYPE[V]) Equal(o *_TABLE_TYPE[V]) bool {
-	if o == nil || t.size4 != o.size4 || t.size6 != o.size6 {
+	if t.size4 != o.size4 || t.size6 != o.size6 {
 		return false
 	}
 	if o == t {
@@ -539,11 +883,10 @@ func (t *_TABLE_TYPE[V]) Equal(o *_TABLE_TYPE[V]) bool {
 //
 // The bart package will automatically detect and use this method via Go's
 // structural typing.
+//
+// Note: If V implements Clone() V with a pointer receiver, the Clone
+// method should handle nil receivers gracefully.
 func (t *_TABLE_TYPE[V]) Clone() *_TABLE_TYPE[V] {
-	if t == nil {
-		return nil
-	}
-
 	c := new(_TABLE_TYPE[V])
 
 	cloneFn := value.CloneFnFactory[V]()
@@ -574,35 +917,14 @@ func (t *_TABLE_TYPE[V]) Size6() int {
 
 // All returns an iterator over all prefix–value pairs in the table.
 //
-// The entries from both IPv4 and IPv6 subtries are yielded using an internal recursive traversal.
-// The iteration order is unspecified and may vary between calls; for a stable order, use AllSorted.
+// The iteration order is unspecified and may vary between calls; for a stable order,
+// use [_TABLE_TYPE.AllSorted].
 //
-// You can use All directly in a for-range loop without providing a yield function.
-// The Go compiler automatically synthesizes the yield callback for you:
-//
-//	for prefix, value := range t.All() {
-//	    fmt.Println(prefix, value)
-//	}
-//
-// Under the hood, the loop body is passed as a yield function to the iterator.
-// If you break or return from the loop, iteration stops early as expected.
-//
-// IMPORTANT: Modifying or deleting entries during iteration is not allowed,
+// IMPORTANT: Modifying the table during iteration is not allowed,
 // as this would interfere with the internal traversal and may corrupt or
-// prematurely terminate the iteration. If mutation of the table during
-// traversal is required use persistent table methods, e.g.
-//
-//	pt := t // shallow copy of t
-//	for pfx, val := range t.All() {
-//		if cond(pfx, val) {
-//		  pt = pt.DeletePersist(pfx)
-//	  }
-//	}
+// prematurely terminate the iteration.
 func (t *_TABLE_TYPE[V]) All() iter.Seq2[netip.Prefix, V] {
 	return func(yield func(netip.Prefix, V) bool) {
-		if t == nil {
-			return
-		}
 		_ = t.root4.AllRec(stridePath{}, 0, true, yield) && t.root6.AllRec(stridePath{}, 0, false, yield)
 	}
 }
@@ -610,9 +932,6 @@ func (t *_TABLE_TYPE[V]) All() iter.Seq2[netip.Prefix, V] {
 // All4 is like [_TABLE_TYPE.All] but only for the v4 routing table.
 func (t *_TABLE_TYPE[V]) All4() iter.Seq2[netip.Prefix, V] {
 	return func(yield func(netip.Prefix, V) bool) {
-		if t == nil {
-			return
-		}
 		_ = t.root4.AllRec(stridePath{}, 0, true, yield)
 	}
 }
@@ -620,35 +939,14 @@ func (t *_TABLE_TYPE[V]) All4() iter.Seq2[netip.Prefix, V] {
 // All6 is like [_TABLE_TYPE.All] but only for the v6 routing table.
 func (t *_TABLE_TYPE[V]) All6() iter.Seq2[netip.Prefix, V] {
 	return func(yield func(netip.Prefix, V) bool) {
-		if t == nil {
-			return
-		}
 		_ = t.root6.AllRec(stridePath{}, 0, false, yield)
 	}
 }
 
-// AllSorted returns an iterator over all prefix–value pairs in the table,
-// ordered in canonical CIDR prefix sort order.
-//
-// This can be used directly with a for-range loop;
-// the Go compiler provides the yield function implicitly:
-//
-//	for prefix, value := range t.AllSorted() {
-//	    fmt.Println(prefix, value)
-//	}
-//
-// The traversal is stable and predictable across calls.
-// Iteration stops early if you break out of the loop.
-//
-// IMPORTANT: Deleting entries during iteration is not allowed,
-// as this would interfere with the internal traversal and may corrupt or
-// prematurely terminate the iteration. If mutation of the table during
-// traversal is required use persistent table methods.
+// AllSorted is like [_TABLE_TYPE.All] but the iteration is ordered in canonical
+// CIDR prefix sort order.
 func (t *_TABLE_TYPE[V]) AllSorted() iter.Seq2[netip.Prefix, V] {
 	return func(yield func(netip.Prefix, V) bool) {
-		if t == nil {
-			return
-		}
 		_ = t.root4.AllRecSorted(stridePath{}, 0, true, yield) &&
 			t.root6.AllRecSorted(stridePath{}, 0, false, yield)
 	}
@@ -657,9 +955,6 @@ func (t *_TABLE_TYPE[V]) AllSorted() iter.Seq2[netip.Prefix, V] {
 // AllSorted4 is like [_TABLE_TYPE.AllSorted] but only for the v4 routing table.
 func (t *_TABLE_TYPE[V]) AllSorted4() iter.Seq2[netip.Prefix, V] {
 	return func(yield func(netip.Prefix, V) bool) {
-		if t == nil {
-			return
-		}
 		_ = t.root4.AllRecSorted(stridePath{}, 0, true, yield)
 	}
 }
@@ -667,9 +962,6 @@ func (t *_TABLE_TYPE[V]) AllSorted4() iter.Seq2[netip.Prefix, V] {
 // AllSorted6 is like [_TABLE_TYPE.AllSorted] but only for the v6 routing table.
 func (t *_TABLE_TYPE[V]) AllSorted6() iter.Seq2[netip.Prefix, V] {
 	return func(yield func(netip.Prefix, V) bool) {
-		if t == nil {
-			return
-		}
 		_ = t.root6.AllRecSorted(stridePath{}, 0, false, yield)
 	}
 }
@@ -697,11 +989,8 @@ func (t *_TABLE_TYPE[V]) AllSorted6() iter.Seq2[netip.Prefix, V] {
 //	   │  └─ 2001:db8::/32 (V)
 //	   └─ fe80::/10 (V)
 func (t *_TABLE_TYPE[V]) Fprint(w io.Writer) error {
-	if w == nil {
+	if w == nil && t != nil {
 		return fmt.Errorf("nil writer")
-	}
-	if t == nil {
-		return nil
 	}
 
 	// v4
@@ -752,10 +1041,6 @@ func (t *_TABLE_TYPE[V]) MarshalText() ([]byte, error) {
 // MarshalJSON dumps the table into two sorted lists: for ipv4 and ipv6.
 // Every root and subnet is an array, not a map, because the order matters.
 func (t *_TABLE_TYPE[V]) MarshalJSON() ([]byte, error) {
-	if t == nil {
-		return []byte("null"), nil
-	}
-
 	result := struct {
 		Ipv4 []DumpListNode[V] `json:"ipv4,omitempty"`
 		Ipv6 []DumpListNode[V] `json:"ipv6,omitempty"`
@@ -775,18 +1060,12 @@ func (t *_TABLE_TYPE[V]) MarshalJSON() ([]byte, error) {
 // DumpList4 dumps the ipv4 tree into a list of roots and their subnets.
 // It can be used to analyze the tree or build the text or JSON serialization.
 func (t *_TABLE_TYPE[V]) DumpList4() []DumpListNode[V] {
-	if t == nil {
-		return nil
-	}
 	return t.dumpListRec(&t.root4, 0, stridePath{}, 0, true)
 }
 
 // DumpList6 dumps the ipv6 tree into a list of roots and their subnets.
 // It can be used to analyze the tree or build custom JSON representation.
 func (t *_TABLE_TYPE[V]) DumpList6() []DumpListNode[V] {
-	if t == nil {
-		return nil
-	}
 	return t.dumpListRec(&t.root6, 0, stridePath{}, 0, false)
 }
 
@@ -836,10 +1115,6 @@ func (t *_TABLE_TYPE[V]) dumpString() string {
 
 // dump the table structure and all the nodes to w.
 func (t *_TABLE_TYPE[V]) dump(w io.Writer) {
-	if t == nil {
-		return
-	}
-
 	if t.size4 > 0 {
 		stats := t.root4.StatsRec()
 		fmt.Fprintln(w)

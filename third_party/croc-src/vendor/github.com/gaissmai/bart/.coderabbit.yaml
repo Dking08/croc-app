@@ -13,7 +13,7 @@ reviews:
   review_status: true
   commit_status: true
   fail_commit_status: false
-  collapse_walkthrough: false
+  collapse_walkthrough: true
   changed_files_summary: true
   sequence_diagrams: true
   estimate_code_review_effort: true
@@ -24,10 +24,9 @@ reviews:
   auto_apply_labels: false
   suggested_reviewers: false
   auto_assign_reviewers: false
-  poem: true
+  poem: false
   labeling_instructions: []
   path_filters:
-    - '!**/doc/**'
     - '!**/testdata/**'
   path_instructions: []
   abort_on_close: true

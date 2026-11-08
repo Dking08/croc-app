@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/tka"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
@@ -172,6 +173,10 @@ type TailnetStatus struct {
 	// Name is the name of the network that's currently in use.
 	Name string
 
+	// StableID is the stable, unique identifier of the tailnet, as used to
+	// identify the tailnet in the Tailscale API.
+	StableID tailcfg.StableTailnetID
+
 	// MagicDNSSuffix is the network's MagicDNS suffix for nodes
 	// in the network such as "userfoo.tailscale.net".
 	// There are no surrounding dots.
@@ -302,7 +307,7 @@ type PeerStatus struct {
 	// Deprecated: use CapMap instead. See https://github.com/tailscale/tailscale/issues/11508
 	// Every value is Capabilities is also a key in CapMap, even if it
 	// has no values in that map.
-	Capabilities []tailcfg.NodeCapability `json:",omitempty"`
+	Capabilities []nodecap.Cap `json:",omitempty"`
 
 	// CapMap is a map of capabilities to their values.
 	CapMap tailcfg.NodeCapMap `json:",omitempty"`
@@ -356,7 +361,7 @@ const (
 )
 
 // HasCap reports whether ps has the given capability.
-func (ps *PeerStatus) HasCap(cap tailcfg.NodeCapability) bool {
+func (ps *PeerStatus) HasCap(cap nodecap.Cap) bool {
 	return ps.CapMap.Contains(cap)
 }
 
@@ -745,7 +750,7 @@ type PingResult struct {
 
 	// DERPRegionID is non-zero DERP region ID if DERP was used.
 	// It is not currently set for TSMP pings.
-	DERPRegionID int
+	DERPRegionID tailcfg.DERPRegionID
 
 	// DERPRegionCode is the three-letter region code
 	// corresponding to DERPRegionID.

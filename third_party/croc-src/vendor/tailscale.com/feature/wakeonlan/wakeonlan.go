@@ -20,11 +20,14 @@ import (
 	"tailscale.com/hostinfo"
 	"tailscale.com/ipn/ipnlocal"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/util/clientmetric"
 )
 
 func init() {
-	feature.Register("wakeonlan")
+	if !feature.Register("wakeonlan") {
+		return
+	}
 	ipnlocal.RegisterC2N("POST /wol", handleC2NWoL)
 	ipnlocal.RegisterPeerAPIHandler("/v0/wol", handlePeerAPIWakeOnLAN)
 	hostinfo.RegisterHostinfoNewHook(func(h *tailcfg.Hostinfo) {
@@ -90,7 +93,7 @@ func canWakeOnLAN(h ipnlocal.PeerAPIHandler) bool {
 	if h.Peer().UnsignedPeerAPIOnly() {
 		return false
 	}
-	return h.IsSelfUntagged() || h.PeerCaps().HasCapability(tailcfg.PeerCapabilityWakeOnLAN)
+	return h.IsSelfUntagged() || h.PeerCaps().HasCapability(peercap.WakeOnLAN)
 }
 
 var metricWakeOnLANCalls = clientmetric.NewCounter("peerapi_wol")
