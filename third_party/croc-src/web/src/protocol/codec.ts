@@ -6,7 +6,8 @@ import {
 } from "./bytes";
 import { MAX_FRAME_SIZE } from "./framing";
 import type { CrocMessage } from "./types";
-import type { CrocWasm } from "../wasm/client";
+import type { CrocProtocolEngine } from "./engine";
+import { BUNDLE_MAX_CONTROL_BYTES } from "./bundle";
 
 type WireMessage = {
   t: CrocMessage["t"];
@@ -19,7 +20,7 @@ type WireMessage = {
 };
 
 export async function encodeMessage(
-  wasm: CrocWasm,
+  protocolEngine: CrocProtocolEngine,
   message: CrocMessage,
   key?: Uint8Array,
 ) {
@@ -30,22 +31,33 @@ export async function encodeMessage(
   if (message.b2?.byteLength) wire.b2 = bytesToBase64(message.b2);
   if (message.n) wire.n = message.n;
   if (message.f?.length) wire.f = message.f;
-  let bytes = await wasm.compress(textEncoder.encode(JSON.stringify(wire)));
-  if (key) bytes = await wasm.encrypt(bytes, key);
+  let bytes: Uint8Array = textEncoder.encode(JSON.stringify(wire));
+  if (
+    wire.t.startsWith("bundle-") &&
+    bytes.byteLength > BUNDLE_MAX_CONTROL_BYTES
+  )
+    throw new Error("Bundle control exceeds 16 KiB");
+  bytes = await protocolEngine.compress(bytes);
+  if (key) bytes = await protocolEngine.encrypt(bytes, key);
   return bytes;
 }
 
 export async function decodeMessage(
-  wasm: CrocWasm,
+  protocolEngine: CrocProtocolEngine,
   payload: Uint8Array,
   key?: Uint8Array,
   maxOutputSize = MAX_FRAME_SIZE,
 ) {
   let bytes = payload;
-  if (key) bytes = await wasm.decrypt(bytes, key);
-  bytes = await wasm.decompress(bytes, maxOutputSize);
+  if (key) bytes = await protocolEngine.decrypt(bytes, key);
+  bytes = await protocolEngine.decompress(bytes, maxOutputSize);
   const wire = JSON.parse(textDecoder.decode(bytes)) as WireMessage;
   if (!wire.t) throw new Error("Peer message did not include a type");
+  if (
+    wire.t.startsWith("bundle-") &&
+    bytes.byteLength > BUNDLE_MAX_CONTROL_BYTES
+  )
+    throw new Error("Bundle control exceeds 16 KiB");
   return {
     t: wire.t,
     v: wire.v,

@@ -32,15 +32,15 @@ func (fi *fileInfo) Name() string { return fi.name }
 func (fi *fileInfo) Size() int64 { return int64(fi.stat.Size) }
 
 // Mode returns file mode bits.
-func (fi *fileInfo) Mode() os.FileMode { return toFileMode(fi.stat.Mode) }
+func (fi *fileInfo) Mode() os.FileMode { return fi.stat.FileMode() }
 
 // ModTime returns the last modification time of the file.
-func (fi *fileInfo) ModTime() time.Time { return time.Unix(int64(fi.stat.Mtime), 0) }
+func (fi *fileInfo) ModTime() time.Time { return fi.stat.ModTime() }
 
 // IsDir returns true if the file is a directory.
 func (fi *fileInfo) IsDir() bool { return fi.Mode().IsDir() }
 
-func (fi *fileInfo) Sys() interface{} { return fi.stat }
+func (fi *fileInfo) Sys() any { return fi.stat }
 
 // FileStat holds the original unmarshalled values from a call to READDIR or
 // *STAT. It is exported for the purposes of accessing the raw values via
@@ -54,6 +54,21 @@ type FileStat struct {
 	UID      uint32
 	GID      uint32
 	Extended []StatExtended
+}
+
+// ModTime returns the Mtime SFTP file attribute converted to a time.Time
+func (fs *FileStat) ModTime() time.Time {
+	return time.Unix(int64(fs.Mtime), 0)
+}
+
+// AccessTime returns the Atime SFTP file attribute converted to a time.Time
+func (fs *FileStat) AccessTime() time.Time {
+	return time.Unix(int64(fs.Atime), 0)
+}
+
+// FileMode returns the Mode SFTP file attribute converted to an os.FileMode
+func (fs *FileStat) FileMode() os.FileMode {
+	return toFileMode(fs.Mode)
 }
 
 // StatExtended contains additional, extended information for a FileStat.

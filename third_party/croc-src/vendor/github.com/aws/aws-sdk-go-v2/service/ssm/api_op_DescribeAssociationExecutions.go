@@ -5,11 +5,8 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Views all executions for a specific association ID.
@@ -36,7 +33,12 @@ type DescribeAssociationExecutionsInput struct {
 	AssociationId *string
 
 	// Filters for the request. You can specify the following filters and values.
-	// ExecutionId (EQUAL) Status (EQUAL) CreatedTime (EQUAL, GREATER_THAN, LESS_THAN)
+	//
+	// ExecutionId (EQUAL)
+	//
+	// Status (EQUAL)
+	//
+	// CreatedTime (EQUAL, GREATER_THAN, LESS_THAN)
 	Filters []types.AssociationExecutionFilter
 
 	// The maximum number of items to return for this call. The call also returns a
@@ -65,9 +67,6 @@ type DescribeAssociationExecutionsOutput struct {
 }
 
 func (c *Client) addOperationDescribeAssociationExecutionsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeAssociationExecutions{}, middleware.After)
 	if err != nil {
 		return err
@@ -76,56 +75,20 @@ func (c *Client) addOperationDescribeAssociationExecutionsMiddlewares(stack *mid
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeAssociationExecutions"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeAssociationExecutionsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeAssociationExecutions(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -140,16 +103,11 @@ func (c *Client) addOperationDescribeAssociationExecutionsMiddlewares(stack *mid
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribeAssociationExecutionsAPIClient is a client that implements the
-// DescribeAssociationExecutions operation.
-type DescribeAssociationExecutionsAPIClient interface {
-	DescribeAssociationExecutions(context.Context, *DescribeAssociationExecutionsInput, ...func(*Options)) (*DescribeAssociationExecutionsOutput, error)
-}
-
-var _ DescribeAssociationExecutionsAPIClient = (*Client)(nil)
 
 // DescribeAssociationExecutionsPaginatorOptions is the paginator options for
 // DescribeAssociationExecutions
@@ -218,6 +176,9 @@ func (p *DescribeAssociationExecutionsPaginator) NextPage(ctx context.Context, o
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeAssociationExecutions(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -237,10 +198,10 @@ func (p *DescribeAssociationExecutionsPaginator) NextPage(ctx context.Context, o
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribeAssociationExecutions(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeAssociationExecutions",
-	}
+// DescribeAssociationExecutionsAPIClient is a client that implements the
+// DescribeAssociationExecutions operation.
+type DescribeAssociationExecutionsAPIClient interface {
+	DescribeAssociationExecutions(context.Context, *DescribeAssociationExecutionsInput, ...func(*Options)) (*DescribeAssociationExecutionsOutput, error)
 }
+
+var _ DescribeAssociationExecutionsAPIClient = (*Client)(nil)

@@ -40,8 +40,16 @@ func TestNormalizeRejectsSensitiveComponents(t *testing.T) {
 	rejected := []string{
 		".ssh",
 		".SSH/authorized_keys",
-		"safe/.git/hooks/post-checkout",
+		".gnupg",
 		"safe/.GnUpG/private-keys-v1.d/key",
+		"repo/.git/.SSH/authorized_keys",
+		"repo/.git/.GnUpG/private-keys-v1.d/key",
+		"SSH~1",
+		"ssh~2/config",
+		"safe/Ssh~10/authorized_keys",
+		"GNUPG~1",
+		"safe/GnuPG~3/private-keys-v1.d/key",
+		`repo\.git\SSH~1\authorized_keys`,
 	}
 	for _, value := range rejected {
 		t.Run(value, func(t *testing.T) {
@@ -51,11 +59,34 @@ func TestNormalizeRejectsSensitiveComponents(t *testing.T) {
 		})
 	}
 
-	allowed := []string{".ssh-backup", "my.ssh", "safe/ssh", ".git-backup", "my.git"}
+	allowed := []string{
+		".ssh-backup", "my.ssh", "safe/ssh", ".git-backup", "my.git",
+		"ssh~", "ssh~a", "ssh~-1", "ssh~1.txt", "ssh~~1", "ssh~1~2",
+		"ssh~١", "gnupg~１", "~1", "sshd~1", "report~1.pdf", "git~1/config",
+	}
 	for _, value := range allowed {
 		t.Run("allowed/"+value, func(t *testing.T) {
 			if _, err := Normalize(value, false); err != nil {
 				t.Fatalf("Normalize(%q) error = %v", value, err)
+			}
+		})
+	}
+}
+
+func TestNormalizeAllowsGitPaths(t *testing.T) {
+	for input, want := range map[string]string{
+		".git":                     ".git",
+		".git/":                    ".git",
+		"11/.git/":                 "11/.git",
+		".git/config":              ".git/config",
+		".git/hooks/post-checkout": ".git/hooks/post-checkout",
+		"11/.GIT/objects/info/":    "11/.GIT/objects/info",
+		`11\.GiT\refs\tags`:        "11/.GiT/refs/tags",
+	} {
+		t.Run(input, func(t *testing.T) {
+			got, err := Normalize(input, false)
+			if err != nil || got != want {
+				t.Fatalf("Normalize(%q) = %q, %v; want %q", input, got, err, want)
 			}
 		})
 	}

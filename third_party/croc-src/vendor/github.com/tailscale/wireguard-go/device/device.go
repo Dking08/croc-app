@@ -20,6 +20,8 @@ import (
 )
 
 type Device struct {
+	config config
+
 	state struct {
 		// state holds the device's state. It is accessed atomically.
 		// Use the device.deviceState method to read it.
@@ -75,9 +77,12 @@ type Device struct {
 	pool struct {
 		inboundElementsContainer  *WaitPool
 		outboundElementsContainer *WaitPool
-		messageBuffers            *WaitPool
 		inboundElements           *WaitPool
 		outboundElements          *WaitPool
+		packetBufs                *WaitPool
+		// smallPacketBufs aliases packetBufs when no distinct small packet pool
+		// is used. See [Device.PopulatePools].
+		smallPacketBufs *WaitPool
 	}
 
 	queue struct {
@@ -87,13 +92,163 @@ type Device struct {
 	}
 
 	tun struct {
-		device tun.Device
-		mtu    atomic.Int32
+		// Fields in this block are read-only after instantiation.
+		device  tun.Device
+		queues  []tun.Queue // device's read queues, at least one, see [tun.QueuesOf]
+		writeTo func(flow int, bufs [][]byte, offset int) (int, error)
+
+		mtu atomic.Int32
 	}
 
 	ipcMutex sync.RWMutex
 	closed   chan struct{}
 	log      *Logger
+}
+
+type config struct {
+	queueStagedSize            int
+	queueOutboundSize          int
+	queueInboundSize           int
+	queueHandshakeSize         int
+	preallocatedBuffersPerPool uint32
+	metrics                    Metrics
+}
+
+func defaultConfig() config {
+	return config{
+		queueStagedSize:            DefaultQueueStagedSize,
+		queueOutboundSize:          DefaultQueueOutboundSize,
+		queueInboundSize:           DefaultQueueInboundSize,
+		queueHandshakeSize:         DefaultQueueHandshakeSize,
+		preallocatedBuffersPerPool: DefaultPreallocatedBuffersPerPool,
+	}
+}
+
+// An Option configures a [Device].
+type Option interface {
+	apply(*config)
+}
+
+type optionFunc func(*config)
+
+func (f optionFunc) apply(config *config) {
+	f(config)
+}
+
+// WithQueueStagedSize sets the capacity of each peer's staged packet queue.
+// Staged packet queues must be buffered, so max(tun readers, size) is applied
+// to the user-supplied value. [DefaultQueueStagedSize] is the default.
+func WithQueueStagedSize(size int) Option {
+	return optionFunc(func(config *config) {
+		config.queueStagedSize = max(1, size)
+	})
+}
+
+// WithQueueOutboundSize sets the capacity of each peer's outbound packet queue.
+// It also sets the capacity of the device-wide outbound queue, whose total
+// capacity is size multiplied by the number of TUN queues.
+// [DefaultQueueOutboundSize] is the default.
+func WithQueueOutboundSize(size int) Option {
+	return optionFunc(func(config *config) {
+		config.queueOutboundSize = size
+	})
+}
+
+// WithQueueInboundSize sets the capacity of the device and per-peer inbound
+// packet queues. [DefaultQueueInboundSize] is the default.
+func WithQueueInboundSize(size int) Option {
+	return optionFunc(func(config *config) {
+		config.queueInboundSize = size
+	})
+}
+
+// WithQueueHandshakeSize sets the capacity of the device's handshake queue.
+// [DefaultQueueHandshakeSize] is the default.
+func WithQueueHandshakeSize(size int) Option {
+	return optionFunc(func(config *config) {
+		config.queueHandshakeSize = size
+	})
+}
+
+// WithPreallocatedBuffersPerPool sets the maximum number of packet memory
+// pool outstanding items. A value of zero is unlimited. Care must be taken to
+// not set a size that is too small, which can lead to immediate deadlock, or
+// increase the probability of deadlock once packets start flowing.
+// See tailscale/corp#46396. [DefaultPreallocatedBuffersPerPool] is the default.
+func WithPreallocatedBuffersPerPool(size uint32) Option {
+	return optionFunc(func(config *config) {
+		config.preallocatedBuffersPerPool = size
+	})
+}
+
+// Counter is a monotonically increasing counter used in [Metrics].
+type Counter interface {
+	// Add increments the Counter's value by n. n must not be negative. Add is
+	// called in performance-sensitive contexts, therefore it must be cheap. Add
+	// may be called concurrently.
+	Add(n int64)
+}
+
+// Metrics contains metrics that can be exported via [WithMetrics].
+type Metrics struct {
+	// MessageInitiationTXAttemptInitial counts non-retry handshake
+	// initiation messages passed to the network send path.
+	MessageInitiationTXAttemptInitial Counter
+	// MessageInitiationTXAttemptRetry counts retry handshake initiation
+	// messages passed to the network send path.
+	MessageInitiationTXAttemptRetry Counter
+	// MessageResponseTXAttempt counts handshake response messages passed to the
+	// network send path.
+	MessageResponseTXAttempt Counter
+	// MessageCookieReplyTXAttempt counts cookie reply messages passed to the
+	// network send path.
+	MessageCookieReplyTXAttempt Counter
+	// HandshakeInitiatorCompleted counts symmetric session establishment on the
+	// initiator side.
+	HandshakeInitiatorCompleted Counter
+	// HandshakeResponderCompleted counts responder-side handshake completions,
+	// observed when an authenticated transport packet confirms the new keypair.
+	HandshakeResponderCompleted Counter
+	// MessageTransportRXDroppedReplay counts inbound transport packets rejected by the
+	// replay filter.
+	MessageTransportRXDroppedReplay Counter
+}
+
+// noopCounter is a noop implementation of [Counter].
+type noopCounter struct {
+}
+
+func (noopCounter) Add(int64) {}
+
+func (m *Metrics) fillNils() {
+	if m.MessageInitiationTXAttemptInitial == nil {
+		m.MessageInitiationTXAttemptInitial = noopCounter{}
+	}
+	if m.MessageInitiationTXAttemptRetry == nil {
+		m.MessageInitiationTXAttemptRetry = noopCounter{}
+	}
+	if m.MessageResponseTXAttempt == nil {
+		m.MessageResponseTXAttempt = noopCounter{}
+	}
+	if m.MessageCookieReplyTXAttempt == nil {
+		m.MessageCookieReplyTXAttempt = noopCounter{}
+	}
+	if m.HandshakeInitiatorCompleted == nil {
+		m.HandshakeInitiatorCompleted = noopCounter{}
+	}
+	if m.HandshakeResponderCompleted == nil {
+		m.HandshakeResponderCompleted = noopCounter{}
+	}
+	if m.MessageTransportRXDroppedReplay == nil {
+		m.MessageTransportRXDroppedReplay = noopCounter{}
+	}
+}
+
+// WithMetrics sets the provided [Metrics] to be used at instrumentation points.
+func WithMetrics(metrics Metrics) Option {
+	return optionFunc(func(config *config) {
+		config.metrics = metrics
+	})
 }
 
 // deviceState represents the state of a Device.
@@ -230,7 +385,9 @@ func (device *Device) Down() error {
 func (device *Device) IsUnderLoad() bool {
 	// check if currently under load
 	now := time.Now()
-	underLoad := len(device.queue.handshake.c) >= QueueHandshakeSize/8
+	// max(1, ...) is required on the right hand side, otherwise underLoad would
+	// always be true when queueHandshakeSize < 8.
+	underLoad := len(device.queue.handshake.c) >= max(1, device.config.queueHandshakeSize/8)
 	if underLoad {
 		device.rate.underLoadUntil.Store(now.Add(UnderLoadAfterTime).UnixNano())
 		return true
@@ -294,8 +451,12 @@ func (device *Device) SetPrivateKey(sk NoisePrivateKey) error {
 	return nil
 }
 
-func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
-	device := new(Device)
+func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger, opts ...Option) *Device {
+	device := &Device{config: defaultConfig()}
+	for _, opt := range opts {
+		opt.apply(&device.config)
+	}
+	device.config.metrics.fillNils()
 	device.state.state.Store(uint32(deviceStateDown))
 	device.closed = make(chan struct{})
 	device.log = logger
@@ -307,17 +468,31 @@ func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 		mtu = DefaultMTU
 	}
 	device.tun.mtu.Store(int32(mtu))
+	device.tun.queues = tun.QueuesOf(tunDevice)
+	device.tun.writeTo = tun.WriteToOf(tunDevice)
 	device.peers.keyMap = make(map[NoisePublicKey]*Peer)
 	device.rate.limiter.Init()
 	device.indexTable.Init()
+
+	if want := len(device.tun.queues); want > device.config.queueStagedSize {
+		device.log.Errorf(
+			"Raising staged queue size to fit concurrent tun readers: %d -> %d",
+			device.config.queueStagedSize,
+			want,
+		)
+		device.config.queueStagedSize = want
+	}
 
 	device.PopulatePools()
 
 	// create queues
 
-	device.queue.handshake = newHandshakeQueue()
-	device.queue.encryption = newOutboundQueue()
-	device.queue.decryption = newInboundQueue()
+	device.queue.handshake = newHandshakeQueue(device.config.queueHandshakeSize)
+	// Scale to the number of producers
+	device.queue.encryption = newOutboundQueue(
+		device.config.queueOutboundSize * len(device.tun.queues),
+	)
+	device.queue.decryption = newInboundQueue(device.config.queueInboundSize)
 
 	// start workers
 
@@ -330,9 +505,11 @@ func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 		go device.RoutineHandshake(i + 1)
 	}
 
-	device.state.stopping.Add(1)      // RoutineReadFromTUN
-	device.queue.encryption.wg.Add(1) // RoutineReadFromTUN
-	go device.RoutineReadFromTUN()
+	device.state.stopping.Add(len(device.tun.queues))      // RoutineReadFromTUN
+	device.queue.encryption.wg.Add(len(device.tun.queues)) // RoutineReadFromTUN
+	for i, q := range device.tun.queues {
+		go device.RoutineReadFromTUN(i, q)
+	}
 	go device.RoutineTUNEventReader()
 
 	return device
@@ -386,6 +563,7 @@ func (device *Device) LookupPeer(pk NoisePublicKey) *Peer {
 		device.log.Errorf("Failed to create peer: %v", err)
 		return nil
 	}
+	p.SetPresharedKey(conf.PresharedKey)
 	p.SetAllowedIPs(conf.AllowedIPs)
 	p.deleteOnIdle = true
 	if conf.Endpoint != nil {
@@ -456,6 +634,10 @@ func (device *Device) RemoveMatchingPeers(shouldRemove func(NoisePublicKey) bool
 type NewPeerConfig struct {
 	// AllowedIPs is the initial set of allowed IPs for the new peer.
 	AllowedIPs []netip.Prefix
+
+	// PresharedKey is the initial pre-shared key for the new peer. The zero
+	// value disables the optional WireGuard pre-shared-key layer.
+	PresharedKey NoisePresharedKey
 
 	// Endpoint, if non-nil, sets the endpoint for newly created peers.
 	// The endpoint is pinned for the lifetime of the peer.
@@ -578,6 +760,26 @@ func (device *Device) SetPriorityMessageOnEstablishmentFunc(f PeerPriorityMessag
 		return
 	}
 	device.priorityMsgFn.Store(&f)
+}
+
+// ScheduleHandshakeOnUserSend marks the peer for handshake initiation immediately
+// following its next outbound transport message. It is a no-op if the peer is
+// unknown or currently holds no key material.
+//
+// The initiation remains subject to [RekeyTimeout] elapsing since the last
+// handshake message was sent. A request blocked by that window stays armed for
+// a later transport message rather than being dropped.
+func (device *Device) ScheduleHandshakeOnUserSend(peer NoisePublicKey) {
+	device.peers.RLock()
+	defer device.peers.RUnlock()
+	p, ok := device.peers.keyMap[peer]
+	if !ok {
+		return
+	}
+	if !p.hasKeyMaterial() {
+		return
+	}
+	p.handshakeOnUserSend.Store(true)
 }
 
 func (device *Device) Close() {

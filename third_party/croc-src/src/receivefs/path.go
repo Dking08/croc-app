@@ -89,10 +89,25 @@ func Normalize(name string, allowRoot bool) (string, error) {
 
 // ForbiddenComponent reports whether a normalized path component names a
 // sensitive receiver-owned directory. Matching uses the same portable Unicode
-// collision key as manifest duplicate detection.
+// collision key as manifest duplicate detection. Git metadata is allowed so
+// repositories can be transferred intact.
 func ForbiddenComponent(component string) bool {
-	switch CollisionKey(component) {
-	case ".ssh", ".git", ".gnupg":
+	key := CollisionKey(component)
+	// Map common NTFS 8.3 aliases (SSH~1) back to their dotted names.
+	// Hash-based aliases cannot be recognized lexically.
+	if stem, tail, alias := strings.Cut(key, "~"); alias {
+		if tail == "" {
+			return false
+		}
+		for _, digit := range tail {
+			if digit < '0' || digit > '9' {
+				return false
+			}
+		}
+		key = "." + stem
+	}
+	switch key {
+	case ".ssh", ".gnupg":
 		return true
 	default:
 		return false

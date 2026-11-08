@@ -532,6 +532,62 @@ func (f *forwarder) getKnownDoHClientForProvider(urlBase string) (c *http.Client
 	if len(allIPs) == 0 {
 		return nil, false
 	}
+	return f.newDoHClientLocked(urlBase, urlBase, allIPs)
+}
+
+// getDoHClientForResolver returns an HTTP client for the DoH server described
+// by r. Known public providers ([publicdns.DoHIPsOfBase]) work as before. For
+// arbitrary providers — typically enterprise resolvers recovered from the
+// OS's base configuration — the resolver must either carry a
+// BootstrapResolution, or its URL host must be an IP literal (which needs no
+// bootstrap): we cannot resolve the DoH server's own name through DNS without
+// recursing through ourselves.
+func (f *forwarder) getDoHClientForResolver(r *dnstype.Resolver) (c *http.Client, ok bool) {
+	urlBase := r.Addr
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := dohClientCacheKey(urlBase, r.BootstrapResolution)
+	if c, ok := f.dohClient[key]; ok {
+		return c, true
+	}
+	allIPs := publicdns.DoHIPsOfBase(urlBase)
+	if len(allIPs) == 0 {
+		if len(r.BootstrapResolution) > 0 {
+			allIPs = r.BootstrapResolution
+		} else {
+			// A URL whose host is an IP literal dials itself; no bootstrap
+			// resolution is needed.
+			u, err := url.Parse(urlBase)
+			if err != nil {
+				return nil, false
+			}
+			ip, err := netip.ParseAddr(u.Hostname())
+			if err != nil {
+				return nil, false
+			}
+			allIPs = []netip.Addr{ip}
+		}
+	}
+	return f.newDoHClientLocked(key, urlBase, allIPs)
+}
+
+// dohClientCacheKey distinguishes cached clients: bootstrap results can change
+// with the underlying network, unlike known public provider IPs.
+func dohClientCacheKey(urlBase string, bootstrap []netip.Addr) string {
+	if len(bootstrap) == 0 || len(publicdns.DoHIPsOfBase(urlBase)) > 0 {
+		return urlBase
+	}
+	ips := make([]string, len(bootstrap))
+	for i, ip := range bootstrap {
+		ips[i] = ip.String()
+	}
+	return urlBase + "\x00" + strings.Join(ips, ",")
+}
+
+// newDoHClientLocked builds a DoH HTTP client that dials urlBase's host at
+// the given IPs, caching the client under cacheKey (which differs from
+// urlBase when bootstrap results vary). f.mu must be held.
+func (f *forwarder) newDoHClientLocked(cacheKey, urlBase string, allIPs []netip.Addr) (c *http.Client, ok bool) {
 	dohURL, err := url.Parse(urlBase)
 	if err != nil {
 		return nil, false
@@ -567,7 +623,7 @@ func (f *forwarder) getKnownDoHClientForProvider(urlBase string) (c *http.Client
 	if f.dohClient == nil {
 		f.dohClient = map[string]*http.Client{}
 	}
-	f.dohClient[urlBase] = c
+	f.dohClient[cacheKey] = c
 	return c, true
 }
 
@@ -646,15 +702,14 @@ func (f *forwarder) send(ctx context.Context, fq *forwardQuery, rr resolverAndDe
 		return res, nil
 	}
 	if strings.HasPrefix(rr.name.Addr, "https://") {
-		// Only known DoH providers are supported currently. Specifically, we
-		// only support DoH providers where we can TCP connect to them on port
-		// 443 at the same IP address they serve normal UDP DNS from (1.1.1.1,
-		// 8.8.8.8, 9.9.9.9, etc.) That's why OpenDNS and custom DoH providers
-		// aren't currently supported. There's no backup DNS resolution path for
-		// them.
-		urlBase := rr.name.Addr
-		if hc, ok := f.getKnownDoHClientForProvider(urlBase); ok {
-			res, err := f.sendDoH(ctx, urlBase, hc, fq.packet)
+		// Known DoH providers (see tailscale.com/net/dns/publicdns) are dialed
+		// at their well-known IPs. Arbitrary providers — typically enterprise
+		// resolvers recovered from the OS's base DNS configuration — are only
+		// usable when the resolver carries a bootstrap resolution, or when the
+		// URL's host is an IP literal, since we cannot resolve the DoH
+		// server's own name through DNS without recursing through ourselves.
+		if hc, ok := f.getDoHClientForResolver(rr.name); ok {
+			res, err := f.sendDoH(ctx, rr.name.Addr, hc, fq.packet)
 			if err != nil {
 				return nil, err
 			}
@@ -663,7 +718,7 @@ func (f *forwarder) send(ctx context.Context, fq *forwardQuery, rr resolverAndDe
 			return res, nil
 		}
 		metricDNSFwdErrorType.Add(1)
-		return nil, fmt.Errorf("arbitrary https:// resolvers not supported yet")
+		return nil, fmt.Errorf("cannot dial https:// resolver %q: no known IPs or bootstrap resolution", rr.name.Addr)
 	}
 	if strings.HasPrefix(rr.name.Addr, "tls://") {
 		metricDNSFwdErrorType.Add(1)
@@ -793,19 +848,8 @@ func (f *forwarder) sendUDP(ctx context.Context, fq *forwardQuery, rr resolverAn
 	metricDNSFwdUDP.Add(1)
 	ctx = sockstats.WithSockStats(ctx, sockstats.LabelDNSForwarderUDP, f.logf)
 
-	ln, err := f.packetListener(ipp.Addr())
+	conn, err := f.dialUDP(ctx, ipp)
 	if err != nil {
-		return nil, err
-	}
-
-	// Specify the exact UDP family to work around https://github.com/golang/go/issues/52264
-	udpFam := "udp4"
-	if ipp.Addr().Is6() {
-		udpFam = "udp6"
-	}
-	conn, err := ln.ListenPacket(ctx, udpFam, ":0")
-	if err != nil {
-		f.logf("ListenPacket failed: %v", err)
 		return nil, err
 	}
 	defer conn.Close()
@@ -824,33 +868,54 @@ func (f *forwarder) sendUDP(ctx context.Context, fq *forwardQuery, rr resolverAn
 
 	// The 1 extra byte is to detect packet truncation.
 	out := make([]byte, maxResponseBytes+1)
-	n, _, err := conn.ReadFromUDPAddrPort(out)
-	if err != nil {
-		if err := ctx.Err(); err != nil {
-			return nil, err
+
+	// The conn is unconnected (see dialUDP), so datagrams can arrive from
+	// any address, not just the resolver we queried. A reply must come
+	// from the resolver's address and carry the transaction ID we sent.
+	// Datagrams that are neither are dropped rather than acted on, so
+	// neither a spoofed reply nor a single stray datagram can decide the
+	// query. The loop ends when the conn is closed, which the query's
+	// context cancellation does via fq.closeOnCtxDone.
+	var n int
+	for {
+		var src netip.AddrPort
+		var err error
+		n, src, err = conn.ReadFromUDPAddrPort(out)
+		if err != nil {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if !neterror.PacketWasTruncated(err) {
+				metricDNSFwdUDPErrorRead.Add(1)
+				return nil, err
+			}
+			// Windows reports a datagram larger than out as a
+			// truncation error, returning the bytes that fit in
+			// out but no source address. Fall through and let the
+			// txid check decide, since the source can't be checked.
+		} else if src != ipp {
+			// Not from the resolver we asked, so not a reply to
+			// this query.
+			metricDNSFwdUDPDropSrc.Add(1)
+			continue
 		}
-		if neterror.PacketWasTruncated(err) {
-			err = nil
-		} else {
-			metricDNSFwdUDPErrorRead.Add(1)
-			return nil, err
+		if n < headerBytes {
+			f.logf("recv: packet too small (%d bytes)", n)
+			continue
 		}
+		if getTxID(out[:n]) != fq.txid {
+			metricDNSFwdUDPErrorTxID.Add(1)
+			continue
+		}
+		break
 	}
 	truncated := n > maxResponseBytes
 	if truncated {
 		n = maxResponseBytes
 	}
-	if n < headerBytes {
-		f.logf("recv: packet too small (%d bytes)", n)
-	}
 	out = out[:n]
 	tcFlagAlreadySet := truncatedFlagSet(out)
 
-	txid := getTxID(out)
-	if txid != fq.txid {
-		metricDNSFwdUDPErrorTxID.Add(1)
-		return nil, errTxIDMismatch
-	}
 	rcode := getRCode(out)
 
 	// don't forward transient errors back to the client when the server fails
@@ -888,6 +953,58 @@ func (f *forwarder) sendUDP(ctx context.Context, fq *forwardQuery, rr resolverAn
 	return out, nil
 }
 
+// dialUDP returns a UDP conn to ipp, over netstack if that's the only way to
+// reach it. Same dispatch as [tsdial.Dialer.dialOneUser].
+func (f *forwarder) dialUDP(ctx context.Context, ipp netip.AddrPort) (nettype.PacketConn, error) {
+	if f.dialer.UseNetstackForIP != nil && f.dialer.UseNetstackForIP(ipp.Addr()) {
+		if f.dialer.NetstackDialUDP == nil {
+			return nil, errors.New("dialer not initialized correctly: no NetstackDialUDP")
+		}
+		conn, err := f.dialer.NetstackDialUDP(ctx, ipp)
+		if err != nil {
+			return nil, err
+		}
+		return &netstackPacketConn{Conn: conn, peer: ipp}, nil
+	}
+
+	ln, err := f.packetListener(ipp.Addr())
+	if err != nil {
+		return nil, err
+	}
+
+	// Name the family explicitly: netns looks for a "6" in this string to
+	// choose between IP_BOUND_IF and IPV6_BOUND_IF on macOS, and "udp" would
+	// give a v6 socket bound with the v4 option.
+	udpFam := "udp4"
+	if ipp.Addr().Is6() {
+		udpFam = "udp6"
+	}
+	conn, err := ln.ListenPacket(ctx, udpFam, ":0")
+	if err != nil {
+		f.logf("ListenPacket failed: %v", err)
+		return nil, err
+	}
+	return conn, nil
+}
+
+// netstackPacketConn presents a conn already connected to peer as a
+// [nettype.PacketConn].
+type netstackPacketConn struct {
+	net.Conn
+	peer netip.AddrPort
+}
+
+func (c *netstackPacketConn) WriteToUDPAddrPort(b []byte, _ netip.AddrPort) (int, error) {
+	return c.Write(b)
+}
+
+// ReadFromUDPAddrPort returns how much of the datagram fit in b; gVisor drops
+// the rest without erroring, as a kernel socket does.
+func (c *netstackPacketConn) ReadFromUDPAddrPort(b []byte) (int, netip.AddrPort, error) {
+	n, err := c.Read(b)
+	return n, c.peer, err
+}
+
 var optDNSForwardUseRoutes = envknob.RegisterOptBool("TS_DEBUG_DNS_FORWARD_USE_ROUTES")
 
 // ShouldUseRoutes reports whether the DNS resolver should consider routes when dialing
@@ -908,7 +1025,7 @@ func ShouldUseRoutes(knobs *controlknobs.Knobs) bool {
 	switch runtime.GOOS {
 	case "android", "ios":
 		// On mobile platforms with lower memory limits (e.g., 50MB on iOS),
-		// this behavior is still gated by the "user-dial-routes" nodeAttr.
+		// this behavior is still gated by the "user-dial-routes" nodecap.
 		return knobs != nil && knobs.UserDialUseRoutes.Load()
 	default:
 		// On all other platforms, it is the default behavior,

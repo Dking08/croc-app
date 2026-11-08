@@ -7,7 +7,6 @@ import (
 	"unsafe"
 
 	"github.com/dblohm7/wingoes"
-	"github.com/dblohm7/wingoes/internal"
 	"golang.org/x/sys/windows"
 )
 
@@ -44,63 +43,52 @@ var (
 	modoleaut32 = windows.NewLazySystemDLL("oleaut32.dll")
 	modshlwapi  = windows.NewLazySystemDLL("shlwapi.dll")
 
-	procCoCreateInstance      = modole32.NewProc("CoCreateInstance")
-	procCoGetApartmentType    = modole32.NewProc("CoGetApartmentType")
-	procCoIncrementMTAUsage   = modole32.NewProc("CoIncrementMTAUsage")
-	procCoInitializeEx        = modole32.NewProc("CoInitializeEx")
-	procCoInitializeSecurity  = modole32.NewProc("CoInitializeSecurity")
-	procCreateStreamOnHGlobal = modole32.NewProc("CreateStreamOnHGlobal")
-	procSetOaNoCache          = modoleaut32.NewProc("SetOaNoCache")
-	procSHCreateMemStream     = modshlwapi.NewProc("SHCreateMemStream")
+	procCoCreateInstance     = modole32.NewProc("CoCreateInstance")
+	procCoGetApartmentType   = modole32.NewProc("CoGetApartmentType")
+	procCoIncrementMTAUsage  = modole32.NewProc("CoIncrementMTAUsage")
+	procCoInitializeEx       = modole32.NewProc("CoInitializeEx")
+	procCoInitializeSecurity = modole32.NewProc("CoInitializeSecurity")
+	procSetOaNoCache         = modoleaut32.NewProc("SetOaNoCache")
+	procSHCreateMemStream    = modshlwapi.NewProc("SHCreateMemStream")
 )
 
 func coCreateInstance(clsid *CLSID, unkOuter *IUnknownABI, clsctx coCLSCTX, iid *IID, ppv **IUnknownABI) (hr wingoes.HRESULT) {
-	r0, _, _ := syscall.Syscall6(procCoCreateInstance.Addr(), 5, uintptr(unsafe.Pointer(clsid)), uintptr(unsafe.Pointer(unkOuter)), uintptr(clsctx), uintptr(unsafe.Pointer(iid)), uintptr(unsafe.Pointer(ppv)), 0)
+	r0, _, _ := syscall.SyscallN(procCoCreateInstance.Addr(), uintptr(unsafe.Pointer(clsid)), uintptr(unsafe.Pointer(unkOuter)), uintptr(clsctx), uintptr(unsafe.Pointer(iid)), uintptr(unsafe.Pointer(ppv)))
 	hr = wingoes.HRESULT(r0)
 	return
 }
 
 func coGetApartmentType(aptType *coAPTTYPE, qual *coAPTTYPEQUALIFIER) (hr wingoes.HRESULT) {
-	r0, _, _ := syscall.Syscall(procCoGetApartmentType.Addr(), 2, uintptr(unsafe.Pointer(aptType)), uintptr(unsafe.Pointer(qual)), 0)
+	r0, _, _ := syscall.SyscallN(procCoGetApartmentType.Addr(), uintptr(unsafe.Pointer(aptType)), uintptr(unsafe.Pointer(qual)))
 	hr = wingoes.HRESULT(r0)
 	return
 }
 
 func coIncrementMTAUsage(cookie *coMTAUsageCookie) (hr wingoes.HRESULT) {
-	r0, _, _ := syscall.Syscall(procCoIncrementMTAUsage.Addr(), 1, uintptr(unsafe.Pointer(cookie)), 0, 0)
+	r0, _, _ := syscall.SyscallN(procCoIncrementMTAUsage.Addr(), uintptr(unsafe.Pointer(cookie)))
 	hr = wingoes.HRESULT(r0)
 	return
 }
 
 func coInitializeEx(reserved uintptr, flags uint32) (hr wingoes.HRESULT) {
-	r0, _, _ := syscall.Syscall(procCoInitializeEx.Addr(), 2, uintptr(reserved), uintptr(flags), 0)
+	r0, _, _ := syscall.SyscallN(procCoInitializeEx.Addr(), uintptr(reserved), uintptr(flags))
 	hr = wingoes.HRESULT(r0)
 	return
 }
 
 func coInitializeSecurity(sd *windows.SECURITY_DESCRIPTOR, authSvcLen int32, authSvc *soleAuthenticationService, reserved1 uintptr, authnLevel rpcAuthnLevel, impLevel rpcImpersonationLevel, authList *soleAuthenticationList, capabilities authCapabilities, reserved2 uintptr) (hr wingoes.HRESULT) {
-	r0, _, _ := syscall.Syscall9(procCoInitializeSecurity.Addr(), 9, uintptr(unsafe.Pointer(sd)), uintptr(authSvcLen), uintptr(unsafe.Pointer(authSvc)), uintptr(reserved1), uintptr(authnLevel), uintptr(impLevel), uintptr(unsafe.Pointer(authList)), uintptr(capabilities), uintptr(reserved2))
-	hr = wingoes.HRESULT(r0)
-	return
-}
-
-func createStreamOnHGlobal(hglobal internal.HGLOBAL, deleteOnRelease bool, stream **IUnknownABI) (hr wingoes.HRESULT) {
-	var _p0 uint32
-	if deleteOnRelease {
-		_p0 = 1
-	}
-	r0, _, _ := syscall.Syscall(procCreateStreamOnHGlobal.Addr(), 3, uintptr(hglobal), uintptr(_p0), uintptr(unsafe.Pointer(stream)))
+	r0, _, _ := syscall.SyscallN(procCoInitializeSecurity.Addr(), uintptr(unsafe.Pointer(sd)), uintptr(authSvcLen), uintptr(unsafe.Pointer(authSvc)), uintptr(reserved1), uintptr(authnLevel), uintptr(impLevel), uintptr(unsafe.Pointer(authList)), uintptr(capabilities), uintptr(reserved2))
 	hr = wingoes.HRESULT(r0)
 	return
 }
 
 func setOaNoCache() {
-	syscall.Syscall(procSetOaNoCache.Addr(), 0, 0, 0, 0)
+	syscall.SyscallN(procSetOaNoCache.Addr())
 	return
 }
 
 func shCreateMemStream(pInit *byte, cbInit uint32) (stream *IUnknownABI) {
-	r0, _, _ := syscall.Syscall(procSHCreateMemStream.Addr(), 2, uintptr(unsafe.Pointer(pInit)), uintptr(cbInit), 0)
+	r0, _, _ := syscall.SyscallN(procSHCreateMemStream.Addr(), uintptr(unsafe.Pointer(pInit)), uintptr(cbInit))
 	stream = (*IUnknownABI)(unsafe.Pointer(r0))
 	return
 }

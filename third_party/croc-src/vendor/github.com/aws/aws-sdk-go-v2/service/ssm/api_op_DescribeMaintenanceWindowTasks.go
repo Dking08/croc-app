@@ -5,18 +5,16 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Lists the tasks in a maintenance window. For maintenance window tasks without a
-// specified target, you can't supply values for --max-errors and --max-concurrency
-// . Instead, the system inserts a placeholder value of 1 , which may be reported
-// in the response to this command. These values don't affect the running of your
-// task and can be ignored.
+// Lists the tasks in a maintenance window.
+//
+// For maintenance window tasks without a specified target, you can't supply
+// values for --max-errors and --max-concurrency . Instead, the system inserts a
+// placeholder value of 1 , which may be reported in the response to this command.
+// These values don't affect the running of your task and can be ignored.
 func (c *Client) DescribeMaintenanceWindowTasks(ctx context.Context, params *DescribeMaintenanceWindowTasksInput, optFns ...func(*Options)) (*DescribeMaintenanceWindowTasksOutput, error) {
 	if params == nil {
 		params = &DescribeMaintenanceWindowTasksInput{}
@@ -70,9 +68,6 @@ type DescribeMaintenanceWindowTasksOutput struct {
 }
 
 func (c *Client) addOperationDescribeMaintenanceWindowTasksMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeMaintenanceWindowTasks{}, middleware.After)
 	if err != nil {
 		return err
@@ -81,56 +76,20 @@ func (c *Client) addOperationDescribeMaintenanceWindowTasksMiddlewares(stack *mi
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeMaintenanceWindowTasks"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeMaintenanceWindowTasksValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeMaintenanceWindowTasks(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -145,16 +104,11 @@ func (c *Client) addOperationDescribeMaintenanceWindowTasksMiddlewares(stack *mi
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribeMaintenanceWindowTasksAPIClient is a client that implements the
-// DescribeMaintenanceWindowTasks operation.
-type DescribeMaintenanceWindowTasksAPIClient interface {
-	DescribeMaintenanceWindowTasks(context.Context, *DescribeMaintenanceWindowTasksInput, ...func(*Options)) (*DescribeMaintenanceWindowTasksOutput, error)
-}
-
-var _ DescribeMaintenanceWindowTasksAPIClient = (*Client)(nil)
 
 // DescribeMaintenanceWindowTasksPaginatorOptions is the paginator options for
 // DescribeMaintenanceWindowTasks
@@ -223,6 +177,9 @@ func (p *DescribeMaintenanceWindowTasksPaginator) NextPage(ctx context.Context, 
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeMaintenanceWindowTasks(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -242,10 +199,10 @@ func (p *DescribeMaintenanceWindowTasksPaginator) NextPage(ctx context.Context, 
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribeMaintenanceWindowTasks(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeMaintenanceWindowTasks",
-	}
+// DescribeMaintenanceWindowTasksAPIClient is a client that implements the
+// DescribeMaintenanceWindowTasks operation.
+type DescribeMaintenanceWindowTasksAPIClient interface {
+	DescribeMaintenanceWindowTasks(context.Context, *DescribeMaintenanceWindowTasksInput, ...func(*Options)) (*DescribeMaintenanceWindowTasksOutput, error)
 }
+
+var _ DescribeMaintenanceWindowTasksAPIClient = (*Client)(nil)

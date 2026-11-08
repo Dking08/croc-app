@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT
  *
- * Copyright (C) 2019-2021 WireGuard LLC. All Rights Reserved.
+ * Copyright (C) 2019-2026 WireGuard LLC. All Rights Reserved.
  */
 
 package winipcfg
@@ -52,6 +52,7 @@ func RegisterUnicastAddressChangeCallback(callback func(notificationType MibNoti
 
 // Unregister unregisters the callback.
 func (callback *UnicastAddressChangeCallback) Unregister() error {
+	defer callback.wait.Wait()
 	unicastAddressChangeAddRemoveMutex.Lock()
 	defer unicastAddressChangeAddRemoveMutex.Unlock()
 
@@ -59,8 +60,6 @@ func (callback *UnicastAddressChangeCallback) Unregister() error {
 	delete(unicastAddressChangeCallbacks, callback)
 	removeIt := len(unicastAddressChangeCallbacks) == 0 && unicastAddressChangeHandle != 0
 	unicastAddressChangeMutex.Unlock()
-
-	callback.wait.Wait()
 
 	if removeIt {
 		err := cancelMibChangeNotify2(unicastAddressChangeHandle)

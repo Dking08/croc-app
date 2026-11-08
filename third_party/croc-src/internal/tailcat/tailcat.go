@@ -154,7 +154,7 @@ type ConnInfo struct {
 	// the derpmap from tailscale.com once at startup.
 	// If -1 (for use when saving a keypair to disk for reuse later), a region
 	// is selected automatically at startup based on latency.
-	RegionID int `json:",omitempty"`
+	RegionID tailcfg.DERPRegionID `json:",omitempty"`
 }
 
 // NodePublic is a wrapper around key.NodePublic just so we can have a slightly
@@ -222,7 +222,7 @@ type locoBackend struct {
 
 	// onDERPRecv is called for non-disco DERP packets before the
 	// peer map lookup. Set before createEngine.
-	onDERPRecv func(regionID int, src key.NodePublic, pkt []byte) bool
+	onDERPRecv func(regionID tailcfg.DERPRegionID, src key.NodePublic, pkt []byte) bool
 
 	mu             sync.Mutex
 	clients        map[key.NodePublic]*tailcfg.Node // for the server
@@ -231,7 +231,7 @@ type locoBackend struct {
 	eps            []netip.AddrPort        // our current local UDP endpoints, sorted
 }
 
-func (b *locoBackend) derpRegionID() int {
+func (b *locoBackend) derpRegionID() tailcfg.DERPRegionID {
 	if b.dm == nil {
 		panic("no derp map")
 	}
@@ -275,7 +275,7 @@ type Server struct {
 	// RegionID, if non-zero and Region is nil, is the ID of the DERP
 	// map region to use. If zero, the nearest region is picked based
 	// on latency at Start.
-	RegionID int
+	RegionID tailcfg.DERPRegionID
 
 	// DERPMapURL, if non-empty, is an alternate URL to fetch the DERP
 	// map from when Region is nil. If empty, [DefaultDERPMapURL] is
@@ -392,8 +392,7 @@ func (s *Server) StartContext(ctx context.Context) error {
 		logf(format, args...)
 	})
 	if err != nil {
-		logf("netmon.New failed (%v); falling back to static netmon", err)
-		netMon = netmon.NewStatic()
+		return fmt.Errorf("netmon.New: %w", err)
 	}
 	sys.Set(netMon)
 
@@ -404,7 +403,7 @@ func (s *Server) StartContext(ctx context.Context) error {
 	sys.Set(store)
 
 	lb.isServer = true
-	lb.onDERPRecv = func(regionID int, src key.NodePublic, pkt []byte) bool {
+	lb.onDERPRecv = func(regionID tailcfg.DERPRegionID, src key.NodePublic, pkt []byte) bool {
 		if !IsMeowPacket(pkt) {
 			return false
 		}
@@ -471,21 +470,7 @@ func (s *Server) StartContext(ctx context.Context) error {
 
 	s.lb = lb
 	sys.Engine.Get().SetFilter(s.buildFilter())
-	if err := lb.Start(); err != nil {
-		return err
-	}
-	mc := lb.sys.MagicSock.Get()
-	if mc != nil {
-		select {
-		case <-mc.DERPStartedChan():
-			logf("tailcat: connected to DERP region %d", reg.RegionID)
-		case <-time.After(3 * time.Second):
-			logf("tailcat: DERP connection did not complete within 3s; continuing")
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-	return nil
+	return lb.Start()
 }
 
 var allTCPPorts = filter.PortRange{First: 0, Last: 65535}
@@ -659,7 +644,7 @@ func (lb *locoBackend) connBlob() ConnBlob {
 func (ci *ConnInfo) ConnBlob() ConnBlob {
 	w := &wireConnInfo{
 		ServerPublic: ci.ServerPublic,
-		RegionID:     ci.RegionID,
+		RegionID:     ci.RegionID.Int64(),
 	}
 	for _, r := range ci.Region {
 		wr := wireRegionOf(r)
@@ -753,14 +738,14 @@ func ParseConnBlob(cb ConnBlob) (ConnInfo, error) {
 	}
 	ci := ConnInfo{
 		ServerPublic: w.ServerPublic,
-		RegionID:     w.RegionID,
+		RegionID:     tailcfg.DERPRegionID(w.RegionID),
 	}
 	for _, wr := range w.Region {
 		ci.Region = append(ci.Region, wr.derpRegion())
 	}
 	for ri, r := range ci.Region {
 		if r.RegionID == 0 {
-			r.RegionID = ri + 1
+			r.RegionID = tailcfg.DERPRegionID(ri + 1)
 		}
 		if r.RegionCode == "" {
 			r.RegionCode = fmt.Sprint(r.RegionID)
@@ -1015,25 +1000,24 @@ func (ci *ConnInfo) Expand(ctx context.Context, opts ...any) error {
 
 var allIPv6 = netip.MustParsePrefix("::/0")
 
-// peerAllowedIPs returns the prefixes that the peer with public key k
-// is allowed to originate traffic from. It is the engine's per-peer
-// WireGuard config source (see [wgengine.Engine.SetPeerConfigFunc]).
-func (b *locoBackend) peerAllowedIPs(k key.NodePublic) (allowedIPs []netip.Prefix, ok bool) {
+// peerConfig returns the WireGuard configuration for the peer with public key k.
+// It is installed with [wgengine.Engine.SetPeerConfigFunc].
+func (b *locoBackend) peerConfig(k key.NodePublic) (_ wgcfg.PeerConfig, ok bool) {
 	if !b.serverPub.IsZero() {
 		// We're the client; the server is our only peer and may send
 		// from any address (it can act as an exit node).
 		if k == b.serverPub {
-			return []netip.Prefix{pfxOf(tcAddrForKey(k)), allIPv6}, true
+			return wgcfg.PeerConfig{AllowedIPs: []netip.Prefix{pfxOf(tcAddrForKey(k)), allIPv6}}, true
 		}
-		return nil, false
+		return wgcfg.PeerConfig{}, false
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	n, ok := b.clients[k]
 	if !ok {
-		return nil, false
+		return wgcfg.PeerConfig{}, false
 	}
-	return n.AllowedIPs, true
+	return wgcfg.PeerConfig{AllowedIPs: n.AllowedIPs}, true
 }
 
 // peerByIP returns the public key of the peer that outbound packets
@@ -1172,7 +1156,6 @@ func (lb *locoBackend) Start() error {
 	mc.SetDERPMap(lb.dm)
 
 	derpRegion := lb.derpRegionID()
-	mc.ForceSetNearestDERP(derpRegion)
 
 	nm := &netmap.NetworkMap{
 		NodeKey: lb.pub,
@@ -1230,7 +1213,7 @@ func (lb *locoBackend) Start() error {
 	// Install the live per-peer config sources. WireGuard peers are
 	// created lazily from these as traffic arrives; there is no
 	// peer list in wgcfg.Config anymore.
-	e.SetPeerConfigFunc(lb.peerAllowedIPs)
+	e.SetPeerConfigFunc(lb.peerConfig)
 	e.SetPeerByIPPacketFunc(lb.peerByIP)
 	e.SetPeerForIPFunc(lb.peerForIP)
 	e.SetStatusCallback(lb.onEngineStatus)
@@ -1430,7 +1413,6 @@ type Client struct {
 	serverAddr netip.Addr
 
 	startMu sync.Mutex      // guards key, started, and the one-time startup work
-	upMu    sync.Mutex      // guards up/ping serialization
 	key     key.NodePrivate // the effective node identity; Key or generated
 	started bool
 
@@ -1490,8 +1472,7 @@ func (c *Client) initLocked() error {
 		logf(format, args...)
 	})
 	if err != nil {
-		logf("netmon.New failed (%v); falling back to static netmon", err)
-		netMon = netmon.NewStatic()
+		return fmt.Errorf("netmon.New: %w", err)
 	}
 	sys.Set(netMon)
 
@@ -1508,7 +1489,7 @@ func (c *Client) initLocked() error {
 		// endpoints so both sides can attempt a direct path.
 		lb.advertiseEndpoints()
 	})
-	lb.onDERPRecv = func(regionID int, src key.NodePublic, pkt []byte) bool {
+	lb.onDERPRecv = func(regionID tailcfg.DERPRegionID, src key.NodePublic, pkt []byte) bool {
 		if !IsMeowPacket(pkt) {
 			return false
 		}
@@ -1633,11 +1614,6 @@ func (c *Client) up(ctx context.Context) error {
 	if c.upDone.Load() {
 		return nil
 	}
-	c.upMu.Lock()
-	defer c.upMu.Unlock()
-	if c.upDone.Load() {
-		return nil
-	}
 	_, err := c.Ping(ctx)
 	return err
 }
@@ -1661,7 +1637,7 @@ func (c *Client) Ping(ctx context.Context) (PingResult, error) {
 	return res, err
 }
 
-// ping sends meow pings periodically and waits for the meowed ack. The
+// ping sends a single meow ping and waits for the meowed ack. The
 // client must be started.
 func (c *Client) ping(ctx context.Context) (PingResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -1675,29 +1651,19 @@ func (c *Client) ping(ctx context.Context) (PingResult, error) {
 	derpRegion := c.lb.derpRegionID()
 	pkt := EncodeMeowPing(c.lb.pub, mc.DiscoPublicKey())
 
-	sendPing := func() {
-		sent, err := mc.SendDERPPacketTo(dstNode, derpRegion, pkt)
-		if err != nil {
-			c.lb.logf("tailcat: sending meow failed: %v", err)
-		} else if !sent {
-			c.lb.logf("tailcat: meow not queued")
-		}
+	sent, err := mc.SendDERPPacketTo(dstNode, derpRegion, pkt)
+	if err != nil {
+		return zero, fmt.Errorf("sending meow: %w", err)
+	}
+	if !sent {
+		return zero, fmt.Errorf("meow not sent")
 	}
 
-	sendPing()
-
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-c.meowWait:
-			return PingResult{time.Since(t0)}, nil
-		case <-ticker.C:
-			sendPing()
-		case <-ctx.Done():
-			return zero, ctx.Err()
-		}
+	select {
+	case <-c.meowWait:
+		return PingResult{time.Since(t0)}, nil
+	case <-ctx.Done():
+		return zero, ctx.Err()
 	}
 }
 

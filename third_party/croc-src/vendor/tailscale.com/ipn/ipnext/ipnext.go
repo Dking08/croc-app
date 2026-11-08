@@ -18,6 +18,7 @@ import (
 	"tailscale.com/ipn/ipnauth"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/tsd"
 	"tailscale.com/tstime"
 	"tailscale.com/types/key"
@@ -114,7 +115,14 @@ var extensions mapx.OrderedMap[string, *Definition]
 //
 // It panics if newExt is nil or if an extension with the same name
 // has already been registered.
+//
+// As a backstop for feature packages that forget to consult
+// feature.Register, it does nothing if the named feature was disabled
+// via the TS_DISABLE_FEATURE environment variable.
 func RegisterExtension(name string, newExt NewExtensionFn) {
+	if feature.Disabled(name) {
+		return
+	}
 	if newExt == nil {
 		panic(fmt.Sprintf("ipnext: newExt is nil: %q", name))
 	}
@@ -526,7 +534,7 @@ type NodeBackend interface {
 	PeerCaps(src netip.Addr) tailcfg.PeerCapMap
 
 	// PeerHasCap reports whether the peer has the specified peer capability.
-	PeerHasCap(peer tailcfg.NodeView, cap tailcfg.PeerCapability) bool
+	PeerHasCap(peer tailcfg.NodeView, cap peercap.Cap) bool
 
 	// PeerAPIBase returns the "http://ip:port" URL base to reach peer's
 	// PeerAPI, or the empty string if the peer is invalid or doesn't support

@@ -5,11 +5,8 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Retrieves the current effective patches (the patch and the approval state) for
@@ -62,9 +59,6 @@ type DescribeEffectivePatchesForPatchBaselineOutput struct {
 }
 
 func (c *Client) addOperationDescribeEffectivePatchesForPatchBaselineMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeEffectivePatchesForPatchBaseline{}, middleware.After)
 	if err != nil {
 		return err
@@ -73,56 +67,20 @@ func (c *Client) addOperationDescribeEffectivePatchesForPatchBaselineMiddlewares
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeEffectivePatchesForPatchBaseline"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeEffectivePatchesForPatchBaselineValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeEffectivePatchesForPatchBaseline(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -137,16 +95,11 @@ func (c *Client) addOperationDescribeEffectivePatchesForPatchBaselineMiddlewares
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribeEffectivePatchesForPatchBaselineAPIClient is a client that implements
-// the DescribeEffectivePatchesForPatchBaseline operation.
-type DescribeEffectivePatchesForPatchBaselineAPIClient interface {
-	DescribeEffectivePatchesForPatchBaseline(context.Context, *DescribeEffectivePatchesForPatchBaselineInput, ...func(*Options)) (*DescribeEffectivePatchesForPatchBaselineOutput, error)
-}
-
-var _ DescribeEffectivePatchesForPatchBaselineAPIClient = (*Client)(nil)
 
 // DescribeEffectivePatchesForPatchBaselinePaginatorOptions is the paginator
 // options for DescribeEffectivePatchesForPatchBaseline
@@ -214,6 +167,9 @@ func (p *DescribeEffectivePatchesForPatchBaselinePaginator) NextPage(ctx context
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeEffectivePatchesForPatchBaseline(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -233,10 +189,10 @@ func (p *DescribeEffectivePatchesForPatchBaselinePaginator) NextPage(ctx context
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribeEffectivePatchesForPatchBaseline(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeEffectivePatchesForPatchBaseline",
-	}
+// DescribeEffectivePatchesForPatchBaselineAPIClient is a client that implements
+// the DescribeEffectivePatchesForPatchBaseline operation.
+type DescribeEffectivePatchesForPatchBaselineAPIClient interface {
+	DescribeEffectivePatchesForPatchBaseline(context.Context, *DescribeEffectivePatchesForPatchBaselineInput, ...func(*Options)) (*DescribeEffectivePatchesForPatchBaselineOutput, error)
 }
+
+var _ DescribeEffectivePatchesForPatchBaselineAPIClient = (*Client)(nil)

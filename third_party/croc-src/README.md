@@ -9,15 +9,6 @@
   <strong>This project’s future depends on community support. <a href="https://github.com/sponsors/schollz">Become a sponsor today</a>.</strong>
 </p>
 
-<p align="center">
-Supporting organizations:
-</p>
-<p align="center">
-<a href="https://sx.org/c/CROC">
-<img width="728" height="90" alt="CROC_728х90" src="https://github.com/user-attachments/assets/04553f49-3e4e-467b-91c3-e869750118a2" />
-</a>
-</p>
-
 
 ## About
 
@@ -50,15 +41,49 @@ You can download [the latest release for your system](https://github.com/schollz
 curl https://getcroc.com | bash
 ```
 
+The installer places **croc** and **croc-update** in the same directory. Standalone
+release archives include both binaries too. To upgrade:
+
+```bash
+croc update       # check croc and prepare the updater when needed
+croc-update       # update the croc active on PATH
+```
+
+The updater shows download progress with transferred bytes. Each command asks
+before changing a binary. Pass `--yes` to each command to skip
+its confirmation. Protected directories such as `/usr/local/bin` may still
+require authentication: the command requests `sudo` or `doas` on Unix, or UAC
+approval on Windows. Writable custom prefixes work without elevation:
+
+```bash
+curl https://getcroc.com | bash -s -- -p "$HOME/.local/bin"
+```
+
+`croc update --check` reports croc release availability without installing;
+`croc-update --check` checks the croc active on `PATH`. Direct helper use selects
+that executable first, including a user-owned installation such as
+`$HOME/go/bin/croc`. If croc is absent from `PATH`, it installs beside the helper.
+Use `croc-update --path /path/to/croc` to select a particular installation.
+When croc is current, `croc update` prints only its up-to-date message. When a
+new release is available, it ensures the helper is ready and prints
+`Run: croc-update`. `croc upgrade` is an alias for `croc update`. Neither binary
+overwrites itself or automatically downgrades a newer installed version.
+
+If an older `croc update` reports that the running executable is not writable,
+run the installer once to obtain this pair. Subsequent upgrades use the commands
+above. Manually extracted standalone archives do not need installer registration.
+Package-managed installations use their owning package manager instead.
+
 When the CLI sends or receives a transfer, it checks for a newer croc release at
 most once every 24 hours. The check runs in the background and any update notice
-is shown after the transfer finishes. Run `croc update --check` at any time to
-check explicitly. Installations made by the command above can use `croc update`
-(`croc upgrade` is an alias) to verify and install a stable release when the
-executable is user-writable; pass `--yes` to skip confirmation.
-Package-managed and other installations are never overwritten; the command
-prints the appropriate upgrade guidance instead. Network and release-service
-failures in background checks are ignored; `--quiet` suppresses the notice.
+is shown after the transfer finishes. Network and release-service failures in
+background checks are ignored; `--quiet` suppresses the notice. Set
+`CROC_DO_CHECK=0` or `CROC_NO_UPDATE_CHECK=1` (`CROC_NO_UPDATE_CHECK` takes `1`, `0`,
+`true` or `false`), or run `croc --no-update-check send [filename]`, to skip the
+check. To keep skipping it, export `CROC_NO_UPDATE_CHECK=1`, or add `--remember` to a
+regular send or receive that uses `--no-update-check`. `--remember` saves all of that
+run's settings, including a receive code, and replaces earlier ones. Each side
+remembers them separately.
 
 ### On macOS
 
@@ -108,21 +133,53 @@ environment.systemPackages = [
 
 ### On Alpine Linux
 
-First, install dependencies:
+Enable the community repository for your Alpine release, then install:
 
 ```bash
-apk add bash coreutils
-wget -qO- https://getcroc.com | bash
+apk add croc
 ```
 
-### On Debian
+Check the [Alpine package index](https://pkgs.alpinelinux.org/packages?name=croc)
+for your branch's version. Stable branches can carry older releases; see the
+[distribution status](packaging/distributions/status.md) before selecting one.
 
-Install from the pkg.haus APT archive:
+### On Debian and Ubuntu
+
+The [pkg.haus archive](https://pkg.haus/) provides third-party Debian packages.
+Follow its repository setup and supported-release instructions before running:
 
 ```bash
-# Add the repository (see https://pkg.haus for setup instructions)
 sudo apt install croc
 ```
+
+For a release that includes upstream `.deb` downloads, download the file matching
+`dpkg --print-architecture` from the [release page](https://github.com/schollz/croc/releases).
+Replace `VERSION` and `ARCH` below with the downloaded filename:
+
+```bash
+sudo apt install ./croc_VERSION-1_ARCH.deb
+```
+
+This downloaded-package method also applies to older Debian and Ubuntu releases
+that do not provide croc in their configured repositories. It does not add an APT
+repository; download a newer package to upgrade it.
+
+### On Fedora and openSUSE
+
+For a release that includes upstream `.rpm` downloads, choose the file matching
+`rpm --eval '%{_arch}'` from the [release page](https://github.com/schollz/croc/releases).
+Replace `VERSION` and `ARCH` with the downloaded filename:
+
+```bash
+sudo dnf install ./croc-VERSION-1.ARCH.rpm
+# On openSUSE:
+sudo zypper install ./croc-VERSION-1.ARCH.rpm
+```
+
+These downloads install the CLI, manual, license notices, and shell completions.
+They require `ca-certificates` and start no background services. Upgrade them
+through the package manager; `croc update` leaves package-owned binaries intact.
+See [Linux packaging](packaging/README.md) for architectures and verification.
 
 ### On Arch Linux
 
@@ -174,7 +231,7 @@ You can also just paste it in the terminal for current session. On first run Doc
 
 ### Build from Source
 
-If you prefer, you can [install Go](https://go.dev/dl/) and build from source (requires Go 1.27+):
+If you prefer, you can [install Go](https://go.dev/dl/) and build from source (requires Go 1.27.3+):
 
 ```bash
 go install github.com/schollz/croc/v11@latest
@@ -211,6 +268,10 @@ Then, to receive the file (or folder) on another computer, run:
 ```bash
 croc code-phrase
 ```
+
+Folder transfers include Git repository metadata (`.git`) without an extra flag,
+using the normal acceptance and overwrite handling. Paths containing `.ssh` or
+`.gnupg` components are still rejected, including case variants.
 
 The code phrase is used to establish password-authenticated key agreement ([PAKE](https://en.wikipedia.org/wiki/Password-authenticated_key_agreement)) which generates a secret key for the sender and recipient to use for end-to-end encryption.
 
@@ -417,10 +478,6 @@ sender to use the SOCKS5-capable relay transport for file data. The browser
 client uses the browser's proxy settings for its WebSocket gateway connection;
 the native CLI flag does not configure the browser.
 
-<p align="center">
-  <strong>Sponsored by <a href="https://sx.org/en/proxy/">SX.org</a>.</strong>
-</p>
-
 ### Data transport selection
 
 The native CLI defaults to `--transport auto`. After the normal three-word-code
@@ -486,6 +543,27 @@ croc relay
 
 By default, it uses TCP ports 9009-9013. You can customize the ports (e.g., `croc relay --ports 1111,1112`), but at least **2** ports are required.
 
+Each relay port allows 64 incomplete handshakes in total and 32 per source IP.
+Clients must send their first complete protocol message within 60 seconds and
+finish the handshake within 5 minutes. Croc sends the first message automatically;
+these deadlines do not limit how long an authenticated sender can wait for a
+receiver or how long a transfer can run. Existing room and connection timeouts
+still apply.
+
+Use `--max-pending-handshakes`, `--max-pending-handshakes-per-source`,
+`--first-message-timeout`, and `--handshake-timeout` to adjust these limits.
+Their environment variables are `CROC_MAX_PENDING_HANDSHAKES`,
+`CROC_MAX_PENDING_HANDSHAKES_PER_SOURCE`, `CROC_FIRST_MESSAGE_TIMEOUT`, and
+`CROC_HANDSHAKE_TIMEOUT`. All values must be positive; the total limit and overall
+timeout always bound the per-source allowance and first-message timeout.
+
+Users behind the same NAT or proxy share a source allowance, including browser
+users connecting through the same croc-web bridge. Raising the per-source limit
+to the total limit removes the protection against one source filling the pool.
+These concurrent handshake limits are separate from the source and room join
+rate limits. Fast-admission tokens also use the bounded handshake pool; several
+source IPs can still fill it.
+
 To send files using your relay:
 
 ```bash
@@ -515,8 +593,8 @@ docker run -d -p 9010-9011:9010-9011 -e CROC_PORTS='9010,9011' -e CROC_PASS='YOU
 #### Web client
 
 The React/Vite client in [`web/`](web/) can send and receive multiple files and
-join `croc ssh` sessions hosted by normal CLI peers. The production client and its WebAssembly protocol
-runtime are bundled only in the standalone `croc-web` server, keeping generated
+join `croc ssh` sessions hosted by normal CLI peers. File and text transfers use native TypeScript and browser APIs without WebAssembly.
+The production client and the separate SSH WebAssembly runtime are bundled only in the standalone `croc-web` server, keeping generated
 assets and web-server code out of the cross-platform `croc` binary. Linux
 amd64 builds of `croc-web` are published separately with each release. It
 serves both the site and its same-origin WebSocket relay:
@@ -565,6 +643,32 @@ maps it to unused container port 65535. This deliberate port collision makes
 Disco stop the previous volume-owning web service before starting its
 replacement, avoiding concurrent access to the store. Port 9020 carries no
 application traffic and should remain blocked by the server firewall.
+
+Stored-upload policy can be set per deployment without editing `disco.json`:
+
+```bash
+disco env:set \
+  CROC_STORE_CREATE_RATE=60 \
+  CROC_STORE_ACTIVE_UPLOADS=10 \
+  CROC_STORE_UPLOAD_TIMEOUT=5m \
+  CROC_STORE_TRUSTED_PROXY=VERIFIED_PROXY_IP/32 \
+  --project croc --disco YOUR_DISCO_HOST
+```
+
+Replace the proxy placeholder with the socket source address seen by croc.
+With Docker Swarm routing, this can be the `lb-disco-main` endpoint shown by
+`docker network inspect disco-main`, rather than Caddy's container address.
+Verify the source on each instance and again after Docker network changes.
+Caddy's normal forwarding configuration supplies `X-Forwarded-For`; verify
+that different external clients remain distinct and that a forged incoming
+header cannot choose their accounting IP. Do not edit Disco-generated Caddy
+configuration or trust an entire private network to work around a mismatch.
+
+The values above are deployment overrides; croc's defaults remain five creation
+attempts per hour and two unfinished uploads per IP. `CROC_STORE_DOWNLOADS`
+controls downloads from each link and does not raise upload limits. See the
+[stored-transfer operator guide](src/docs/STORED_TRANSFERS.md) for timeout,
+cleanup, and rate-limit response behavior.
 
 The ports in `CROC_RELAY_PORTS` must match the `publishedPorts` entries in
 the `relay` service in [`disco.json`](disco.json); do not include the web
