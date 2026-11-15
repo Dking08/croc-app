@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -74,13 +75,14 @@ func New() *tailcfg.Hostinfo {
 
 // non-nil on some platforms
 var (
-	osVersion      func() string
-	packageType    func() string
-	distroName     func() string
-	distroVersion  func() string
-	distroCodeName func() string
-	unameMachine   func() string
-	deviceModel    func() string
+	osVersion            func() string
+	packageType          func() string
+	distroName           func() string
+	distroVersion        func() string
+	distroCodeName       func() string
+	unameMachine         func() string
+	deviceModel          func() string
+	systemdLogindDesktop func() bool
 )
 
 func condCall[T any](fn func() T) T {
@@ -232,6 +234,12 @@ func FirewallMode() string {
 	return s
 }
 
+// desktop reports whether the system is running a Linux desktop environment.
+// The result is undefined for non-Linux systems.
+// It checks systemd-logind, and then via reading the list of open unix sockets
+// and seeing if any of them matches names of wayland, x11 or mir.
+// The detection runs for a minute after starting tailscaled, after that the
+// value is cached and returned directly from the cache.
 func desktop() (ret opt.Bool) {
 	if runtime.GOOS != "linux" {
 		return opt.Bool("")
@@ -242,10 +250,19 @@ func desktop() (ret opt.Bool) {
 	}
 
 	seenDesktop := false
-	for lr := range lineiter.File("/proc/net/unix") {
-		line, _ := lr.Value()
-		seenDesktop = seenDesktop || mem.Contains(mem.B(line), mem.S(".X11-unix"))
-		seenDesktop = seenDesktop || mem.Contains(mem.B(line), mem.S("/wayland-1"))
+	if systemdLogindDesktop != nil {
+		seenDesktop = systemdLogindDesktop()
+	}
+	if !seenDesktop {
+		for lr := range lineiter.File("/proc/net/unix") {
+			line, _ := lr.Value()
+			if seenDesktop = mem.Contains(mem.B(line), mem.S(".X11-unix")) ||
+				mem.Contains(mem.B(line), mem.S("/wayland-")) ||
+				mem.Contains(mem.B(line), mem.S("mir_socket")) ||
+				mem.Contains(mem.B(line), mem.S("gamescope-")); seenDesktop {
+				break
+			}
+		}
 	}
 	ret.Set(seenDesktop)
 
@@ -484,8 +501,45 @@ func IsSELinuxEnforcing() bool {
 	if runtime.GOOS != "linux" {
 		return false
 	}
-	out, _ := exec.Command("getenforce").Output()
+	cmd := exec.Command("getenforce")
+	cmd.Env = EnvironWithoutSystemdServiceVars(nil)
+	out, _ := cmd.Output()
 	return string(bytes.TrimSpace(out)) == "Enforcing"
+}
+
+// systemdServiceEnvKeys are the environment variables systemd sets for
+// a service instance. See systemd.exec(5), sd_notify(3),
+// sd_listen_fds(3). They describe the daemon's main process, not a
+// child. With NOTIFY_SOCKET inherited, libsystemd-linked helpers such
+// as loginctl notify the tailscaled unit from a foreign PID. The other
+// variables give children the service's watchdog or listening fds.
+var systemdServiceEnvKeys = []string{
+	"NOTIFY_SOCKET",
+	"WATCHDOG_PID",
+	"WATCHDOG_USEC",
+	"LISTEN_FDS",
+	"LISTEN_PID",
+	"LISTEN_FDNAMES",
+	"INVOCATION_ID",
+	"JOURNAL_STREAM",
+}
+
+// EnvironWithoutSystemdServiceVars returns env, or the current
+// environment when nil, without the systemd service-instance
+// variables. Assign it to cmd.Env when tailscaled execs a helper
+// binary.
+func EnvironWithoutSystemdServiceVars(env []string) []string {
+	if env == nil {
+		env = os.Environ()
+	}
+	ret := make([]string, 0, len(env))
+	for _, kv := range env {
+		if k, _, ok := strings.Cut(kv, "="); ok && slices.Contains(systemdServiceEnvKeys, k) {
+			continue
+		}
+		ret = append(ret, kv)
+	}
+	return ret
 }
 
 // IsNATLabGuestVM reports whether the current host is a NAT Lab guest VM.

@@ -428,7 +428,13 @@ func ByteCountDecimal(b int64) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
+	value := float64(b) / float64(div)
+	// %.1f rounds a value just below the next unit up to 1024.0
+	if fmt.Sprintf("%.1f", value) == "1024.0" && exp < len("kMGTPE")-1 {
+		value /= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", value, "kMGTPE"[exp])
 }
 
 // MissingChunks returns the positions of missing chunks.
@@ -632,7 +638,7 @@ func RandomFileName() (fname string, err error) {
 	if err != nil {
 		return
 	}
-	fname = f.Name()
+	fname = filepath.Base(f.Name())
 	_ = f.Close()
 	return
 }
@@ -678,10 +684,11 @@ func init() {
 }
 
 func IsLocalIP(ipaddress string) bool {
-	if strings.Contains(ipaddress, "127.0.0.1") {
-		return true
+	host, _, err := net.SplitHostPort(ipaddress)
+	if err != nil {
+		// No port, e.g. a bare "127.0.0.1" or "10.0.0.5".
+		host = ipaddress
 	}
-	host, _, _ := net.SplitHostPort(ipaddress)
 	ip := net.ParseIP(host)
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 		return true

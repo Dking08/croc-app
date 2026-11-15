@@ -5,11 +5,8 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // An invocation is copy of a command sent to a specific managed node. A command
@@ -76,9 +73,6 @@ type ListCommandInvocationsOutput struct {
 }
 
 func (c *Client) addOperationListCommandInvocationsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpListCommandInvocations{}, middleware.After)
 	if err != nil {
 		return err
@@ -87,56 +81,20 @@ func (c *Client) addOperationListCommandInvocationsMiddlewares(stack *middleware
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ListCommandInvocations"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListCommandInvocationsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opListCommandInvocations(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -151,16 +109,11 @@ func (c *Client) addOperationListCommandInvocationsMiddlewares(stack *middleware
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// ListCommandInvocationsAPIClient is a client that implements the
-// ListCommandInvocations operation.
-type ListCommandInvocationsAPIClient interface {
-	ListCommandInvocations(context.Context, *ListCommandInvocationsInput, ...func(*Options)) (*ListCommandInvocationsOutput, error)
-}
-
-var _ ListCommandInvocationsAPIClient = (*Client)(nil)
 
 // ListCommandInvocationsPaginatorOptions is the paginator options for
 // ListCommandInvocations
@@ -228,6 +181,9 @@ func (p *ListCommandInvocationsPaginator) NextPage(ctx context.Context, optFns .
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.ListCommandInvocations(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -247,10 +203,10 @@ func (p *ListCommandInvocationsPaginator) NextPage(ctx context.Context, optFns .
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opListCommandInvocations(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ListCommandInvocations",
-	}
+// ListCommandInvocationsAPIClient is a client that implements the
+// ListCommandInvocations operation.
+type ListCommandInvocationsAPIClient interface {
+	ListCommandInvocations(context.Context, *ListCommandInvocationsInput, ...func(*Options)) (*ListCommandInvocationsOutput, error)
 }
+
+var _ ListCommandInvocationsAPIClient = (*Client)(nil)

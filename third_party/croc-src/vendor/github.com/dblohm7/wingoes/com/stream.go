@@ -13,7 +13,6 @@ import (
 	"unsafe"
 
 	"github.com/dblohm7/wingoes"
-	"github.com/dblohm7/wingoes/internal"
 	"golang.org/x/sys/windows"
 )
 
@@ -179,103 +178,6 @@ func (o SequentialStream) Write(b []byte) (int, error) {
 	return p.Write(b)
 }
 
-func (abi *IStreamABI) Seek(offset int64, whence int) (n int64, _ error) {
-	var hr wingoes.HRESULT
-	method := unsafe.Slice(abi.Vtbl, 14)[5]
-
-	if runtime.GOARCH == "386" {
-		words := (*[2]uintptr)(unsafe.Pointer(&offset))
-		rc, _, _ := syscall.SyscallN(
-			method,
-			uintptr(unsafe.Pointer(abi)),
-			words[0],
-			words[1],
-			uintptr(uint32(whence)),
-			uintptr(unsafe.Pointer(&n)),
-		)
-		hr = wingoes.HRESULT(rc)
-	} else {
-		rc, _, _ := syscall.SyscallN(
-			method,
-			uintptr(unsafe.Pointer(abi)),
-			uintptr(offset),
-			uintptr(uint32(whence)),
-			uintptr(unsafe.Pointer(&n)),
-		)
-		hr = wingoes.HRESULT(rc)
-	}
-
-	if e := wingoes.ErrorFromHRESULT(hr); e.Failed() {
-		return 0, e
-	}
-
-	return n, nil
-}
-
-func (abi *IStreamABI) SetSize(newSize uint64) error {
-	var hr wingoes.HRESULT
-	method := unsafe.Slice(abi.Vtbl, 14)[6]
-
-	if runtime.GOARCH == "386" {
-		words := (*[2]uintptr)(unsafe.Pointer(&newSize))
-		rc, _, _ := syscall.SyscallN(
-			method,
-			uintptr(unsafe.Pointer(abi)),
-			words[0],
-			words[1],
-		)
-		hr = wingoes.HRESULT(rc)
-	} else {
-		rc, _, _ := syscall.SyscallN(
-			method,
-			uintptr(unsafe.Pointer(abi)),
-			uintptr(newSize),
-		)
-		hr = wingoes.HRESULT(rc)
-	}
-
-	if e := wingoes.ErrorFromHRESULT(hr); e.Failed() {
-		return e
-	}
-
-	return nil
-}
-
-func (abi *IStreamABI) CopyTo(dest *IStreamABI, numBytesToCopy uint64) (bytesRead, bytesWritten uint64, _ error) {
-	var hr wingoes.HRESULT
-	method := unsafe.Slice(abi.Vtbl, 14)[7]
-
-	if runtime.GOARCH == "386" {
-		words := (*[2]uintptr)(unsafe.Pointer(&numBytesToCopy))
-		rc, _, _ := syscall.SyscallN(
-			method,
-			uintptr(unsafe.Pointer(abi)),
-			uintptr(unsafe.Pointer(dest)),
-			words[0],
-			words[1],
-			uintptr(unsafe.Pointer(&bytesRead)),
-			uintptr(unsafe.Pointer(&bytesWritten)),
-		)
-		hr = wingoes.HRESULT(rc)
-	} else {
-		rc, _, _ := syscall.SyscallN(
-			method,
-			uintptr(unsafe.Pointer(abi)),
-			uintptr(unsafe.Pointer(dest)),
-			uintptr(numBytesToCopy),
-			uintptr(unsafe.Pointer(&bytesRead)),
-			uintptr(unsafe.Pointer(&bytesWritten)),
-		)
-		hr = wingoes.HRESULT(rc)
-	}
-
-	if e := wingoes.ErrorFromHRESULT(hr); e.Failed() {
-		return bytesRead, bytesWritten, e
-	}
-
-	return bytesRead, bytesWritten, nil
-}
-
 func (abi *IStreamABI) Commit(flags STGC) error {
 	method := unsafe.Slice(abi.Vtbl, 14)[8]
 
@@ -300,76 +202,6 @@ func (abi *IStreamABI) Revert() error {
 	)
 
 	if e := wingoes.ErrorFromHRESULT(wingoes.HRESULT(rc)); e.Failed() {
-		return e
-	}
-
-	return nil
-}
-
-func (abi *IStreamABI) LockRegion(offset, numBytes uint64, lockType LOCKTYPE) error {
-	var hr wingoes.HRESULT
-	method := unsafe.Slice(abi.Vtbl, 14)[10]
-
-	if runtime.GOARCH == "386" {
-		oWords := (*[2]uintptr)(unsafe.Pointer(&offset))
-		nWords := (*[2]uintptr)(unsafe.Pointer(&numBytes))
-		rc, _, _ := syscall.SyscallN(
-			method,
-			uintptr(unsafe.Pointer(abi)),
-			oWords[0],
-			oWords[1],
-			nWords[0],
-			nWords[1],
-			uintptr(lockType),
-		)
-		hr = wingoes.HRESULT(rc)
-	} else {
-		rc, _, _ := syscall.SyscallN(
-			method,
-			uintptr(unsafe.Pointer(abi)),
-			uintptr(offset),
-			uintptr(numBytes),
-			uintptr(lockType),
-		)
-		hr = wingoes.HRESULT(rc)
-	}
-
-	if e := wingoes.ErrorFromHRESULT(hr); e.Failed() {
-		return e
-	}
-
-	return nil
-}
-
-func (abi *IStreamABI) UnlockRegion(offset, numBytes uint64, lockType LOCKTYPE) error {
-	var hr wingoes.HRESULT
-	method := unsafe.Slice(abi.Vtbl, 14)[11]
-
-	if runtime.GOARCH == "386" {
-		oWords := (*[2]uintptr)(unsafe.Pointer(&offset))
-		nWords := (*[2]uintptr)(unsafe.Pointer(&numBytes))
-		rc, _, _ := syscall.SyscallN(
-			method,
-			uintptr(unsafe.Pointer(abi)),
-			oWords[0],
-			oWords[1],
-			nWords[0],
-			nWords[1],
-			uintptr(lockType),
-		)
-		hr = wingoes.HRESULT(rc)
-	} else {
-		rc, _, _ := syscall.SyscallN(
-			method,
-			uintptr(unsafe.Pointer(abi)),
-			uintptr(offset),
-			uintptr(numBytes),
-			uintptr(lockType),
-		)
-		hr = wingoes.HRESULT(rc)
-	}
-
-	if e := wingoes.ErrorFromHRESULT(hr); e.Failed() {
 		return e
 	}
 
@@ -493,17 +325,8 @@ const hrE_OUTOFMEMORY = wingoes.HRESULT(-((0x8007000E ^ 0xFFFFFFFF) + 1))
 // copy of initialBytes. Its seek pointer is guaranteed to reference the
 // beginning of the stream.
 func NewMemoryStream(initialBytes []byte) (result Stream, _ error) {
-	return newMemoryStreamInternal(initialBytes, false)
-}
-
-func newMemoryStreamInternal(initialBytes []byte, forceLegacy bool) (result Stream, _ error) {
 	if len(initialBytes) > maxStreamRWLen {
 		return result, wingoes.ErrorFromHRESULT(hrE_OUTOFMEMORY)
-	}
-
-	// SHCreateMemStream exists on Win7 but is not safe for us to use until Win8.
-	if forceLegacy || !wingoes.IsWin8OrGreater() {
-		return newMemoryStreamLegacy(initialBytes)
 	}
 
 	var base *byte
@@ -519,35 +342,6 @@ func newMemoryStreamInternal(initialBytes []byte, forceLegacy bool) (result Stre
 	}
 
 	obj := result.Make(&punk).(Stream)
-	if _, err := obj.Seek(0, io.SeekStart); err != nil {
-		return result, err
-	}
-
-	return obj, nil
-}
-
-func newMemoryStreamLegacy(initialBytes []byte) (result Stream, _ error) {
-	ppstream := NewABIReceiver()
-	hr := createStreamOnHGlobal(internal.HGLOBAL(0), true, ppstream)
-	if e := wingoes.ErrorFromHRESULT(hr); e.Failed() {
-		return result, e
-	}
-
-	obj := result.Make(ppstream).(Stream)
-
-	if err := obj.SetSize(uint64(len(initialBytes))); err != nil {
-		return result, err
-	}
-
-	if len(initialBytes) == 0 {
-		return obj, nil
-	}
-
-	_, err := obj.Write(initialBytes)
-	if err != nil {
-		return result, err
-	}
-
 	if _, err := obj.Seek(0, io.SeekStart); err != nil {
 		return result, err
 	}
