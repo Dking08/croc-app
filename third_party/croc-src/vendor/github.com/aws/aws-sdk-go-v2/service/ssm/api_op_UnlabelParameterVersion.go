@@ -4,14 +4,15 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Remove a label or labels from a parameter.
+//
+// Parameter names can't contain spaces. The service removes any spaces specified
+// for the beginning or end of a parameter name. If the specified name for a
+// parameter contains spaces between characters, the request fails with a
+// ValidationException error.
 func (c *Client) UnlabelParameterVersion(ctx context.Context, params *UnlabelParameterVersionInput, optFns ...func(*Options)) (*UnlabelParameterVersionOutput, error) {
 	if params == nil {
 		params = &UnlabelParameterVersionInput{}
@@ -35,6 +36,9 @@ type UnlabelParameterVersionInput struct {
 	Labels []string
 
 	// The name of the parameter from which you want to delete one or more labels.
+	//
+	// You can't enter the Amazon Resource Name (ARN) for a parameter, only the
+	// parameter name itself.
 	//
 	// This member is required.
 	Name *string
@@ -63,9 +67,6 @@ type UnlabelParameterVersionOutput struct {
 }
 
 func (c *Client) addOperationUnlabelParameterVersionMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpUnlabelParameterVersion{}, middleware.After)
 	if err != nil {
 		return err
@@ -74,56 +75,20 @@ func (c *Client) addOperationUnlabelParameterVersionMiddlewares(stack *middlewar
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "UnlabelParameterVersion"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpUnlabelParameterVersionValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opUnlabelParameterVersion(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -138,13 +103,8 @@ func (c *Client) addOperationUnlabelParameterVersionMiddlewares(stack *middlewar
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opUnlabelParameterVersion(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "UnlabelParameterVersion",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

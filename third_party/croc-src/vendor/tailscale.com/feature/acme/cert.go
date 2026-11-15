@@ -26,7 +26,7 @@ import (
 	"tailscale.com/health"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnlocal"
-	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	xacme "tailscale.com/tempfork/acme"
 	"tailscale.com/types/logger"
 	"tailscale.com/util/mak"
@@ -391,17 +391,30 @@ var getCertPEM = func(ctx context.Context, e *extension, b *ipnlocal.LocalBacken
 		return nil, fmt.Errorf("unexpected ACME account status %q", a.Status)
 	}
 
-	// If we have a previous cert, include it in the order. Assuming we're
-	// within the ARI renewal window this should exclude us from LE rate
-	// limits.
-	// Note that this order extension will fail renewals if the ACME account key has changed
-	// since the last issuance, see
-	// https://github.com/tailscale/tailscale/issues/18251
+	// If we have a previous cert, include it in the order via the ARI
+	// "replaces" extension so LE classifies the new cert as a renewal
+	// and exempts it from the per-registered-domain rate limit. Stores
+	// that can tell the current ACME account did not issue the previous
+	// cert opt out via [ARIReplacesAllower]; see #18251.
 	var opts []xacme.OrderOption
 	if previous != nil && !envknob.Bool("TS_DEBUG_ACME_FORCE_RENEWAL") {
 		prevCrt, err := parseCertificate(previous)
 		if err == nil {
-			opts = append(opts, xacme.WithOrderReplacesCert(prevCrt))
+			useReplaces := true
+			if a, ok := cs.(ARIReplacesAllower); ok {
+				if allowed, err := a.ShouldUseARIReplacesForRenewal(domain); err != nil {
+					// Fail open: an error means we couldn't check
+					// eligibility, not that the account is misaligned.
+					logf("acme: failed to check ARI 'replaces' eligibility for %q, defaulting to use it: %v", domain, err)
+				} else {
+					useReplaces = allowed
+				}
+			}
+			if useReplaces {
+				opts = append(opts, xacme.WithOrderReplacesCert(prevCrt))
+			} else {
+				logf("account key mismatch for previous cert; skipping ARI 'replaces' hint")
+			}
 		}
 	}
 
@@ -460,12 +473,12 @@ func (e *extension) ensureAccount(ctx context.Context, ac *xacme.Client, logf lo
 }
 
 type acmeCertIssueArgs struct {
-	cs            certStore          // certificate and ACME account storage
-	logf          logger.Logf        // logs ACME progress and failures
-	traceACME     func(any)          // optional hook for logging ACME messages
-	domain        string             // certificate domain being issued
+	cs            certStore           // certificate and ACME account storage
+	logf          logger.Logf         // logs ACME progress and failures
+	traceACME     func(any)           // optional hook for logging ACME messages
+	domain        string              // certificate domain being issued
 	opts          []xacme.OrderOption // ACME order options
-	challengeType acmeChallengeType  // challenge type to fulfill
+	challengeType acmeChallengeType   // challenge type to fulfill
 }
 
 func (args acmeCertIssueArgs) baseDomain() string { return strings.TrimPrefix(args.domain, "*.") }
@@ -690,7 +703,7 @@ func (e *extension) resolveCertDomain(b *ipnlocal.LocalBackend, domain string) (
 
 	// Wildcard request like "*.node.ts.net".
 	if base, ok := strings.CutPrefix(domain, "*."); ok {
-		if !nm.AllCaps.Contains(tailcfg.NodeAttrDNSSubdomainResolve) {
+		if !nm.AllCaps.Contains(nodecap.DNSSubdomainResolve) {
 			return "", fmt.Errorf("wildcard certificates are not enabled for this node")
 		}
 		if !slices.Contains(certDomains, base) {

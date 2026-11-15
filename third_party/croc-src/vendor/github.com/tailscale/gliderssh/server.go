@@ -298,7 +298,8 @@ func (srv *Server) HandleConn(newConn net.Conn) {
 		conn.maxDeadline = time.Now().Add(srv.MaxTimeout)
 	}
 	if srv.HandshakeTimeout > 0 {
-		conn.handshakeDeadline = time.Now().Add(srv.HandshakeTimeout)
+		handshakeDeadline := time.Now().Add(srv.HandshakeTimeout)
+		conn.handshakeDeadline.Store(&handshakeDeadline)
 	}
 	conn.updateDeadline()
 	defer conn.Close()
@@ -309,7 +310,7 @@ func (srv *Server) HandleConn(newConn net.Conn) {
 		}
 		return
 	}
-	conn.handshakeDeadline = time.Time{}
+	conn.handshakeDeadline.Store(nil)
 	conn.updateDeadline()
 	srv.trackConn(sshConn, true)
 	defer srv.trackConn(sshConn, false)

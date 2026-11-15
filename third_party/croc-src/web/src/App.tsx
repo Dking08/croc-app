@@ -10,24 +10,17 @@ import {
 import {
   AlertTriangle,
   ArrowRight,
-  BookOpenText,
   Check,
-  CircleHelp,
   Copy,
   Download,
   File as FileIcon,
   Heart,
   MessageSquareText,
-  Moon,
-  Settings2,
   SquareTerminal,
-  Sun,
   Upload,
   X,
 } from "lucide-react";
-import { FaGithub } from "react-icons/fa";
 import crocIllustration from "./assets/croc.jpg?inline";
-import { driver, type DriveStep, type Driver } from "driver.js";
 import {
   trackTransferEvent,
   transferEvents,
@@ -56,11 +49,9 @@ import {
   type StoredUploadResult,
 } from "./protocol/stored";
 import {
-  DownloadDestination,
   TextDestination,
   chooseStoredReceiveDestination,
   chooseReceiveDestination,
-  supportsDirectoryDestination,
 } from "./protocol/storage";
 import type {
   FileProgress,
@@ -78,7 +69,6 @@ import {
 import {
   formatStoredExpiration,
   StoredExpirationControl,
-  StoredModeSwitch,
   StoredShareCard,
   storedExpirationParts,
   storedExpirationSeconds,
@@ -103,114 +93,13 @@ import {
   type GitHubRelease,
 } from "./releases";
 import { blogPosts } from "./blog-posts";
+import { TaskLauncher, taskFromHash, useTaskNavigation } from "./TaskLauncher";
 
 type Activity = "idle" | "working" | "done" | "error";
 type Theme = "dark" | "light";
 type CopyState = "idle" | "copied" | "error";
-type MobileTransferPanel = "send" | "receive";
 type SendContent = "files" | "text";
-type WorkspaceMode = "files" | "ssh";
-
-const sshWorkspaceHash = "#ssh";
-
-export function workspaceModeFromHash(
-  hash = window.location.hash,
-): WorkspaceMode {
-  return hash.split("?", 1)[0] === sshWorkspaceHash ? "ssh" : "files";
-}
-
-export function sshInvitationFromHash(hash = window.location.hash) {
-  if (workspaceModeFromHash(hash) !== "ssh") return "";
-  const queryAt = hash.indexOf("?");
-  if (queryAt < 0) return "";
-  return new URLSearchParams(hash.slice(queryAt + 1)).get("code")?.trim() ?? "";
-}
-
-function scrubSSHInvitationFromURL() {
-  if (!sshInvitationFromHash()) return;
-  const url = new URL(window.location.href);
-  url.hash = sshWorkspaceHash;
-  window.history.replaceState(window.history.state, "", url);
-}
-
-export function useWorkspaceMode() {
-  const [mode, setMode] = useState<WorkspaceMode>(() => workspaceModeFromHash());
-  const [sshInvitation, setSSHInvitation] = useState(() =>
-    sshInvitationFromHash(),
-  );
-
-  useEffect(() => {
-    const syncModeFromURL = () => {
-      setMode(workspaceModeFromHash());
-      setSSHInvitation(sshInvitationFromHash());
-      scrubSSHInvitationFromURL();
-    };
-    window.addEventListener("hashchange", syncModeFromURL);
-    scrubSSHInvitationFromURL();
-    return () => {
-      window.removeEventListener("hashchange", syncModeFromURL);
-    };
-  }, []);
-
-  function changeMode(nextMode: WorkspaceMode) {
-    setMode(nextMode);
-    setSSHInvitation("");
-
-    const url = new URL(window.location.href);
-    if (nextMode === "ssh") {
-      url.hash = sshWorkspaceHash;
-    } else if (url.hash === sshWorkspaceHash) {
-      url.hash = "";
-    } else {
-      return;
-    }
-
-    if (url.href !== window.location.href) {
-      window.history.pushState(null, "", url);
-    }
-  }
-
-  return [mode, changeMode, sshInvitation] as const;
-}
-
 const SSHPanel = lazy(() => import("./SSHPanel"));
-
-export function WorkspaceSwitch({
-  mode,
-  disabled,
-  onChange,
-}: {
-  mode: WorkspaceMode;
-  disabled: boolean;
-  onChange(mode: WorkspaceMode): void;
-}) {
-  return (
-    <div
-      className="workspace-switch"
-      role="tablist"
-      aria-label="Choose croc tool"
-    >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={mode === "files"}
-        disabled={disabled}
-        onClick={() => onChange("files")}
-      >
-        <Upload aria-hidden="true" /> Files
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={mode === "ssh"}
-        disabled={disabled}
-        onClick={() => onChange("ssh")}
-      >
-        <SquareTerminal aria-hidden="true" /> SSH
-      </button>
-    </div>
-  );
-}
 
 function sendHashAlgorithm(mode: SendMode): FileHashAlgorithm {
   return mode === "stored" ? "sha256" : "xxhash";
@@ -247,7 +136,6 @@ const storeExpiresSeconds =
   storeMaxExpiresSeconds > 0
     ? Math.min(configuredStoreExpiresSeconds, storeMaxExpiresSeconds)
     : configuredStoreExpiresSeconds;
-const crocWebsite = "https://infinitedigits.co/croc/";
 const crocRepository = "https://github.com/schollz/croc";
 const otherTools = [
   {
@@ -633,10 +521,8 @@ function CliDownload() {
       id="cli-download"
       className="cli-download"
       aria-labelledby="cli-download-title"
-      data-tour="cli"
     >
       <div>
-        <p className="eyebrow">croc CLI</p>
         <h2 id="cli-download-title">Download croc for {platformLabel}.</h2>
         {platform === "other" && (
           <p>Choose the latest build for your device on GitHub.</p>
@@ -701,11 +587,9 @@ function BlogTeaser() {
     <section
       className="home-blog-teaser"
       aria-labelledby="home-blog-title"
-      data-tour="blog"
     >
       <div className="home-blog-heading">
         <div>
-          <p className="eyebrow">Notes &amp; updates</p>
           <h2 id="home-blog-title">What happens after you press Send?</h2>
           <p>
             Notes about how croc works, commonly asked questions about croc,
@@ -802,15 +686,12 @@ export function App() {
   const [sendContent, setSendContent] = useState<SendContent>("files");
   const [sendText, setSendText] = useState("");
   const [sendMode, setSendMode] = useState<SendMode>(
-    restoredStoredUpload ? "stored" : "direct",
+    restoredStoredUpload || taskFromHash() === "store" ? "stored" : "direct",
   );
-  const [mobileTransferPanel, setMobileTransferPanel] =
-    useState<MobileTransferPanel>(receiveOnly ? "receive" : "send");
-  const [workspaceMode, setWorkspaceMode, sshInvitation] = useWorkspaceMode();
   const [sshActive, setSSHActive] = useState(false);
   const [sendCode, setSendCode] = useState("");
   const [sendDetailsVisible, setSendDetailsVisible] = useState(false);
-  const [sendActivity, setSendActivity] = useState<Activity>("idle");
+  const [sendActivity, setSendActivity] = useState<Activity>(restoredStoredUpload ? "done" : "idle");
   const [sendStatus, setSendStatus] = useState("");
   const [sendProgress, setSendProgress] = useState<FileProgress>();
   const [completedSend, setCompletedSend] = useState<string[]>([]);
@@ -847,13 +728,31 @@ export function App() {
   const sendProgressSampledAt = useRef<number>(undefined);
   const receiveProgressSampledAt = useRef<number>(undefined);
   const fileInput = useRef<HTMLInputElement>(null);
-  const transferGrid = useRef<HTMLElement>(null);
   const receivePanel = useRef<HTMLFormElement>(null);
+  const relaySettingsDialog = useRef<HTMLDialogElement>(null);
   const codeCopyReset = useRef<number>(undefined);
   const directLinkCopyReset = useRef<number>(undefined);
   const receivedTextCopyReset = useRef<number>(undefined);
   const receiveOfferKind = useRef<TransferOffer["kind"]>("files");
-  const tour = useRef<Driver>(undefined);
+
+  const navigationLocked = sendActivity === "working" || receiveActivity === "working" || sshActive;
+  const [task, navigateTask, sshInvitation] = useTaskNavigation({
+    initialTask: receiveOnly ? "receive" : restoredStoredUpload ? "store" : "home",
+    storeEnabled,
+    locked: navigationLocked,
+  });
+  const sendTask = !receiveOnly && (task === "send" || task === "store");
+  const receiveTask = receiveOnly || task === "receive";
+
+  useEffect(() => {
+    if (!sendTask) return;
+    const nextMode = task === "store" ? "stored" : "direct";
+    if (nextMode === sendMode) return;
+    setSendMode(nextMode);
+    if (nextMode === "stored") setSendContent("files");
+    resetSendPresentation();
+    if (nextMode === "stored" && storedUpload) setSendActivity("done");
+  }, [task, sendTask, sendMode, storedUpload]);
 
   const totalSelectedSize = useMemo(
     () => selectedFiles.reduce((total, file) => total + file.size, 0),
@@ -906,7 +805,7 @@ export function App() {
   }, [settings, rememberPassword]);
 
   useEffect(() => {
-    if (receiveOnly) return;
+    if (receiveOnly || task !== "send") return;
     const controller = new AbortController();
     void relayPreloader
       .preload(settings, { signal: controller.signal })
@@ -915,7 +814,7 @@ export function App() {
       controller.abort();
       relayPreloader.clear();
     };
-  }, [relayPreloader, settings.gatewayURL, settings.relayAddresses]);
+  }, [relayPreloader, settings.gatewayURL, settings.relayAddresses, task]);
 
   useEffect(() => {
     fileHashes.retain(selectedFiles);
@@ -930,7 +829,6 @@ export function App() {
         window.clearTimeout(directLinkCopyReset.current);
       if (receivedTextCopyReset.current !== undefined)
         window.clearTimeout(receivedTextCopyReset.current);
-      tour.current?.destroy();
       sendAbort.current?.abort();
       receiveAbort.current?.abort();
       fileHashes.clear();
@@ -982,13 +880,6 @@ export function App() {
       receivePanel.current?.scrollIntoView({ block: "start" });
     }
   }, []);
-
-  function showMobileTransferPanel(panel: MobileTransferPanel) {
-    setMobileTransferPanel(panel);
-    window.requestAnimationFrame(() => {
-      transferGrid.current?.scrollIntoView({ block: "start" });
-    });
-  }
 
   function resetSendPresentation() {
     setSendActivity("idle");
@@ -1192,20 +1083,36 @@ export function App() {
     }
   }
 
-  function receiveCallbacks(): ReceiveCallbacks {
+  function receiveCallbacks(signal: AbortSignal): ReceiveCallbacks {
+    const active = () => !signal.aborted && receiveAbort.current?.signal === signal;
     return {
-      onStatus: setReceiveStatus,
-      onProgress: updateReceiveProgress,
+      onStatus: (status) => {
+        if (active()) setReceiveStatus(status);
+      },
+      onProgress: (progress) => {
+        if (active()) updateReceiveProgress(progress);
+      },
       onFileComplete: (name) => {
+        if (!active()) return;
         if (receiveOfferKind.current !== "text") {
           setCompletedReceive((current) => [...current, name]);
         }
       },
       onOffer: (incoming) =>
         new Promise((resolve) => {
+          if (!active()) {
+            resolve(false);
+            return;
+          }
+          const abort = () => finish(false);
+          const finish = (destination: ReceiveDestination | false) => {
+            signal.removeEventListener("abort", abort);
+            resolve(destination);
+          };
+          signal.addEventListener("abort", abort, { once: true });
           receiveOfferKind.current = incoming.kind;
           setReceivingText(incoming.kind === "text");
-          offerResolver.current = resolve;
+          offerResolver.current = finish;
           setOffer(incoming);
         }),
     };
@@ -1214,18 +1121,22 @@ export function App() {
   async function receiveStored(signal: AbortSignal) {
     setStoredReceiveActive(true);
     const share = parseStoredShare(receiveCode);
-    setReceiveStatus("Opening encrypted manifest…");
+    setReceiveStatus("Opening stored link…");
     const inspection = await inspectStoredTransfer(
       share,
       storedSettings,
       signal,
+      (status) => {
+        if (!signal.aborted) setReceiveStatus(status);
+      },
     );
+    if (signal.aborted) throw new DOMException("Transfer cancelled", "AbortError");
     setStoredReceiveExpiresAt(inspection.expiresAt ?? "");
     const remaining = await receiveStoredTransfer({
       inspection,
       settings: storedSettings,
       signal,
-      callbacks: receiveCallbacks(),
+      callbacks: receiveCallbacks(signal),
     });
     window.history.replaceState({}, "", "/");
     return remaining;
@@ -1236,7 +1147,7 @@ export function App() {
       secret: receiveCode.trim(),
       settings,
       signal,
-      callbacks: receiveCallbacks(),
+      callbacks: receiveCallbacks(signal),
     });
   }
 
@@ -1266,6 +1177,7 @@ export function App() {
       } else {
         directOffer = await receiveDirect(controller.signal);
       }
+      if (receiveAbort.current !== controller || controller.signal.aborted) return;
       trackTransferEvent(transferEvents.receive);
       setOffer(undefined);
       setReceiveActivity("done");
@@ -1281,6 +1193,7 @@ export function App() {
             : "All files received and verified",
       );
     } catch (error) {
+      if (receiveAbort.current !== controller) return;
       setOffer(undefined);
       offerResolver.current = undefined;
       if (controller.signal.aborted) {
@@ -1317,17 +1230,15 @@ export function App() {
     }
   }
 
-  async function acceptOffer(downloadSeparately = false) {
+  async function acceptOffer() {
     if (!offer || !offerResolver.current) return;
     try {
       const destination =
         offer.kind === "text"
           ? new TextDestination(setReceivedText)
-          : downloadSeparately
-            ? new DownloadDestination()
-            : storedReceiveActive
-              ? await chooseStoredReceiveDestination(offer)
-              : await chooseReceiveDestination(offer);
+          : storedReceiveActive
+            ? await chooseStoredReceiveDestination(offer)
+            : await chooseReceiveDestination(offer);
       const resolve = offerResolver.current;
       offerResolver.current = undefined;
       setOffer(undefined);
@@ -1340,119 +1251,6 @@ export function App() {
       offerResolver.current = undefined;
       setOffer(undefined);
     }
-  }
-
-  function refuseOffer() {
-    offerResolver.current?.(false);
-    offerResolver.current = undefined;
-    setOffer(undefined);
-  }
-
-  function startTour() {
-    tour.current?.destroy();
-
-    const steps: DriveStep[] = [
-      {
-        popover: {
-          title: "Welcome to croc web",
-          description: receiveOnly
-            ? requestedStoredURL
-              ? "This encrypted stored link is opening its manifest. Review the incoming files, then choose where to save them before claiming an allowed download."
-              : "This receive link already filled its croc code and started connecting. You only need to review the incoming files and choose where to save them."
-            : "Send or receive files from this page with any compatible croc browser or command-line peer. This tour shows the complete flow.",
-        },
-      },
-    ];
-
-    if (!receiveOnly) {
-      steps.push({
-        element: '[data-tour="send"]',
-        popover: {
-          title: "Send one or several files",
-          description: `Use Direct for a live croc-code transfer, or Store for an encrypted link that lasts ${formatStoredExpiration(
-            storedExpiration.value,
-            storedExpiration.unit,
-          )} or until its configured verified-download limit. Choose files or drag them here to begin; Direct also has a secondary option for short text.`,
-          side: "right",
-          align: "start",
-        },
-      });
-    }
-
-    steps.push(
-      {
-        element: '[data-tour="receive"]',
-        popover: {
-          title: "Receive and review",
-          description:
-            "Paste the sender’s croc code, encrypted browser link, or CLI token. Review incoming files or text before choosing whether to save, display, or refuse it.",
-          side: receiveOnly ? "top" : "left",
-          align: "start",
-        },
-      },
-      {
-        element: ".transfer-grid",
-        popover: {
-          title: "The code or link provides the key",
-          description:
-            "Direct transfers use password-authenticated key exchange (PAKE) so both peers derive a strong shared key from the croc code. Stored links carry a separate random key after #, which is not sent to the server. File metadata and chunks are encrypted before leaving the browser.",
-          side: "bottom",
-          align: "start",
-        },
-      },
-      {
-        element: '[data-tour="settings"]',
-        popover: {
-          title: "Use another relay when needed",
-          description:
-            "Most people can leave these advanced settings alone. Self-hosted setups can select their own WebSocket gateway, croc relay, and relay password.",
-          side: "top",
-          align: "start",
-        },
-      },
-      {
-        element: '[data-tour="cli"]',
-        popover: {
-          title: "Works with the croc CLI",
-          description:
-            "Direct browser transfers interoperate with normal croc command-line clients, and stored transfers include a pasteable CLI token. Download the detected build here, or choose another release from GitHub.",
-          side: "top",
-          align: "start",
-        },
-      },
-      {
-        element: '[data-tour="blog"]',
-        popover: {
-          title: "Read the field notes",
-          description:
-            "Plainspoken notes explain the relay, PAKE, encryption, browser and terminal interoperability, stored sharing, and the decisions behind croc.",
-          side: "top",
-          align: "start",
-        },
-      },
-    );
-
-    tour.current = driver({
-      steps,
-      showProgress: true,
-      progressText: "{{current}} / {{total}}",
-      nextBtnText: "Next",
-      prevBtnText: "Back",
-      doneBtnText: "Done",
-      popoverClass: "croc-tour",
-      stagePadding: 8,
-      stageRadius: 0,
-      overlayOpacity: 0.76,
-      animate: !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
-      smoothScroll: true,
-      allowKeyboardControl: true,
-      disableActiveInteraction: true,
-      skipMissingElement: true,
-      onDestroyed: () => {
-        tour.current = undefined;
-      },
-    });
-    tour.current.drive();
   }
 
   const sendBusy = sendActivity === "working";
@@ -1493,147 +1291,45 @@ export function App() {
           />
         </a>
         <div>
-          <p className="eyebrow">
-            <strong>croc</strong> is a free and open-source tool to
-          </p>
           <h1>
-            {receiveOnly
+            {receiveTask
               ? "Receive files, secured end-to-end."
-              : workspaceMode === "ssh"
+              : task === "ssh"
                 ? "Join a terminal, secured end-to-end."
-                : "Send files, secured end-to-end."}
+                : "croc: end-to-end encrypted transfers."}
           </h1>
         </div>
       </header>
 
-      <div className="workspace-toolbar" aria-label="Workspace controls">
-        {!receiveOnly && (
-          <WorkspaceSwitch
-            mode={workspaceMode}
-            disabled={sendBusy || receiveBusy || sshActive}
-            onChange={setWorkspaceMode}
-          />
-        )}
-        <div className="workspace-toolbar-actions">
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="How to use croc web"
-            title="How to use croc web"
-            onClick={startTour}
-          >
-            <CircleHelp aria-hidden="true" />
-          </button>
-          <a
-            className="icon-button blog-header-link"
-            href="/blog"
-            aria-label="Read croc field notes"
-            title="Read croc field notes"
-          >
-            <BookOpenText aria-hidden="true" />
-          </a>
-          <a
-            className="icon-button"
-            href="https://github.com/schollz/croc"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="View croc on GitHub"
-            title="View croc on GitHub"
-          >
-            <FaGithub aria-hidden="true" />
-          </a>
-          <button
-            className="icon-button theme-toggle"
-            type="button"
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-            onClick={() =>
-              setTheme((current) => (current === "dark" ? "light" : "dark"))
-            }
-          >
-            {theme === "dark" ? <Sun /> : <Moon />}
-          </button>
-        </div>
-      </div>
+      {!receiveOnly && task === "home" && (
+        <TaskLauncher storeEnabled={storeEnabled} onSelect={navigateTask} />
+      )}
 
-      {(receiveOnly || workspaceMode === "files") && (
+      {(sendTask || receiveTask) && (
         <section
-          ref={transferGrid}
-          className={`transfer-grid${receiveOnly ? " receive-only" : ""}`}
+          className={`transfer-grid task-workspace${receiveOnly ? " receive-only" : ""}`}
           aria-label="File transfer controls"
         >
-        {!receiveOnly && (
-          <div
-            className="mobile-transfer-switch"
-            role="tablist"
-            aria-label="Choose transfer direction"
-          >
-            <button
-              id="mobile-send-tab"
-              type="button"
-              role="tab"
-              aria-controls="send-panel"
-              aria-selected={mobileTransferPanel === "send"}
-              onClick={() => showMobileTransferPanel("send")}
-            >
-              <Upload aria-hidden="true" />
-              Send
-            </button>
-            <button
-              id="mobile-receive-tab"
-              type="button"
-              role="tab"
-              aria-controls="receive"
-              aria-selected={mobileTransferPanel === "receive"}
-              onClick={() => showMobileTransferPanel("receive")}
-            >
-              <Download aria-hidden="true" />
-              Receive
-            </button>
-          </div>
-        )}
-        {!receiveOnly && (
-          <article
-            id="send-panel"
-            className={`panel send-panel${mobileTransferPanel === "send" ? " mobile-active" : ""}`}
-            data-tour="send"
-          >
+        {sendTask && (
+          <article id="send-panel" className="panel send-panel">
           <div className="panel-heading">
             <span className="step">
               <Upload aria-hidden="true" />
             </span>
             <div>
-              <h2>Send</h2>
-              <p>
-                {sendMode === "stored"
-                  ? `Upload encrypted files for ${formatStoredExpiration(
-                      storedExpiration.value,
-                      storedExpiration.unit,
-                    )} or ${storedDownloads} ${
-                      storedDownloads === 1 ? "download" : "downloads"
-                    }.`
-                  : "Choose several files. Share one croc code."}
-              </p>
+              <h2>{sendMode === "stored" ? "Store files" : "Send live"}</h2>
+              {sendMode === "stored" && (
+                <p>
+                  {`Upload encrypted files for ${formatStoredExpiration(
+                    storedExpiration.value,
+                    storedExpiration.unit,
+                  )} or ${storedDownloads} ${
+                    storedDownloads === 1 ? "download" : "downloads"
+                  }.`}
+                </p>
+              )}
             </div>
           </div>
-
-          {storeEnabled && (
-            <StoredModeSwitch
-              mode={sendMode}
-              disabled={sendBusy || storedUpload !== undefined}
-              durationLabel={formatStoredExpiration(
-                storedExpiration.value,
-                storedExpiration.unit,
-              )}
-              onChange={(mode) => {
-                fileHashes.prime(selectedFiles, sendHashAlgorithm(mode));
-                setSendMode(mode);
-                if (mode === "stored") setSendContent("files");
-                setStoredUpload(undefined);
-                resetSendPresentation();
-              }}
-            />
-          )}
 
           {sendContent === "files" || sendMode === "stored" ? (
             <>
@@ -1917,7 +1613,10 @@ export function App() {
               <button
                 className="primary-button inverted"
                 type="button"
-                onClick={() => sendAbort.current?.abort()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  sendAbort.current?.abort();
+                }}
               >
                 <X /> Cancel send
               </button>
@@ -1953,11 +1652,11 @@ export function App() {
           </article>
         )}
 
+        {receiveTask && (
         <form
           id="receive"
           ref={receivePanel}
-          className={`panel receive-panel${mobileTransferPanel === "receive" ? " mobile-active" : ""}`}
-          data-tour="receive"
+          className="panel receive-panel"
           onSubmit={(event) => {
             event.preventDefault();
             if (receiveBusy || receiveCode.trim().length < 6) return;
@@ -1970,39 +1669,47 @@ export function App() {
             </span>
             <div>
               <h2>Receive</h2>
-              <p>
-                Enter a croc code or encrypted stored link. Review before saving
-                or displaying.
-              </p>
+              {!receiveOnly && (
+                <p>
+                  Enter a croc code or encrypted stored link. Review before saving
+                  or displaying.
+                </p>
+              )}
             </div>
           </div>
 
-          <label className="field-label" htmlFor="receive-code">
-            Croc code or stored link
-          </label>
-          <input
-            id="receive-code"
-            value={receiveCode}
-            disabled={receiveBusy}
-            placeholder="word-word-word or encrypted link"
-            spellCheck={false}
-            autoComplete="off"
-            autoCapitalize="none"
-            autoCorrect="off"
-            enterKeyHint="go"
-            onChange={(event) => setReceiveCode(event.target.value.replace(/\s+/g, '-'))}
-          />
-          <p className="field-help">
-            Paste or type the code, stored link, or CLI token, then press Enter
-            or select Receive.
-          </p>
+          {!receiveOnly && (
+            <>
+              <label className="field-label" htmlFor="receive-code">
+                Croc code or stored link
+              </label>
+              <input
+                id="receive-code"
+                value={receiveCode}
+                disabled={receiveBusy}
+                placeholder="word-word-word or encrypted link"
+                spellCheck={false}
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                enterKeyHint="go"
+                onChange={(event) => setReceiveCode(event.target.value.replace(/\s+/g, '-'))}
+              />
+              <p className="field-help">
+                Paste or type the code, stored link, or CLI token, then press Enter
+                or select Receive.
+              </p>
+            </>
+          )}
 
           {offer && (
             <div className="offer" aria-live="polite">
-              <div className="offer-heading">
-                <span>{offer.kind === "text" ? "Incoming text" : "Incoming transfer"}</span>
-                <span>{formatBytes(offer.totalSize)}</span>
-              </div>
+              {offer.kind === "text" && (
+                <div className="offer-heading">
+                  <span>Incoming text</span>
+                  <span>{formatBytes(offer.totalSize)}</span>
+                </div>
+              )}
               {offer.kind === "files" ? (
                 <>
                   <ul className="file-list offer-list">
@@ -2030,11 +1737,6 @@ export function App() {
                       verified download consumes one allowed download.
                     </p>
                   )}
-                  <p>
-                    {supportsDirectoryDestination()
-                      ? "Choose a destination folder. Existing files require confirmation."
-                      : "Your browser will download each file separately."}
-                  </p>
                 </>
               ) : (
                 <p>
@@ -2042,25 +1744,7 @@ export function App() {
                   verified. Nothing will be downloaded.
                 </p>
               )}
-              <div
-                className={`button-pair ${offer.kind === "files" && supportsDirectoryDestination() ? "three" : ""}`}
-              >
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={refuseOffer}
-                >
-                  Refuse
-                </button>
-                {offer.kind === "files" && supportsDirectoryDestination() && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => void acceptOffer(true)}
-                  >
-                    Download
-                  </button>
-                )}
+              <div className="offer-action">
                 <button
                   className="primary-button"
                   type="button"
@@ -2072,8 +1756,7 @@ export function App() {
                     </>
                   ) : (
                     <>
-                      <Download />{" "}
-                      {supportsDirectoryDestination() ? "Choose folder" : "Accept files"}
+                      <Download /> Download files
                     </>
                   )}
                 </button>
@@ -2081,7 +1764,7 @@ export function App() {
             </div>
           )}
 
-          {(receiveBusy || receiveProgress) && !offer ? (
+          {(receiveBusy || (receiveActivity === "done" && receiveProgress)) && !offer ? (
             <ProgressBlock
               progress={receiveProgress}
               status={receiveStatus}
@@ -2146,7 +1829,14 @@ export function App() {
               <button
                 className="primary-button inverted"
                 type="button"
-                onClick={() => receiveAbort.current?.abort()}
+                onClick={(event) => {
+                  // This DOM button becomes the submit button when cancelled.
+                  event.preventDefault();
+                  receiveAbort.current?.abort();
+                  setOffer(undefined);
+                  setReceiveActivity("idle");
+                  setReceiveStatus("Transfer cancelled");
+                }}
               >
                 <X /> Cancel receive
               </button>
@@ -2160,10 +1850,11 @@ export function App() {
               </button>
             ))}
         </form>
+        )}
         </section>
       )}
 
-      {!receiveOnly && workspaceMode === "ssh" && (
+      {!receiveOnly && task === "ssh" && (
         <Suspense
           fallback={
             <section className="ssh-workspace" aria-live="polite">
@@ -2183,66 +1874,81 @@ export function App() {
         </Suspense>
       )}
 
-      <details className="settings" data-tour="settings">
-        <summary>
-          <span>
-            <Settings2 /> Relay settings
-          </span>
-          <span>advanced</span>
-        </summary>
-        <form
-          className="settings-grid"
-          autoComplete="off"
-          onSubmit={(event) => event.preventDefault()}
-        >
-          <label>
-            <span>WebSocket gateway</span>
-            <input
-              value={settings.gatewayURL}
-              disabled={sendBusy || receiveBusy || sshActive}
-              spellCheck={false}
-              onChange={(event) =>
-                setSettings((current) => ({
-                  ...current,
-                  gatewayURL: event.target.value,
-                }))
-              }
-            />
-          </label>
-          <label>
-            <span>CLI relay addresses</span>
-            <input
-              value={settings.relayAddresses.join(", ")}
-              readOnly
-              spellCheck={false}
-            />
-          </label>
-          <label>
-            <span>Relay password</span>
-            <input
-              type="password"
-              name="relay-password"
-              autoComplete="off"
-              value={settings.relayPassword}
-              disabled={sendBusy || receiveBusy || sshActive}
-              onChange={(event) =>
-                setSettings((current) => ({
-                  ...current,
-                  relayPassword: event.target.value,
-                }))
-              }
-            />
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={rememberPassword}
-              onChange={(event) => setRememberPassword(event.target.checked)}
-            />
-            <span>Remember relay password on this device</span>
-          </label>
-        </form>
-      </details>
+      <dialog
+        ref={relaySettingsDialog}
+        id="relay-settings"
+        className="relay-settings-modal"
+        aria-labelledby="relay-settings-title"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) event.currentTarget.close();
+        }}
+      >
+        <div className="relay-settings-content">
+          <header className="relay-settings-header">
+            <h2 id="relay-settings-title">Relay settings</h2>
+            <button
+              className="relay-settings-close"
+              type="button"
+              aria-label="Close relay settings"
+              onClick={() => relaySettingsDialog.current?.close()}
+            >
+              <X aria-hidden="true" />
+            </button>
+          </header>
+          <form
+            className="settings-grid"
+            autoComplete="off"
+            onSubmit={(event) => event.preventDefault()}
+          >
+            <label>
+              <span>WebSocket gateway</span>
+              <input
+                value={settings.gatewayURL}
+                disabled={sendBusy || receiveBusy || sshActive}
+                spellCheck={false}
+                onChange={(event) =>
+                  setSettings((current) => ({
+                    ...current,
+                    gatewayURL: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>CLI relay addresses</span>
+              <input
+                value={settings.relayAddresses.join(", ")}
+                readOnly
+                spellCheck={false}
+              />
+            </label>
+            <label>
+              <span>Relay password</span>
+              <input
+                type="password"
+                name="relay-password"
+                autoComplete="off"
+                value={settings.relayPassword}
+                disabled={sendBusy || receiveBusy || sshActive}
+                onChange={(event) =>
+                  setSettings((current) => ({
+                    ...current,
+                    relayPassword: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={rememberPassword}
+                onChange={(event) => setRememberPassword(event.target.checked)}
+              />
+              <span>Remember relay password on this device</span>
+            </label>
+          </form>
+        </div>
+      </dialog>
 
       <CliDownload />
 
@@ -2271,15 +1977,26 @@ export function App() {
             github
           </a>
           <span aria-hidden="true">·</span>
-          <a href="/blog">blog</a>
-          <span aria-hidden="true">·</span>
-          <a
-            href={crocWebsite}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            className="footer-relay-link"
+            type="button"
+            aria-haspopup="dialog"
+            aria-controls="relay-settings"
+            onClick={() => relaySettingsDialog.current?.showModal()}
           >
-            croc website
-          </a>
+            relay
+          </button>
+          <span aria-hidden="true">·</span>
+          <button
+            className="footer-theme-toggle"
+            type="button"
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            onClick={() =>
+              setTheme((current) => (current === "dark" ? "light" : "dark"))
+            }
+          >
+            {theme === "dark" ? "light mode" : "dark mode"}
+          </button>
           <span aria-hidden="true">·</span>
           <span>
             hosted with{" "}

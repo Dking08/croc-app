@@ -33,17 +33,19 @@ type server struct {
 	rooms        roomMap
 	started      chan struct{}
 
-	maxPendingHandshakes int
-	handshakeTimeout     time.Duration
-	handshakeSlots       chan struct{}
-	maxRoomsOpen         int
-	roomCleanupInterval  time.Duration
-	roomTTL              time.Duration
-	sourceJoinLimit      int
-	roomJoinLimit        int
-	joinLimitWindow      time.Duration
-	admissionLimits      *admissionLimiter
-	fastAdmission        *RelayCapabilitySet
+	maxPendingHandshakes          int
+	maxPendingHandshakesPerSource int
+	firstMessageTimeout           time.Duration
+	handshakeTimeout              time.Duration
+	pendingHandshakes             *pendingHandshakeLimiter
+	maxRoomsOpen                  int
+	roomCleanupInterval           time.Duration
+	roomTTL                       time.Duration
+	sourceJoinLimit               int
+	roomJoinLimit                 int
+	joinLimitWindow               time.Duration
+	admissionLimits               *admissionLimiter
+	fastAdmission                 *RelayCapabilitySet
 
 	// stopRoomCleanup chan struct{}
 	// replaced by stop ctx.go
@@ -79,10 +81,21 @@ type handshakeResult struct {
 
 const pingRoom = "pinglkasjdlfjsaldjf"
 
+// Handshake frames are small control messages. Bound each read before its
+// advertised body is allocated, independently of the larger transfer limit.
+const (
+	maxHandshakeFirstMessageSize  = 64 * 1024
+	maxHandshakeSaltSize          = 64
+	defaultHandshakePasswordLimit = 4 * 1024
+	maxHandshakeRoomSize          = 1024
+)
+
 // newDefaultServer initializes a new server, with some default configuration options
 func newDefaultServer() *server {
 	s := new(server)
 	s.maxPendingHandshakes = DEFAULT_MAX_PENDING_HANDSHAKES
+	s.maxPendingHandshakesPerSource = DEFAULT_MAX_PENDING_HANDSHAKES_PER_SOURCE
+	s.firstMessageTimeout = DEFAULT_FIRST_MESSAGE_TIMEOUT
 	s.handshakeTimeout = DEFAULT_HANDSHAKE_TIMEOUT
 	s.maxRoomsOpen = DEFAULT_MAX_ROOMS_OPEN
 	s.roomCleanupInterval = DEFAULT_ROOM_CLEANUP_INTERVAL
@@ -160,31 +173,60 @@ func RunWithOptionsAsync(host, port, password string, opts ...serverOptsFunc) er
 	return s.start()
 }
 
+// RunWithListener serves an already-bound TCP listener until it stops or its
+// configured context is cancelled. It takes ownership of listener, including
+// closing it if configuration fails.
+func RunWithListener(listener net.Listener, password string, opts ...serverOptsFunc) error {
+	if listener == nil {
+		return errors.New("relay listener must not be nil")
+	}
+	defer listener.Close()
+	s := newDefaultServer()
+	defer func() { s.stop.Cancel() }()
+	s.password = password
+	for _, opt := range opts {
+		if err := opt(s); err != nil {
+			return fmt.Errorf("could not apply optional configurations: %w", err)
+		}
+	}
+	return s.startWithListener(listener)
+}
+
 // Run starts a tcp listener, run async
 func Run(debugLevel, host, port, password string, banner ...string) (err error) {
 	return RunWithOptionsAsync(host, port, password, WithBanner(banner...), WithLogLevel(debugLevel))
 }
 
 func (s *server) start() (err error) {
+	return s.startWithListener(nil)
+}
+
+func (s *server) startWithListener(listener net.Listener) (err error) {
 	log.SetLevel(s.debugLevel)
 	log.Debug("starting relay with configured authentication")
 
 	s.rooms.Lock()
 	s.rooms.rooms = make(map[string]roomInfo)
 	s.rooms.Unlock()
-	s.handshakeSlots = make(chan struct{}, s.maxPendingHandshakes)
+	s.pendingHandshakes = newPendingHandshakeLimiter(s.maxPendingHandshakes, s.maxPendingHandshakesPerSource)
 	s.admissionLimits = newAdmissionLimiter(s.sourceJoinLimit, s.roomJoinLimit, s.joinLimitWindow)
 
 	s.stop.wg.Go(func() {
 		s.deleteOldRooms()
 	})
 	// defer s.stopRoomDeletion()
-	defer s.stop.Cancel()
-	if s.stop.gui {
-		defer s.stop.wg.Wait()
-	}
+	defer func() {
+		s.stop.Cancel()
+		if s.stop.gui {
+			s.stop.wg.Wait()
+		}
+	}()
 
-	err = s.run()
+	if listener == nil {
+		err = s.run()
+	} else {
+		err = s.serve(listener)
+	}
 	err = Ignore(err)
 	if err != nil {
 		log.Error(err)
@@ -219,22 +261,17 @@ func (s *server) run() (err error) {
 	if err != nil {
 		return fmt.Errorf("error listening on %s: %w", addr, err)
 	}
+	return s.serve(listener)
+}
+
+func (s *server) serve(listener net.Listener) error {
+	addr := listener.Addr().String()
 	s.stop.setServer(listener)
 	defer listener.Close()
+	stopClose := context.AfterFunc(s.stop.ctx, func() { listener.Close() })
+	defer stopClose()
 	close(s.started)
-
-	go func() {
-		dc := &net.Dialer{
-			Timeout: 100 * time.Millisecond,
-		}
-		if conn, err := dc.DialContext(s.stop.ctx, network, addr); err == nil {
-			log.Debugf("started TCP server on %s", addr)
-			conn.Close()
-		} else {
-			log.Errorf("started TCP server on %s : %v", addr, err)
-			s.stop.Cancel()
-		}
-	}()
+	log.Debugf("started TCP server on %s", addr)
 
 	// spawn a new goroutine whenever a client connects
 	for {
@@ -242,28 +279,26 @@ func (s *server) run() (err error) {
 		if err != nil {
 			return fmt.Errorf("problem accepting connection: %w", err)
 		}
+		acceptedAt := time.Now()
 		log.Debugf("client %s connected", connection.RemoteAddr().String())
-		select {
-		case s.handshakeSlots <- struct{}{}:
-		case <-s.stop.ctx.Done():
+		if err := s.stop.ctx.Err(); err != nil {
 			connection.Close()
-			return s.stop.ctx.Err()
-		default:
-			log.Debugf("rejecting client %s: too many pending handshakes", connection.RemoteAddr().String())
+			return err
+		}
+		releaseHandshake, rejection := s.pendingHandshakes.acquire(canonicalSource(connection.RemoteAddr()))
+		if rejection != "" {
+			log.Debugf("rejecting client %s: %s", connection.RemoteAddr().String(), rejection)
 			connection.Close()
 			continue
 		}
-		handshakeDeadline := time.Now().Add(s.handshakeTimeout)
+		handshakeDeadline := acceptedAt.Add(s.handshakeTimeout)
+		firstMessageDeadline := acceptedAt.Add(s.firstMessageTimeout)
+		if handshakeDeadline.Before(firstMessageDeadline) {
+			firstMessageDeadline = handshakeDeadline
+		}
 		s.stop.wg.Add(1)
-		go func(connection net.Conn, handshakeDeadline time.Time) {
+		go func(connection net.Conn, handshakeDeadline, firstMessageDeadline time.Time, releaseHandshake func()) {
 			defer s.stop.wg.Done()
-			handshakePending := true
-			releaseHandshake := func() {
-				if handshakePending {
-					<-s.handshakeSlots
-					handshakePending = false
-				}
-			}
 			defer releaseHandshake()
 			stopCloseOnCancel := context.AfterFunc(s.stop.ctx, func() {
 				connection.Close()
@@ -271,12 +306,13 @@ func (s *server) run() (err error) {
 			defer stopCloseOnCancel()
 
 			c := comm.New(connection)
-			handshake, errCommunication := s.clientHandshake(c, handshakeDeadline)
+			handshake, errCommunication := s.clientHandshake(c, handshakeDeadline, firstMessageDeadline)
 			releaseHandshake()
 			room := handshake.room
 			if errCommunication != nil {
-				if netErr, ok := errCommunication.(net.Error); ok && netErr.Timeout() {
-					log.Debugf("relay-%s: handshake timed out", connection.RemoteAddr().String())
+				var netErr net.Error
+				if errors.As(errCommunication, &netErr) && netErr.Timeout() {
+					log.Debugf("relay-%s: handshake timed out: %v", connection.RemoteAddr().String(), errCommunication)
 				} else {
 					log.Debugf("relay-%s: %s", connection.RemoteAddr().String(), errCommunication.Error())
 				}
@@ -338,7 +374,7 @@ func (s *server) run() (err error) {
 					// time.Sleep(1 * time.Second)
 				}
 			}
-		}(connection, handshakeDeadline)
+		}(connection, handshakeDeadline, firstMessageDeadline, releaseHandshake)
 	}
 }
 
@@ -394,7 +430,7 @@ var weakKey = []byte{1, 2, 3}
 // configured per-source or per-room admission policy.
 var ErrAdmissionLimited = errors.New("relay admission rate limited")
 
-func (s *server) clientHandshake(c *comm.Comm, deadline time.Time) (result handshakeResult, err error) {
+func (s *server) clientHandshake(c *comm.Comm, deadline, firstMessageDeadline time.Time) (result handshakeResult, err error) {
 	send := func(message []byte) error {
 		if err := c.Connection().SetWriteDeadline(deadline); err != nil {
 			return fmt.Errorf("set handshake write deadline: %w", err)
@@ -402,16 +438,10 @@ func (s *server) clientHandshake(c *comm.Comm, deadline time.Time) (result hands
 		return c.Send(message)
 	}
 
-	// establish secure password with PAKE for communication with relay
-	B, err := pake.InitCurve(weakKey, 1, "siec")
+	Abytes, err := c.ReceiveWithDeadlineLimit(firstMessageDeadline, maxHandshakeFirstMessageSize)
 	if err != nil {
-		return
+		return handshakeResult{}, fmt.Errorf("read first relay message: %w", err)
 	}
-	Abytes, err := c.ReceiveWithDeadline(deadline)
-	if err != nil {
-		return
-	}
-	log.Debug("received relay PAKE initiator payload")
 	if bytes.Equal(Abytes, []byte("ping")) {
 		result.room = pingRoom
 		log.Debug("sending back pong")
@@ -427,6 +457,12 @@ func (s *server) clientHandshake(c *comm.Comm, deadline time.Time) (result hands
 		}
 		return handshakeResult{room: request.Room, fast: true}, nil
 	}
+	// Initialize PAKE only after the peer has sent its first complete frame.
+	log.Debug("received relay PAKE initiator payload")
+	B, err := pake.InitCurve(weakKey, 1, "siec")
+	if err != nil {
+		return
+	}
 	err = B.Update(Abytes)
 	if err != nil {
 		return
@@ -440,7 +476,7 @@ func (s *server) clientHandshake(c *comm.Comm, deadline time.Time) (result hands
 		return
 	}
 	// receive salt
-	salt, err := c.ReceiveWithDeadline(deadline)
+	salt, err := c.ReceiveWithDeadlineLimit(deadline, maxHandshakeSaltSize)
 	if err != nil {
 		return
 	}
@@ -450,11 +486,18 @@ func (s *server) clientHandshake(c *comm.Comm, deadline time.Time) (result hands
 	}
 
 	log.Debugf("waiting for password")
-	passwordBytesEnc, err := c.ReceiveWithDeadline(deadline)
+	passwordCipher, err := crypt.NewAESGCM(strongKeyForEncryption)
 	if err != nil {
 		return
 	}
-	passwordBytes, err := crypt.Decrypt(passwordBytesEnc, strongKeyForEncryption)
+	// Preserve long operator-configured passwords without letting the peer's
+	// length header determine the allocation limit. Include nonce and tag bytes.
+	passwordLimit := max(defaultHandshakePasswordLimit, len(s.password)+passwordCipher.NonceSize()+passwordCipher.Overhead())
+	passwordBytesEnc, err := c.ReceiveWithDeadlineLimit(deadline, passwordLimit)
+	if err != nil {
+		return
+	}
+	passwordBytes, err := crypt.DecryptAEAD(passwordBytesEnc, passwordCipher)
 	if err != nil {
 		return
 	}
@@ -480,7 +523,7 @@ func (s *server) clientHandshake(c *comm.Comm, deadline time.Time) (result hands
 		if earlyDeadline.After(deadline) {
 			earlyDeadline = deadline
 		}
-		earlyRoom, err = c.ReceiveWithDeadline(earlyDeadline)
+		earlyRoom, err = c.ReceiveWithDeadlineLimit(earlyDeadline, maxHandshakeRoomSize)
 		if err != nil {
 			if netErr, ok := err.(net.Error); !ok || !netErr.Timeout() {
 				return handshakeResult{}, err
@@ -520,7 +563,7 @@ func (s *server) clientHandshake(c *comm.Comm, deadline time.Time) (result hands
 	// wait for client to tell me which room they want
 	log.Debug("waiting for answer")
 	if result.room == "" {
-		enc, receiveErr := c.ReceiveWithDeadline(deadline)
+		enc, receiveErr := c.ReceiveWithDeadlineLimit(deadline, maxHandshakeRoomSize)
 		if receiveErr != nil {
 			return handshakeResult{}, receiveErr
 		}
