@@ -39,7 +39,10 @@ func TestIsStaleControlFrame(t *testing.T) {
 	assert.False(t, isStaleControlFrame([]byte("unknown-data")))
 }
 
-func TestSenderWaitForHandshakeDeclinesWhenLocalDisabled(t *testing.T) {
+// Stock croc >= 11.6.0 receivers treat any timely non-pake2 reply to their
+// local probe as fatal, so a sender with local transfers disabled must still
+// complete the probe PAKE and answer "ips?" with an empty endpoint list.
+func TestSenderWaitForHandshakeAnswersProbeWhenLocalDisabled(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	t.Cleanup(func() {
 		_ = clientConn.Close()
@@ -49,11 +52,14 @@ func TestSenderWaitForHandshakeDeclinesWhenLocalDisabled(t *testing.T) {
 	clientComm := comm.New(clientConn)
 	serverComm := comm.New(serverConn)
 
+	const passphrase = "test-passphrase"
+	const curve = "p256"
 	client := &Client{
 		Options: Options{
 			DisableLocal: true,
 			RoomName:     "test-room",
 		},
+		pakePassphrase: passphrase,
 	}
 	client.stop = newStop(context.Background())
 
@@ -62,31 +68,55 @@ func TestSenderWaitForHandshakeDeclinesWhenLocalDisabled(t *testing.T) {
 		done <- client.senderWaitForHandshake(clientComm)
 	}()
 
-	// Peer sends pake1
-	pake1Msg := SimpleMessage{
+	A, err := pakekey.Init([]byte(passphrase), 0, curve, pakekey.PurposeLocalProbe, "test-room")
+	require.NoError(t, err)
+	initiator := A.Bytes()
+	pake1Bytes, err := json.Marshal(SimpleMessage{
+		Bytes:   initiator,
 		Kind:    "pake1",
 		Version: pakekey.ProtocolVersion,
-		Curve:   "p256",
-	}
-	pake1Bytes, err := json.Marshal(pake1Msg)
+		Curve:   curve,
+	})
 	require.NoError(t, err)
 	require.NoError(t, serverComm.Send(pake1Bytes))
 
-	// Sender should immediately reply with no-local
 	respBytes, err := serverComm.Receive()
 	require.NoError(t, err)
-
 	var resp SimpleMessage
 	require.NoError(t, json.Unmarshal(respBytes, &resp))
-	assert.Equal(t, "no-local", resp.Kind)
+	require.Equal(t, "pake2", resp.Kind)
+	require.Equal(t, curve, resp.Curve)
+	require.Len(t, resp.Bytes2, pakekey.SaltSize)
 
-	// Now peer sends handshakeRequest
+	require.NoError(t, A.Update(resp.Bytes))
+	sharedKey, err := A.SessionKey()
+	require.NoError(t, err)
+	keys, err := pakekey.Derive(sharedKey, pakekey.Context{
+		Purpose:   pakekey.PurposeLocalProbe,
+		Room:      "test-room",
+		Curve:     curve,
+		Initiator: initiator,
+		Responder: resp.Bytes,
+		Salt:      resp.Bytes2,
+	})
+	require.NoError(t, err)
+
+	req, err := encryptLocalProbePayload(keys.EncryptionKey, ipRequest)
+	require.NoError(t, err)
+	require.NoError(t, serverComm.Send(req))
+	encIPs, err := serverComm.Receive()
+	require.NoError(t, err)
+	plainIPs, err := decryptLocalProbePayload(keys.EncryptionKey, encIPs)
+	require.NoError(t, err)
+	var ips []string
+	require.NoError(t, json.Unmarshal(plainIPs, &ips))
+	assert.Empty(t, ips, "no local endpoints may be advertised when local transfers are disabled")
+
 	require.NoError(t, serverComm.Send(handshakeRequest))
-
 	select {
 	case err := <-done:
 		assert.NoError(t, err)
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for senderWaitForHandshake to complete")
 	}
 }

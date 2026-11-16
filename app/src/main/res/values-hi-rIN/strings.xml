@@ -233,6 +233,7 @@
     <string name="settings_amoled_dark_full_desc">OLED डिस्प्ले के लिए शुद्ध काली पृष्ठभूमि</string>
     <string name="settings_relay_server">रिले सर्वर</string>
     <string name="settings_relay_address_label">पता</string>
+    <string name="settings_relay_address_auto">स्वचालित (कोड से चुना गया)</string>
     <string name="settings_relay_password_label">पासवर्ड</string>
     <string name="settings_secret_codes">सीक्रेट कोड</string>
     <string name="settings_default_secret_code">डिफ़ॉल्ट सीक्रेट कोड</string>

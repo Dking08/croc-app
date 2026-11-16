@@ -1581,17 +1581,6 @@ func (c *Client) senderWaitForHandshake(conn *comm.Comm) error {
 			}
 		} else if dataMessage.Kind == "pake1" {
 			log.Trace("got pake1")
-			if c.Options.DisableLocal {
-				log.Trace("local probe disabled, declining pake1")
-				dataMessage.Kind = "no-local"
-				dataMessage.Bytes = nil
-				dataMessage.Bytes2 = nil
-				data, _ = json.Marshal(dataMessage)
-				if sendErr := conn.Send(data); sendErr != nil {
-					return sendErr
-				}
-				continue
-			}
 			if dataMessage.Version != pakekey.ProtocolVersion {
 				return incompatiblePakeVersionError{got: dataMessage.Version}
 			}

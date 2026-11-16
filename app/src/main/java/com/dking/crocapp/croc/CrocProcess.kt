@@ -23,17 +23,7 @@ import java.net.URI
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
-/**
- * Executes croc CLI commands and parses output for transfer progress.
- *
- * croc v11.5.2 global flags:
- *   --yes, --relay, --pass, --curve, --overwrite,
- *   --no-compress, --local, --throttleUpload, --internal-dns,
- *   --classic, --multicast, --ip, --relay6, --out, --quiet
- *
- * send-specific flags we also use on Android:
- *   --no-local, --no-multi, --ignore-stdin
- */
+/** Executes croc CLI commands and parses output for transfer progress. */
 class CrocProcess(
     private val context: Context,
     private val binaryManager: CrocBinaryManager,
@@ -43,6 +33,34 @@ class CrocProcess(
         private const val TAG = "CrocProcess"
         internal const val MAX_SECURE_CHANNEL_RETRIES = 2
         internal const val INITIAL_BACKOFF_MS = 1000L
+
+        /**
+         * With both relays blank, no flags are passed so croc 11 picks the public relay
+         * (N.getcroc.com) from the code like the stock CLI. Any relay flag, even `--relay6 ""`,
+         * turns that off.
+         */
+        internal fun relayFlags(
+            relayAddress: String,
+            relay6Address: String,
+            resolve: (String) -> String = { it }
+        ): List<String> {
+            val relay = relayAddress.trim()
+            val relay6 = relay6Address.trim()
+            if (relay.isEmpty() && relay6.isEmpty()) return emptyList()
+            return buildList {
+                if (relay.isNotEmpty()) {
+                    val resolved = resolve(relay)
+                    add("--relay"); add(resolved)
+                    // croc drops a --relay equal to its built-in default when --relay6 is also
+                    // given, so keep croc's own IPv6 default in that case.
+                    if (resolved == UserPreferencesRepository.CROC_BUILTIN_RELAY && relay6.isEmpty()) {
+                        return@buildList
+                    }
+                }
+                // An empty --relay6 keeps croc from trying its default IPv6 relay.
+                add("--relay6"); add(relay6)
+            }
+        }
 
         internal fun isCouldNotSecureChannel(result: ProcessResult): Boolean {
             if (result.exitCode == 0) return false
@@ -164,19 +182,11 @@ class CrocProcess(
         // address to an IP literal. Remote DNS resolution must happen on the proxy to prevent
         // local DNS leaks and allow proxy-side routing.
         val hasProxy = prefs.socks5Proxy.isNotBlank() || prefs.httpProxy.isNotBlank()
-        val relayAddress = if (hasProxy) prefs.relayAddress else resolveRelayAddress(prefs.relayAddress)
 
         return buildList {
             if (prefs.useInternalDns) add("--internal-dns")
 
-            if (relayAddress.isNotBlank()) {
-                add("--relay"); add(relayAddress)
-            }
-            if (prefs.relay6Address.isNotBlank()) {
-                add("--relay6"); add(prefs.relay6Address)
-            } else {
-                add("--relay6"); add("")
-            }
+            addAll(relayFlags(prefs.relayAddress, prefs.relay6Address) { if (hasProxy) it else resolveRelayAddress(it) })
             if (prefs.relayPassword.isNotBlank()) {
                 add("--pass"); add(prefs.relayPassword)
             }
@@ -374,16 +384,8 @@ class CrocProcess(
                         add("--connect"); add(prefs.httpProxy)
                     }
                     if (!isStore) {
-                        if (prefs.relayAddress.isNotBlank()) {
-                            val hasProxy = prefs.socks5Proxy.isNotBlank() || prefs.httpProxy.isNotBlank()
-                            val relay = if (hasProxy) prefs.relayAddress else resolveRelayAddress(prefs.relayAddress)
-                            add("--relay"); add(relay)
-                        }
-                        if (prefs.relay6Address.isNotBlank()) {
-                            add("--relay6"); add(prefs.relay6Address)
-                        } else {
-                            add("--relay6"); add("")
-                        }
+                        val hasProxy = prefs.socks5Proxy.isNotBlank() || prefs.httpProxy.isNotBlank()
+                        addAll(relayFlags(prefs.relayAddress, prefs.relay6Address) { if (hasProxy) it else resolveRelayAddress(it) })
                         if (prefs.relayPassword.isNotBlank()) {
                             add("--pass"); add(prefs.relayPassword)
                         }

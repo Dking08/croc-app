@@ -233,6 +233,7 @@
     <string name="settings_amoled_dark_full_desc">Fondo negro puro para pantallas OLED</string>
     <string name="settings_relay_server">Servidor de Relé</string>
     <string name="settings_relay_address_label">Dirección</string>
+    <string name="settings_relay_address_auto">Automático (según el código)</string>
     <string name="settings_relay_password_label">Contraseña</string>
     <string name="settings_secret_codes">Códigos Secretos</string>
     <string name="settings_default_secret_code">Código secreto predeterminado</string>

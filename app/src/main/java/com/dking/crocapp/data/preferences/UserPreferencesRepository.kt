@@ -1,6 +1,7 @@
 package com.dking.crocapp.data.preferences
 
 import android.content.Context
+import androidx.datastore.core.DataMigration
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -12,11 +13,39 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "croc_settings")
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "croc_settings",
+    produceMigrations = { listOf(UserPreferencesRepository.Companion.AutoRelayMigration) }
+)
 
 class UserPreferencesRepository(private val context: Context) {
 
     companion object {
+        /** Blank means automatic: croc 11 picks the public relay (N.getcroc.com) from the code. */
+        const val DEFAULT_RELAY_ADDRESS = ""
+
+        /** croc's built-in relay, which older app versions stored as the default relay setting. */
+        const val CROC_BUILTIN_RELAY = "croc.schollz.com:9009"
+
+        private val AUTO_RELAY_MIGRATED = booleanPreferencesKey("auto_relay_migrated")
+
+        /**
+         * Clears a relay still set to the old default so it becomes automatic. Runs only once,
+         * so typing the old default back in afterwards keeps it.
+         */
+        internal object AutoRelayMigration : DataMigration<Preferences> {
+            override suspend fun shouldMigrate(currentData: Preferences) =
+                currentData[AUTO_RELAY_MIGRATED] != true
+
+            override suspend fun migrate(currentData: Preferences): Preferences =
+                currentData.toMutablePreferences().apply {
+                    if (this[RELAY_ADDRESS]?.trim() == CROC_BUILTIN_RELAY) remove(RELAY_ADDRESS)
+                    this[AUTO_RELAY_MIGRATED] = true
+                }.toPreferences()
+
+            override suspend fun cleanUp() = Unit
+        }
+
         val RELAY_ADDRESS = stringPreferencesKey("relay_address")
         val RELAY_PASSWORD = stringPreferencesKey("relay_password")
         val PAKE_CURVE = stringPreferencesKey("pake_curve")
@@ -50,7 +79,7 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     data class CrocPreferences(
-        val relayAddress: String = "croc.schollz.com:9009",
+        val relayAddress: String = DEFAULT_RELAY_ADDRESS,
         val relayPassword: String = "pass123",
         val pakeCurve: String = "p256",
         val forceLocal: Boolean = false,
@@ -90,7 +119,7 @@ class UserPreferencesRepository(private val context: Context) {
 
         /** True if any advanced/power-user setting has been changed from default */
         val hasCustomAdvancedSettings: Boolean
-            get() = relayAddress != "croc.schollz.com:9009" ||
+            get() = relayAddress.isNotBlank() ||
                     relayPassword != "pass123" ||
                     relay6Address.isNotBlank() ||
                     socks5Proxy.isNotBlank() ||
@@ -121,7 +150,7 @@ class UserPreferencesRepository(private val context: Context) {
             .orEmpty()
 
         CrocPreferences(
-            relayAddress = prefs[RELAY_ADDRESS] ?: "croc.schollz.com:9009",
+            relayAddress = prefs[RELAY_ADDRESS] ?: DEFAULT_RELAY_ADDRESS,
             relayPassword = prefs[RELAY_PASSWORD] ?: "pass123",
             pakeCurve = prefs[PAKE_CURVE] ?: "p256",
             forceLocal = prefs[FORCE_LOCAL] ?: false,
@@ -327,7 +356,7 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun resetAdvancedSettings() {
         context.dataStore.edit { prefs ->
-            prefs[RELAY_ADDRESS] = "croc.schollz.com:9009"
+            prefs.remove(RELAY_ADDRESS)
             prefs[RELAY_PASSWORD] = "pass123"
             prefs.remove(RELAY6_ADDRESS)
             prefs.remove(SOCKS5_PROXY)
