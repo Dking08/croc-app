@@ -44,21 +44,18 @@ class CrocProcess(
             relay6Address: String,
             resolve: (String) -> String = { it }
         ): List<String> {
-            val relay = relayAddress.trim()
             val relay6 = relay6Address.trim()
-            if (relay.isEmpty() && relay6.isEmpty()) return emptyList()
+            val relay = relayAddress.trim().takeIf { it.isNotEmpty() }?.let(resolve)
             return buildList {
-                if (relay.isNotEmpty()) {
-                    val resolved = resolve(relay)
-                    add("--relay"); add(resolved)
-                    // croc drops a --relay equal to its built-in default when --relay6 is also
-                    // given, so keep croc's own IPv6 default in that case.
-                    if (resolved == UserPreferencesRepository.CROC_BUILTIN_RELAY && relay6.isEmpty()) {
-                        return@buildList
-                    }
+                if (relay != null) {
+                    add("--relay"); add(relay)
                 }
-                // An empty --relay6 keeps croc from trying its default IPv6 relay.
-                add("--relay6"); add(relay6)
+                // An empty --relay6 keeps croc from trying its default IPv6 relay, except when
+                // --relay is croc's built-in default: croc drops that --relay if --relay6 is also
+                // given, so keep croc's own IPv6 default then.
+                if (relay6.isNotEmpty() || (relay != null && relay != UserPreferencesRepository.CROC_BUILTIN_RELAY)) {
+                    add("--relay6"); add(relay6)
+                }
             }
         }
 
@@ -178,15 +175,10 @@ class CrocProcess(
      * Only includes flags that actually exist in croc v11.5.2 and v10.6.0.
      */
     private fun buildGlobalFlags(prefs: UserPreferencesRepository.CrocPreferences): List<String> {
-        // When a proxy is configured (SOCKS5 or HTTP CONNECT), do not pre-resolve the relay
-        // address to an IP literal. Remote DNS resolution must happen on the proxy to prevent
-        // local DNS leaks and allow proxy-side routing.
-        val hasProxy = prefs.socks5Proxy.isNotBlank() || prefs.httpProxy.isNotBlank()
-
         return buildList {
             if (prefs.useInternalDns) add("--internal-dns")
 
-            addAll(relayFlags(prefs.relayAddress, prefs.relay6Address) { if (hasProxy) it else resolveRelayAddress(it) })
+            addAll(relayFlags(prefs))
             if (prefs.relayPassword.isNotBlank()) {
                 add("--pass"); add(prefs.relayPassword)
             }
@@ -224,6 +216,14 @@ class CrocProcess(
             Log.w(TAG, "Failed to get system DNS servers", e)
             emptyList()
         }
+    }
+
+    private fun relayFlags(prefs: UserPreferencesRepository.CrocPreferences): List<String> {
+        // When a proxy is configured (SOCKS5 or HTTP CONNECT), do not pre-resolve the relay
+        // address to an IP literal. Remote DNS resolution must happen on the proxy to prevent
+        // local DNS leaks and allow proxy-side routing.
+        val hasProxy = prefs.socks5Proxy.isNotBlank() || prefs.httpProxy.isNotBlank()
+        return relayFlags(prefs.relayAddress, prefs.relay6Address) { if (hasProxy) it else resolveRelayAddress(it) }
     }
 
     private fun resolveRelayAddress(relayAddress: String): String {
@@ -384,8 +384,7 @@ class CrocProcess(
                         add("--connect"); add(prefs.httpProxy)
                     }
                     if (!isStore) {
-                        val hasProxy = prefs.socks5Proxy.isNotBlank() || prefs.httpProxy.isNotBlank()
-                        addAll(relayFlags(prefs.relayAddress, prefs.relay6Address) { if (hasProxy) it else resolveRelayAddress(it) })
+                        addAll(relayFlags(prefs))
                         if (prefs.relayPassword.isNotBlank()) {
                             add("--pass"); add(prefs.relayPassword)
                         }

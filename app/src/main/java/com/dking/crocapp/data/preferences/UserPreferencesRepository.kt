@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.map
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
     name = "croc_settings",
-    produceMigrations = { listOf(UserPreferencesRepository.Companion.AutoRelayMigration) }
+    produceMigrations = { listOf(UserPreferencesRepository.AutoRelayMigration) }
 )
 
 class UserPreferencesRepository(private val context: Context) {
@@ -28,23 +28,6 @@ class UserPreferencesRepository(private val context: Context) {
         const val CROC_BUILTIN_RELAY = "croc.schollz.com:9009"
 
         private val AUTO_RELAY_MIGRATED = booleanPreferencesKey("auto_relay_migrated")
-
-        /**
-         * Clears a relay still set to the old default so it becomes automatic. Runs only once,
-         * so typing the old default back in afterwards keeps it.
-         */
-        internal object AutoRelayMigration : DataMigration<Preferences> {
-            override suspend fun shouldMigrate(currentData: Preferences) =
-                currentData[AUTO_RELAY_MIGRATED] != true
-
-            override suspend fun migrate(currentData: Preferences): Preferences =
-                currentData.toMutablePreferences().apply {
-                    if (this[RELAY_ADDRESS]?.trim() == CROC_BUILTIN_RELAY) remove(RELAY_ADDRESS)
-                    this[AUTO_RELAY_MIGRATED] = true
-                }.toPreferences()
-
-            override suspend fun cleanUp() = Unit
-        }
 
         val RELAY_ADDRESS = stringPreferencesKey("relay_address")
         val RELAY_PASSWORD = stringPreferencesKey("relay_password")
@@ -76,6 +59,23 @@ class UserPreferencesRepository(private val context: Context) {
         val DEFAULT_STORE_DOWNLOADS = intPreferencesKey("default_store_downloads")
         val CUSTOM_STORE_URL = stringPreferencesKey("custom_store_url")
         val TRANSFER_TRANSPORT = stringPreferencesKey("transfer_transport")
+    }
+
+    /**
+     * Clears a relay still set to the old default so it becomes automatic. Runs only once,
+     * so typing the old default back in afterwards keeps it.
+     */
+    internal object AutoRelayMigration : DataMigration<Preferences> {
+        override suspend fun shouldMigrate(currentData: Preferences) =
+            currentData[AUTO_RELAY_MIGRATED] != true
+
+        override suspend fun migrate(currentData: Preferences): Preferences =
+            currentData.toMutablePreferences().apply {
+                if (this[RELAY_ADDRESS]?.trim() == CROC_BUILTIN_RELAY) remove(RELAY_ADDRESS)
+                this[AUTO_RELAY_MIGRATED] = true
+            }.toPreferences()
+
+        override suspend fun cleanUp() = Unit
     }
 
     data class CrocPreferences(
