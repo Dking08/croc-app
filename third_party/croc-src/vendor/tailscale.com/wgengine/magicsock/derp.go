@@ -228,6 +228,11 @@ func (c *Conn) ForceSetNearestDERP(regionID tailcfg.DERPRegionID) tailcfg.DERPRe
 	return c.maybeSetNearestDERP(&netcheck.Report{PreferredDERP: regionID}, true)
 }
 
+// DERPStartedChan returns a channel that is closed on the first connection to DERP.
+func (c *Conn) DERPStartedChan() <-chan struct{} {
+	return c.derpStarted
+}
+
 func (c *Conn) derpRegionCodeLocked(regionID tailcfg.DERPRegionID) string {
 	if c.derpMap == nil {
 		return ""

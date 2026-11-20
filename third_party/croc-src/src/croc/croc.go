@@ -55,6 +55,9 @@ var (
 	ipRequest            = []byte("ips?")
 	handshakeRequest     = []byte("handshake")
 	errLocalProbeExpired = errors.New("local probe exceeded discovery budget")
+	// errLocalProbeDeclined is returned when the sender answers the local probe with
+	// "no-local" (croc-app releases up to v6.1.0 do this).
+	errLocalProbeDeclined = errors.New("peer declined local probe")
 )
 
 const defaultAlternateSenderRouteTimeout = 10 * time.Second
@@ -2128,7 +2131,13 @@ func (c *Client) Receive() (err error) {
 			if err != nil {
 				return
 			}
+			// Decode into a fresh message: fields absent from the reply (a v10
+			// peer sends no Version, Curve or salt) must not keep our pake1 values.
+			dataMessage = SimpleMessage{}
 			err = json.Unmarshal(data, &dataMessage)
+			if err == nil && dataMessage.Kind == "no-local" {
+				return errLocalProbeDeclined
+			}
 			if err != nil || dataMessage.Kind != "pake2" {
 				log.Debugf("received invalid local PAKE response (%d bytes)", len(data))
 				return fmt.Errorf("dataMessage %s pake failed", ipRequest)
@@ -2189,10 +2198,10 @@ func (c *Client) Receive() (err error) {
 			return
 		}()
 		if err != nil {
-			if !errors.Is(err, errLocalProbeExpired) {
+			if !errors.Is(err, errLocalProbeExpired) && !errors.Is(err, errLocalProbeDeclined) {
 				return fmt.Errorf("local discovery failed: %w", err)
 			}
-			log.Debug("local discovery exceeded its budget; using relay")
+			log.Debugf("local discovery skipped (%v); using relay", err)
 		}
 
 		if len(ips) > 1 {
