@@ -251,6 +251,7 @@
     <string name="settings_amoled_dark_full_desc">Pure black background for OLED displays</string>
     <string name="settings_relay_server">Relay Server</string>
     <string name="settings_relay_address_label">Address</string>
+    <string name="settings_relay_address_auto">Automatic (from secret code)</string>
     <string name="settings_relay_password_label">Password</string>
     <string name="settings_secret_codes">Secret Codes</string>
     <string name="settings_default_secret_code">Default Secret Code</string>

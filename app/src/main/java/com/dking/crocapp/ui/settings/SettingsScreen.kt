@@ -606,7 +606,7 @@ fun SettingsScreen(
                             label = stringResource(R.string.settings_relay_address_label),
                             value = prefs.relayAddress,
                             onValueChange = { viewModel.updateRelayAddress(it) },
-                            placeholder = "croc.schollz.com:9009"
+                            placeholder = stringResource(R.string.settings_relay_address_auto)
                         )
                         HorizontalDivider(
                             modifier = Modifier.padding(vertical = 4.dp),
