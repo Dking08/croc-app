@@ -96,6 +96,12 @@ type Session interface {
 // when there is no signal channel specified
 const maxSigBufSize = 128
 
+// maxEnvs is the maximum number of environment variables a client may
+// set on a single session before the session handler runs. Further
+// "env" requests are rejected, bounding the memory a client can force
+// the server to allocate per session.
+const maxEnvs = 128
+
 func DefaultSessionHandler(srv *Server, conn *gossh.ServerConn, newChan gossh.NewChannel, ctx Context) {
 	ch, reqs, err := newChan.Accept()
 	if err != nil {
@@ -124,6 +130,7 @@ type session struct {
 	exited              bool
 	pty                 *Pty
 	winch               chan Window
+	winchDrainTestGate  func() // Gates the full-buffer path in tests only.
 	env                 []string
 	ptyCb               PtyCallback
 	sessReqCb           SessionRequestCallback
@@ -134,6 +141,32 @@ type session struct {
 	sigBuf              []Signal
 	breakCh             chan<- bool
 	disablePtyEmulation bool
+}
+
+// sendWindow delivers a window size to the Pty consumer without ever
+// blocking the request handling loop. The channel has capacity for one
+// window size; when the consumer is not keeping up, the stale buffered
+// value is replaced with the latest one so a slow consumer eventually
+// observes the most recent size instead of an old one.
+func (sess *session) sendWindow(win Window) {
+	select {
+	case sess.winch <- win:
+	default:
+		// Buffer full: drop the stale entry and try once more.
+		if sess.winchDrainTestGate != nil {
+			sess.winchDrainTestGate()
+		}
+		select {
+		case <-sess.winch:
+		default:
+		}
+		// The consumer may have drained the old value before the select above.
+		// Retry regardless of which side drained it.
+		select {
+		case sess.winch <- win:
+		default:
+		}
+	}
 }
 
 func (sess *session) DisablePTYEmulation() {
@@ -226,6 +259,8 @@ func (sess *session) Subsystem() string {
 }
 
 func (sess *session) Pty() (Pty, <-chan Window, bool) {
+	sess.Lock()
+	defer sess.Unlock()
 	if sess.pty != nil {
 		return *sess.pty, sess.winch, true
 	}
@@ -320,6 +355,10 @@ func (sess *session) handleRequests(reqs <-chan *gossh.Request) {
 				req.Reply(false, nil)
 				continue
 			}
+			if len(sess.env) >= maxEnvs {
+				req.Reply(false, nil)
+				continue
+			}
 			var kv struct{ Key, Value string }
 			gossh.Unmarshal(req.Payload, &kv)
 			sess.env = append(sess.env, fmt.Sprintf("%s=%s", kv.Key, kv.Value))
@@ -353,8 +392,10 @@ func (sess *session) handleRequests(reqs <-chan *gossh.Request) {
 					continue
 				}
 			}
+			sess.Lock()
 			sess.pty = &ptyReq
 			sess.winch = make(chan Window, 1)
+			sess.Unlock()
 			sess.winch <- ptyReq.Window
 			defer func() {
 				// when reqs is closed
@@ -362,14 +403,19 @@ func (sess *session) handleRequests(reqs <-chan *gossh.Request) {
 			}()
 			req.Reply(ok, nil)
 		case "window-change":
+			sess.Lock()
 			if sess.pty == nil {
+				sess.Unlock()
 				req.Reply(false, nil)
 				continue
 			}
 			win, _, ok := parseWindow(req.Payload)
 			if ok {
 				sess.pty.Window = win
-				sess.winch <- win
+			}
+			sess.Unlock()
+			if ok {
+				sess.sendWindow(win)
 			}
 			req.Reply(ok, nil)
 		case agentRequestType:
@@ -380,8 +426,13 @@ func (sess *session) handleRequests(reqs <-chan *gossh.Request) {
 			ok := false
 			sess.Lock()
 			if sess.breakCh != nil {
-				sess.breakCh <- true
-				ok = true
+				select {
+				case sess.breakCh <- true:
+					ok = true
+				default:
+					// Consumer is not keeping up: drop instead of
+					// parking the request handling loop.
+				}
 			}
 			req.Reply(ok, nil)
 			sess.Unlock()

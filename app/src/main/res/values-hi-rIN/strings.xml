@@ -221,7 +221,7 @@
     <string name="settings_about">के बारे में</string>
     <string name="settings_app_version">ऐप वर्शन</string>
     <string name="settings_croc_version">Croc वर्शन</string>
-    <string name="settings_croc_version_value">v11.5.2</string>
+    <string name="settings_croc_version_value">v11.6.5</string>
     <string name="settings_developer">डेवलपर</string>
     <string name="settings_developer_value">Dking</string>
     <!-- ════ Setup / Binary ════ -->
@@ -233,6 +233,7 @@
     <string name="settings_amoled_dark_full_desc">OLED डिस्प्ले के लिए शुद्ध काली पृष्ठभूमि</string>
     <string name="settings_relay_server">रिले सर्वर</string>
     <string name="settings_relay_address_label">पता</string>
+    <string name="settings_relay_address_auto">स्वचालित (कोड से चुना गया)</string>
     <string name="settings_relay_password_label">पासवर्ड</string>
     <string name="settings_secret_codes">सीक्रेट कोड</string>
     <string name="settings_default_secret_code">डिफ़ॉल्ट सीक्रेट कोड</string>
@@ -268,7 +269,7 @@
     <string name="settings_about_label">के बारे में</string>
     <string name="settings_app_version_label">ऐप वर्शन</string>
     <string name="settings_croc_version_label">croc वर्शन</string>
-    <string name="settings_croc_version_val">v11.5.2</string>
+    <string name="settings_croc_version_val">v11.6.5</string>
     <string name="settings_built_with">❤️ के साथ Dastageer द्वारा बनाया गया</string>
     <string name="settings_croc_github">github.com/schollz/croc</string>
     <string name="settings_language">भाषा</string>

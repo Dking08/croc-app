@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:build !plan9 && !windows
-// +build !plan9,!windows
 
 package termios
 
@@ -179,9 +178,6 @@ func (t *TTY) SetOpts(opts []string) error {
 			return fmt.Errorf("opt %v is not valid", o)
 		}
 		t.Opts[o] = set
-		if err != nil {
-			return err
-		}
 	}
 	return err
 }

@@ -17,6 +17,9 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "cr
 class UserPreferencesRepository(private val context: Context) {
 
     companion object {
+        /** Blank means automatic: croc 11 picks the public relay (N.getcroc.com) from the code. */
+        const val DEFAULT_RELAY_ADDRESS = ""
+
         val RELAY_ADDRESS = stringPreferencesKey("relay_address")
         val RELAY_PASSWORD = stringPreferencesKey("relay_password")
         val PAKE_CURVE = stringPreferencesKey("pake_curve")
@@ -50,7 +53,7 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     data class CrocPreferences(
-        val relayAddress: String = "croc.schollz.com:9009",
+        val relayAddress: String = DEFAULT_RELAY_ADDRESS,
         val relayPassword: String = "pass123",
         val pakeCurve: String = "p256",
         val forceLocal: Boolean = false,
@@ -90,7 +93,7 @@ class UserPreferencesRepository(private val context: Context) {
 
         /** True if any advanced/power-user setting has been changed from default */
         val hasCustomAdvancedSettings: Boolean
-            get() = relayAddress != "croc.schollz.com:9009" ||
+            get() = relayAddress.isNotBlank() ||
                     relayPassword != "pass123" ||
                     relay6Address.isNotBlank() ||
                     socks5Proxy.isNotBlank() ||
@@ -121,7 +124,7 @@ class UserPreferencesRepository(private val context: Context) {
             .orEmpty()
 
         CrocPreferences(
-            relayAddress = prefs[RELAY_ADDRESS] ?: "croc.schollz.com:9009",
+            relayAddress = prefs[RELAY_ADDRESS] ?: DEFAULT_RELAY_ADDRESS,
             relayPassword = prefs[RELAY_PASSWORD] ?: "pass123",
             pakeCurve = prefs[PAKE_CURVE] ?: "p256",
             forceLocal = prefs[FORCE_LOCAL] ?: false,
@@ -327,7 +330,7 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun resetAdvancedSettings() {
         context.dataStore.edit { prefs ->
-            prefs[RELAY_ADDRESS] = "croc.schollz.com:9009"
+            prefs.remove(RELAY_ADDRESS)
             prefs[RELAY_PASSWORD] = "pass123"
             prefs.remove(RELAY6_ADDRESS)
             prefs.remove(SOCKS5_PROXY)

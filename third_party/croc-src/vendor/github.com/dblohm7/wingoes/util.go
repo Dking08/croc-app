@@ -7,9 +7,14 @@
 package wingoes
 
 import (
+	"fmt"
+	"os"
+	"strings"
+	"unicode/utf16"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+	_ "golang.org/x/sys/windows/registry"
 )
 
 // UserSIDs contains pointers to the SIDs for a user and their primary group.
@@ -77,4 +82,62 @@ func getTokenInfoFixedLen[T any](token windows.Token, infoClass uint32) (result 
 	var actualLen uint32
 	err := windows.GetTokenInformation(token, infoClass, (*byte)(unsafe.Pointer(&result)), uint32(unsafe.Sizeof(result)), &actualLen)
 	return result, err
+}
+
+// MultiSZDecode decodes a UTF-16 buffer containing either a [registry.MULTI_SZ]
+// value or a Win32 environment block, and returns the contents as a slice of
+// strings. It returns an empty slice if the value is empty, or nil if buf
+// cannot be decoded.
+func MultiSZDecode(buf []uint16) []string {
+	if buf == nil {
+		// Technically an empty value, but not a failure.
+		return []string{}
+	}
+
+	const doubleNulLen = 2
+	if len(buf) < doubleNulLen {
+		return nil
+	}
+
+	// We cannot rely on the len(buf) to determine the end of the data; registry
+	// APIs treat MULTI_SZ strings as double-nul-terminated C-style strings.
+	doubleNulIdx := int(-1)
+	fl := len(buf) - 1
+	for i, v := range buf {
+		if v == 0 && i < fl && buf[i+1] == 0 {
+			doubleNulIdx = i
+			break
+		}
+	}
+	if doubleNulIdx < 0 {
+		return nil
+	}
+
+	str := string(utf16.Decode(buf[:doubleNulIdx]))
+	if len(str) == 0 {
+		// Technically an empty value, but not a failure.
+		return []string{}
+	}
+
+	return strings.Split(str, "\x00")
+}
+
+// MultiSZEncode encodes strs into the format utilized by [registry.MULTI_SZ]
+// values and Win32 environment blocks. strs may be nil or empty, but it must
+// not contain any empty strings.
+func MultiSZEncode(strs []string) ([]uint16, error) {
+	var buf strings.Builder
+	for _, v := range strs {
+		if len(v) == 0 {
+			return nil, fmt.Errorf("MultiSZEncode: %w: empty strings not permitted", os.ErrInvalid)
+		}
+		buf.WriteString(v)
+		buf.WriteByte(0)
+	}
+	if buf.Len() == 0 {
+		// So that we end with a double-nul in the empty case
+		buf.WriteByte(0)
+	}
+	buf.WriteByte(0)
+	return utf16.Encode([]rune(buf.String())), nil
 }

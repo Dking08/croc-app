@@ -23,7 +23,7 @@ type NativeTun struct {
 	closeOnce sync.Once
 }
 
-func CreateTUN(_ string, mtu int) (Device, error) {
+func CreateTUN(_ string, mtu int, _ ...Option) (Device, error) {
 	ctl, err := os.OpenFile("/net/ipifc/clone", os.O_RDWR, 0)
 	if err != nil {
 		return nil, err
@@ -81,18 +81,18 @@ func (tun *NativeTun) Events() <-chan Event {
 	return tun.events
 }
 
-func (tun *NativeTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+func (tun *NativeTun) Read(slab []byte, packets []ReadPacket) (int, error) {
 	select {
 	case err := <-tun.errors:
 		return 0, err
 	default:
-		n, err := tun.dataFile.Read(bufs[0][offset:])
-		if n == 1 && bufs[0][offset] == 0 {
+		n, err := tun.dataFile.Read(slab[ReadPacketSpacing : len(slab)-ReadPacketSpacing])
+		if n == 1 && slab[ReadPacketSpacing] == 0 {
 			// EOF
-			err = io.EOF
-			n = 0
+			return 0, io.EOF
 		}
-		sizes[0] = n
+		packets[0].Offset = ReadPacketSpacing
+		packets[0].Size = n
 		return 1, err
 	}
 }

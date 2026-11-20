@@ -221,7 +221,7 @@
     <string name="settings_about">关于</string>
     <string name="settings_app_version">应用版本</string>
     <string name="settings_croc_version">Croc 版本</string>
-    <string name="settings_croc_version_value">v11.5.2</string>
+    <string name="settings_croc_version_value">v11.6.5</string>
     <string name="settings_developer">开发者</string>
     <string name="settings_developer_value">Dking</string>
     <!-- ════ Setup / Binary ════ -->
@@ -233,6 +233,7 @@
     <string name="settings_amoled_dark_full_desc">为 OLED 屏幕使用纯黑背景</string>
     <string name="settings_relay_server">中继服务器</string>
     <string name="settings_relay_address_label">地址</string>
+    <string name="settings_relay_address_auto">自动（根据密码短语选择）</string>
     <string name="settings_relay_password_label">密码</string>
     <string name="settings_secret_codes">密码短语</string>
     <string name="settings_default_secret_code">默认密码短语</string>
@@ -268,7 +269,7 @@
     <string name="settings_about_label">关于</string>
     <string name="settings_app_version_label">应用版本</string>
     <string name="settings_croc_version_label">croc 版本</string>
-    <string name="settings_croc_version_val">v11.5.2</string>
+    <string name="settings_croc_version_val">v11.6.5</string>
     <string name="settings_built_with">由 Dastageer 用 ❤️ 构建</string>
     <string name="settings_croc_github">github.com/schollz/croc</string>
     <string name="settings_language">语言</string>
