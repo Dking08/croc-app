@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Retrieves information about upcoming executions of a maintenance window.
@@ -56,6 +55,33 @@ type DescribeMaintenanceWindowScheduleInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeMaintenanceWindowScheduleInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeMaintenanceWindowScheduleRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeMaintenanceWindowScheduleInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Filters != nil {
+		serializePatchOrchestratorFilterList(s, schemas.DescribeMaintenanceWindowScheduleRequest_Filters, v.Filters)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.DescribeMaintenanceWindowScheduleRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeMaintenanceWindowScheduleRequest_NextToken, *v.NextToken)
+	}
+	if v.ResourceType != "" {
+		s.WriteString(schemas.DescribeMaintenanceWindowScheduleRequest_ResourceType, string(v.ResourceType))
+	}
+	if v.Targets != nil {
+		serializeTargets(s, schemas.DescribeMaintenanceWindowScheduleRequest_Targets, v.Targets)
+	}
+	if v.WindowId != nil {
+		s.WriteString(schemas.DescribeMaintenanceWindowScheduleRequest_WindowId, *v.WindowId)
+	}
+}
+
 type DescribeMaintenanceWindowScheduleOutput struct {
 
 	// The token for the next set of items to return. (You use this token in the next
@@ -72,65 +98,50 @@ type DescribeMaintenanceWindowScheduleOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeMaintenanceWindowScheduleOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeMaintenanceWindowScheduleResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeMaintenanceWindowScheduleOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeMaintenanceWindowScheduleResult_NextToken, *v.NextToken)
+	}
+	if v.ScheduledWindowExecutions != nil {
+		serializeScheduledWindowExecutionList(s, schemas.DescribeMaintenanceWindowScheduleResult_ScheduledWindowExecutions, v.ScheduledWindowExecutions)
+	}
+}
+func (v *DescribeMaintenanceWindowScheduleOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeMaintenanceWindowScheduleResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeMaintenanceWindowScheduleResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.DescribeMaintenanceWindowScheduleResult_NextToken, v.NextToken)
+		case schemas.DescribeMaintenanceWindowScheduleResult_ScheduledWindowExecutions:
+			return deserializeScheduledWindowExecutionList(d, schemas.DescribeMaintenanceWindowScheduleResult_ScheduledWindowExecutions, &v.ScheduledWindowExecutions)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeMaintenanceWindowScheduleMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeMaintenanceWindowSchedule, schemas.DescribeMaintenanceWindowScheduleRequest, schemas.DescribeMaintenanceWindowScheduleResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeMaintenanceWindowSchedule{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeMaintenanceWindowSchedule, schemas.DescribeMaintenanceWindowScheduleRequest, schemas.DescribeMaintenanceWindowScheduleResult), output: &DescribeMaintenanceWindowScheduleOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDescribeMaintenanceWindowSchedule{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeMaintenanceWindowSchedule"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeMaintenanceWindowSchedule(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -145,16 +156,11 @@ func (c *Client) addOperationDescribeMaintenanceWindowScheduleMiddlewares(stack 
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribeMaintenanceWindowScheduleAPIClient is a client that implements the
-// DescribeMaintenanceWindowSchedule operation.
-type DescribeMaintenanceWindowScheduleAPIClient interface {
-	DescribeMaintenanceWindowSchedule(context.Context, *DescribeMaintenanceWindowScheduleInput, ...func(*Options)) (*DescribeMaintenanceWindowScheduleOutput, error)
-}
-
-var _ DescribeMaintenanceWindowScheduleAPIClient = (*Client)(nil)
 
 // DescribeMaintenanceWindowSchedulePaginatorOptions is the paginator options for
 // DescribeMaintenanceWindowSchedule
@@ -223,6 +229,9 @@ func (p *DescribeMaintenanceWindowSchedulePaginator) NextPage(ctx context.Contex
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeMaintenanceWindowSchedule(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -242,10 +251,10 @@ func (p *DescribeMaintenanceWindowSchedulePaginator) NextPage(ctx context.Contex
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribeMaintenanceWindowSchedule(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeMaintenanceWindowSchedule",
-	}
+// DescribeMaintenanceWindowScheduleAPIClient is a client that implements the
+// DescribeMaintenanceWindowSchedule operation.
+type DescribeMaintenanceWindowScheduleAPIClient interface {
+	DescribeMaintenanceWindowSchedule(context.Context, *DescribeMaintenanceWindowScheduleInput, ...func(*Options)) (*DescribeMaintenanceWindowScheduleOutput, error)
 }
+
+var _ DescribeMaintenanceWindowScheduleAPIClient = (*Client)(nil)

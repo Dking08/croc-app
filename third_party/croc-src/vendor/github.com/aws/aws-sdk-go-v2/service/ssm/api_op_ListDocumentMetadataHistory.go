@@ -4,16 +4,20 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
+// Amazon Web Services Systems Manager Change Manager is no longer open to new
+// customers. Existing customers can continue to use the service as normal. For
+// more information, see [Amazon Web Services Systems Manager Change Manager availability change].
+//
 // Information about approval reviews for a version of a change template in Change
 // Manager.
+//
+// [Amazon Web Services Systems Manager Change Manager availability change]: https://docs.aws.amazon.com/systems-manager/latest/userguide/change-manager-availability-change.html
 func (c *Client) ListDocumentMetadataHistory(ctx context.Context, params *ListDocumentMetadataHistoryInput, optFns ...func(*Options)) (*ListDocumentMetadataHistoryOutput, error) {
 	if params == nil {
 		params = &ListDocumentMetadataHistoryInput{}
@@ -56,6 +60,30 @@ type ListDocumentMetadataHistoryInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListDocumentMetadataHistoryInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListDocumentMetadataHistoryRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListDocumentMetadataHistoryInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.DocumentVersion != nil {
+		s.WriteString(schemas.ListDocumentMetadataHistoryRequest_DocumentVersion, *v.DocumentVersion)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.ListDocumentMetadataHistoryRequest_MaxResults, *v.MaxResults)
+	}
+	if v.Metadata != "" {
+		s.WriteString(schemas.ListDocumentMetadataHistoryRequest_Metadata, string(v.Metadata))
+	}
+	if v.Name != nil {
+		s.WriteString(schemas.ListDocumentMetadataHistoryRequest_Name, *v.Name)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListDocumentMetadataHistoryRequest_NextToken, *v.NextToken)
+	}
+}
+
 type ListDocumentMetadataHistoryOutput struct {
 
 	// The user ID of the person in the organization who requested the review of the
@@ -81,68 +109,74 @@ type ListDocumentMetadataHistoryOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListDocumentMetadataHistoryOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListDocumentMetadataHistoryResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListDocumentMetadataHistoryOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Author != nil {
+		s.WriteString(schemas.ListDocumentMetadataHistoryResponse_Author, *v.Author)
+	}
+	if v.DocumentVersion != nil {
+		s.WriteString(schemas.ListDocumentMetadataHistoryResponse_DocumentVersion, *v.DocumentVersion)
+	}
+	if v.Metadata != nil {
+		s.WriteStruct(schemas.ListDocumentMetadataHistoryResponse_Metadata)
+		v.Metadata.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.Name != nil {
+		s.WriteString(schemas.ListDocumentMetadataHistoryResponse_Name, *v.Name)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListDocumentMetadataHistoryResponse_NextToken, *v.NextToken)
+	}
+}
+func (v *ListDocumentMetadataHistoryOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListDocumentMetadataHistoryResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListDocumentMetadataHistoryResponse_Author:
+			v.Author = new(string)
+			return d.ReadString(schemas.ListDocumentMetadataHistoryResponse_Author, v.Author)
+		case schemas.ListDocumentMetadataHistoryResponse_DocumentVersion:
+			v.DocumentVersion = new(string)
+			return d.ReadString(schemas.ListDocumentMetadataHistoryResponse_DocumentVersion, v.DocumentVersion)
+		case schemas.ListDocumentMetadataHistoryResponse_Metadata:
+			v.Metadata = &types.DocumentMetadataResponseInfo{}
+			return v.Metadata.Deserialize(d)
+		case schemas.ListDocumentMetadataHistoryResponse_Name:
+			v.Name = new(string)
+			return d.ReadString(schemas.ListDocumentMetadataHistoryResponse_Name, v.Name)
+		case schemas.ListDocumentMetadataHistoryResponse_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ListDocumentMetadataHistoryResponse_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListDocumentMetadataHistoryMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListDocumentMetadataHistory, schemas.ListDocumentMetadataHistoryRequest, schemas.ListDocumentMetadataHistoryResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpListDocumentMetadataHistory{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListDocumentMetadataHistory, schemas.ListDocumentMetadataHistoryRequest, schemas.ListDocumentMetadataHistoryResponse), output: &ListDocumentMetadataHistoryOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpListDocumentMetadataHistory{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ListDocumentMetadataHistory"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListDocumentMetadataHistoryValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opListDocumentMetadataHistory(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -157,13 +191,8 @@ func (c *Client) addOperationListDocumentMetadataHistoryMiddlewares(stack *middl
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opListDocumentMetadataHistory(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ListDocumentMetadataHistory",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

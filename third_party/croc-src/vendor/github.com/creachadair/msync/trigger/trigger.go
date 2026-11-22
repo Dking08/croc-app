@@ -1,4 +1,4 @@
-// Package trigger implements channel-based condition variable.
+// Package trigger implements a channel-based condition variable.
 package trigger
 
 import "sync"

@@ -158,6 +158,88 @@ func (fs FeatureSet) FlagString() string {
 	return strings.Join(s, " ")
 }
 
+// FeatureNames returns the names of all features present in fs, in the same
+// order as AllFeatures.
+func (fs FeatureSet) FeatureNames() []string {
+	var names []string
+	archFlagOrder(func(feature Feature) {
+		if fs.HasFeature(feature) {
+			names = append(names, feature.String())
+		}
+	})
+	return names
+}
+
+// numBlocks is the number of 32-bit feature blocks needed to cover allFeatures.
+var numBlocks = func() int {
+	var maxFeature Feature
+	for f := range allFeatures {
+		maxFeature = max(maxFeature, f)
+	}
+	return int(maxFeature)/32 + 1
+}()
+
+func setFeatureBit(blocks []uint32, f Feature) {
+	blocks[int(f)/32] |= 1 << (uint(f) % 32)
+}
+
+// FeatureMask returns the CPU features present in fs as a slice of 32-bit
+// block bitmasks, where each Feature f sets bit (f % 32) in block (f / 32).
+func (fs FeatureSet) FeatureMask() []uint32 {
+	blocks := make([]uint32, numBlocks)
+	for feature := range allFeatures {
+		if fs.HasFeature(feature) {
+			setFeatureBit(blocks, feature)
+		}
+	}
+	return blocks
+}
+
+// FeatureMaskString returns the CPU features present in fs as comma-separated
+// hex uint32 block bitmasks (e.g. "0x...,0x..."). Missing trailing blocks
+// when comparing across versions should be treated as zero.
+func (fs FeatureSet) FeatureMaskString() string {
+	return formatFeatureMask(fs.FeatureMask())
+}
+
+// FeatureMaskFromNames parses feature names (as returned by FeatureNames) and
+// returns the 32-bit block bitmasks in the same layout as FeatureMask. It
+// returns an error if any feature name is unknown (for example, a feature added
+// in a newer runsc version).
+func FeatureMaskFromNames(names []string) ([]uint32, error) {
+	blocks := make([]uint32, numBlocks)
+	for _, name := range names {
+		if name == "" {
+			continue
+		}
+		feature, ok := FeatureFromString(name)
+		if !ok {
+			return nil, fmt.Errorf("unknown CPU feature %q", name)
+		}
+		setFeatureBit(blocks, feature)
+	}
+	return blocks, nil
+}
+
+// FeatureMaskStringFromNames parses feature names (as returned by
+// FeatureNames) and returns the comma-separated hex uint32 block bitmasks in
+// the same format as FeatureSet.FeatureMaskString().
+func FeatureMaskStringFromNames(names []string) (string, error) {
+	blocks, err := FeatureMaskFromNames(names)
+	if err != nil {
+		return "", err
+	}
+	return formatFeatureMask(blocks), nil
+}
+
+func formatFeatureMask(blocks []uint32) string {
+	parts := make([]string, len(blocks))
+	for i, b := range blocks {
+		parts[i] = fmt.Sprintf("0x%08x", b)
+	}
+	return strings.Join(parts, ",")
+}
+
 // ErrIncompatible is returned for incompatible feature sets.
 type ErrIncompatible struct {
 	reason string
@@ -170,10 +252,17 @@ func (e *ErrIncompatible) Error() string {
 
 // CheckHostCompatible returns nil if fs is a subset of the host feature set.
 func (fs FeatureSet) CheckHostCompatible() error {
-	hfs := HostFeatureSet()
+	return fs.checkCompatible(HostFeatureSet())
+}
 
-	// Check that hfs is a superset of fs.
-	if diff := fs.Subtract(hfs); len(diff) > 0 {
+func (fs FeatureSet) checkCompatible(hfs FeatureSet) error {
+	// Check that hfs is a superset of fs, ignoring architecture-specific
+	// features that do not affect user-mode execution.
+	diff := fs.Subtract(hfs)
+	for _, f := range archIgnoredFeatures {
+		delete(diff, f)
+	}
+	if len(diff) > 0 {
 		return &ErrIncompatible{
 			reason: fmt.Sprintf("missing features: %v", diff),
 		}

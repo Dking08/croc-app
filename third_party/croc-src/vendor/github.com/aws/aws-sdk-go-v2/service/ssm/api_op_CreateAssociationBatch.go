@@ -4,21 +4,21 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Associates the specified Amazon Web Services Systems Manager document (SSM
-// document) with the specified managed nodes or targets. When you associate a
-// document with one or more managed nodes using IDs or tags, Amazon Web Services
-// Systems Manager Agent (SSM Agent) running on the managed node processes the
-// document and configures the node as specified. If you associate a document with
-// a managed node that already has an associated document, the system returns the
-// AssociationAlreadyExists exception.
+// document) with the specified managed nodes or targets.
+//
+// When you associate a document with one or more managed nodes using IDs or tags,
+// Amazon Web Services Systems Manager Agent (SSM Agent) running on the managed
+// node processes the document and configures the node as specified.
+//
+// If you associate a document with a managed node that already has an associated
+// document, the system returns the AssociationAlreadyExists exception.
 func (c *Client) CreateAssociationBatch(ctx context.Context, params *CreateAssociationBatchInput, optFns ...func(*Options)) (*CreateAssociationBatchOutput, error) {
 	if params == nil {
 		params = &CreateAssociationBatchInput{}
@@ -41,7 +41,37 @@ type CreateAssociationBatchInput struct {
 	// This member is required.
 	Entries []types.CreateAssociationBatchRequestEntry
 
+	// A role used by association to take actions on your behalf. State Manager will
+	// assume this role and call required APIs when dispatching configurations to
+	// nodes. If not specified, [service-linked role for Systems Manager]will be used by default.
+	//
+	// It is recommended that you define a custom IAM role so that you have full
+	// control of the permissions that State Manager has when taking actions on your
+	// behalf.
+	//
+	// Service-linked role support in State Manager is being phased out. Associations
+	// relying on service-linked role may require updates in the future to continue
+	// functioning properly.
+	//
+	// [service-linked role for Systems Manager]: https://docs.aws.amazon.com/systems-manager/latest/userguide/using-service-linked-roles.html
+	AssociationDispatchAssumeRole *string
+
 	noSmithyDocumentSerde
+}
+
+func (v *CreateAssociationBatchInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.CreateAssociationBatchRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *CreateAssociationBatchInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AssociationDispatchAssumeRole != nil {
+		s.WriteString(schemas.CreateAssociationBatchRequest_AssociationDispatchAssumeRole, *v.AssociationDispatchAssumeRole)
+	}
+	if v.Entries != nil {
+		serializeCreateAssociationBatchRequestEntries(s, schemas.CreateAssociationBatchRequest_Entries, v.Entries)
+	}
 }
 
 type CreateAssociationBatchOutput struct {
@@ -58,68 +88,52 @@ type CreateAssociationBatchOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *CreateAssociationBatchOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.CreateAssociationBatchResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *CreateAssociationBatchOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Failed != nil {
+		serializeFailedCreateAssociationList(s, schemas.CreateAssociationBatchResult_Failed, v.Failed)
+	}
+	if v.Successful != nil {
+		serializeAssociationDescriptionList(s, schemas.CreateAssociationBatchResult_Successful, v.Successful)
+	}
+}
+func (v *CreateAssociationBatchOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.CreateAssociationBatchResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.CreateAssociationBatchResult_Failed:
+			return deserializeFailedCreateAssociationList(d, schemas.CreateAssociationBatchResult_Failed, &v.Failed)
+		case schemas.CreateAssociationBatchResult_Successful:
+			return deserializeAssociationDescriptionList(d, schemas.CreateAssociationBatchResult_Successful, &v.Successful)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationCreateAssociationBatchMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.CreateAssociationBatch, schemas.CreateAssociationBatchRequest, schemas.CreateAssociationBatchResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpCreateAssociationBatch{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.CreateAssociationBatch, schemas.CreateAssociationBatchRequest, schemas.CreateAssociationBatchResult), output: &CreateAssociationBatchOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpCreateAssociationBatch{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "CreateAssociationBatch"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpCreateAssociationBatchValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opCreateAssociationBatch(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -134,13 +148,8 @@ func (c *Client) addOperationCreateAssociationBatchMiddlewares(stack *middleware
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opCreateAssociationBatch(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "CreateAssociationBatch",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

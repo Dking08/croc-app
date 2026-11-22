@@ -4,11 +4,9 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Removes a patch group from a patch baseline.
@@ -42,6 +40,21 @@ type DeregisterPatchBaselineForPatchGroupInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DeregisterPatchBaselineForPatchGroupInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DeregisterPatchBaselineForPatchGroupRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DeregisterPatchBaselineForPatchGroupInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.BaselineId != nil {
+		s.WriteString(schemas.DeregisterPatchBaselineForPatchGroupRequest_BaselineId, *v.BaselineId)
+	}
+	if v.PatchGroup != nil {
+		s.WriteString(schemas.DeregisterPatchBaselineForPatchGroupRequest_PatchGroup, *v.PatchGroup)
+	}
+}
+
 type DeregisterPatchBaselineForPatchGroupOutput struct {
 
 	// The ID of the patch baseline the patch group was deregistered from.
@@ -56,68 +69,54 @@ type DeregisterPatchBaselineForPatchGroupOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DeregisterPatchBaselineForPatchGroupOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DeregisterPatchBaselineForPatchGroupResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DeregisterPatchBaselineForPatchGroupOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.BaselineId != nil {
+		s.WriteString(schemas.DeregisterPatchBaselineForPatchGroupResult_BaselineId, *v.BaselineId)
+	}
+	if v.PatchGroup != nil {
+		s.WriteString(schemas.DeregisterPatchBaselineForPatchGroupResult_PatchGroup, *v.PatchGroup)
+	}
+}
+func (v *DeregisterPatchBaselineForPatchGroupOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DeregisterPatchBaselineForPatchGroupResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DeregisterPatchBaselineForPatchGroupResult_BaselineId:
+			v.BaselineId = new(string)
+			return d.ReadString(schemas.DeregisterPatchBaselineForPatchGroupResult_BaselineId, v.BaselineId)
+		case schemas.DeregisterPatchBaselineForPatchGroupResult_PatchGroup:
+			v.PatchGroup = new(string)
+			return d.ReadString(schemas.DeregisterPatchBaselineForPatchGroupResult_PatchGroup, v.PatchGroup)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDeregisterPatchBaselineForPatchGroupMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DeregisterPatchBaselineForPatchGroup, schemas.DeregisterPatchBaselineForPatchGroupRequest, schemas.DeregisterPatchBaselineForPatchGroupResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDeregisterPatchBaselineForPatchGroup{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DeregisterPatchBaselineForPatchGroup, schemas.DeregisterPatchBaselineForPatchGroupRequest, schemas.DeregisterPatchBaselineForPatchGroupResult), output: &DeregisterPatchBaselineForPatchGroupOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDeregisterPatchBaselineForPatchGroup{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DeregisterPatchBaselineForPatchGroup"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDeregisterPatchBaselineForPatchGroupValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDeregisterPatchBaselineForPatchGroup(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -132,13 +131,8 @@ func (c *Client) addOperationDeregisterPatchBaselineForPatchGroupMiddlewares(sta
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opDeregisterPatchBaselineForPatchGroup(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DeregisterPatchBaselineForPatchGroup",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

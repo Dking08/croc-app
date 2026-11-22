@@ -15,33 +15,13 @@
 package state
 
 import (
+	"encoding"
 	"reflect"
-	"sort"
+	"slices"
+	"time"
 
 	"gvisor.dev/gvisor/pkg/state/wire"
 )
-
-// assertValidType asserts that the type is valid.
-func assertValidType(name string, fields []string) {
-	if name == "" {
-		Failf("type has empty name")
-	}
-	fieldsCopy := make([]string, len(fields))
-	for i := 0; i < len(fields); i++ {
-		if fields[i] == "" {
-			Failf("field has empty name for type %q", name)
-		}
-		fieldsCopy[i] = fields[i]
-	}
-	sort.Slice(fieldsCopy, func(i, j int) bool {
-		return fieldsCopy[i] < fieldsCopy[j]
-	})
-	for i := range fieldsCopy {
-		if i > 0 && fieldsCopy[i-1] == fieldsCopy[i] {
-			Failf("duplicate field %q for type %s", fieldsCopy[i], name)
-		}
-	}
-}
 
 // typeEntry is an entry in the typeDatabase.
 type typeEntry struct {
@@ -89,37 +69,36 @@ func makeTypeDecodeDatabase() typeDecodeDatabase {
 	return typeDecodeDatabase{}
 }
 
-// lookupNameFields extracts the name and fields from an object.
-func lookupNameFields(typ reflect.Type) (string, []string, bool) {
-	v := reflect.Zero(reflect.PtrTo(typ)).Interface()
+// lookupTypeInfo extracts the metadata for a type.
+func lookupTypeInfo(typ reflect.Type) (wire.Type, bool) {
+	if info, ok := reverseTypeDatabase[typ]; ok {
+		return info, true
+	}
+	v := reflect.Zero(reflect.PointerTo(typ)).Interface()
 	t, ok := v.(Type)
 	if !ok {
 		// Is this a primitive?
 		if typ.Kind() == reflect.Interface {
-			return interfaceType, nil, true
+			return wire.Type{Name: interfaceType}, true
 		}
 		name := typ.Name()
 		if _, ok := primitiveTypeDatabase[name]; !ok {
 			// This is not a known type, and not a primitive. The
 			// encoder may proceed for anonymous empty structs, or
 			// it may deference the type pointer and try again.
-			return "", nil, false
+			return wire.Type{}, false
 		}
-		return name, nil, true
+		return wire.Type{Name: name}, true
 	}
-	// Sanity check the type.
-	if raceEnabled {
-		if _, ok := reverseTypeDatabase[typ]; !ok {
-			// The type was not registered? Must be an embedded
-			// structure or something else.
-			return "", nil, false
-		}
+	if eagerTypeInfo {
+		// Registered types were found above. Preserve the handling of
+		// unregistered embedded types and anonymous empty structs.
+		return wire.Type{}, false
 	}
-	// Extract the name from the object.
-	name := t.StateTypeName()
-	fields := t.StateFields()
-	assertValidType(name, fields)
-	return name, fields, true
+	// Validate type now, as this is otherwise deferred when !eagerTypeInfo.
+	info := wire.Type{Name: t.StateTypeName(), Fields: t.StateFields()}
+	validateTypeInfo(info)
+	return info, true
 }
 
 // Lookup looks up or registers the given object.
@@ -132,7 +111,7 @@ func (tdb *typeEncodeDatabase) Lookup(typ reflect.Type) (*typeEntry, bool) {
 	te, ok := tdb.byType[typ]
 	if !ok {
 		// Lookup the type information.
-		name, fields, ok := lookupNameFields(typ)
+		info, ok := lookupTypeInfo(typ)
 		if !ok {
 			// Empty structs may still be encoded, so let the
 			// caller decide what to do from here.
@@ -142,11 +121,8 @@ func (tdb *typeEncodeDatabase) Lookup(typ reflect.Type) (*typeEntry, bool) {
 		// Register the new type.
 		tdb.lastID++
 		te = &typeEntry{
-			ID: tdb.lastID,
-			Type: wire.Type{
-				Name:   name,
-				Fields: fields,
-			},
+			ID:   tdb.lastID,
+			Type: info,
 		}
 
 		// All done.
@@ -158,7 +134,6 @@ func (tdb *typeEncodeDatabase) Lookup(typ reflect.Type) (*typeEntry, bool) {
 
 // Register adds a typeID entry.
 func (tbd *typeDecodeDatabase) Register(typ *wire.Type) {
-	assertValidType(typ.Name, typ.Fields)
 	tbd.pending = append(tbd.pending, typ)
 }
 
@@ -221,12 +196,13 @@ func (tbd *typeDecodeDatabase) Lookup(id typeID, typ reflect.Type) *reconciledTy
 		tbd.byID = append(tbd.byID, make([]*reconciledTypeEntry, int(id)-len(tbd.byID))...)
 	}
 	// Reconcile the type.
-	name, fields, ok := lookupNameFields(typ)
+	info, ok := lookupTypeInfo(typ)
 	if !ok {
 		// Empty structs are decoded only when the type is nil. Since
 		// this isn't the case, we fail here.
 		Failf("unsupported type %q during decode; can't reconcile", pending.Name)
 	}
+	name, fields := info.Name, info.Fields
 	if name != pending.Name {
 		// Are these the same type? Print a helpful message as this may
 		// actually happen in practice if types change.
@@ -234,10 +210,7 @@ func (tbd *typeDecodeDatabase) Lookup(id typeID, typ reflect.Type) *reconciledTy
 			id, name, fields, pending.Name, pending.Fields)
 	}
 	rte := &reconciledTypeEntry{
-		Type: wire.Type{
-			Name:   name,
-			Fields: fields,
-		},
+		Type:      info,
 		LocalType: typ,
 	}
 	// If there are zero or one fields, then we skip allocating the field
@@ -257,10 +230,9 @@ func (tbd *typeDecodeDatabase) Lookup(id typeID, typ reflect.Type) *reconciledTy
 		rte.FieldOrder = singleFieldOrder
 		return rte
 	}
-	// For each field in the current object's information, match it to a
-	// field in the destination object. We know from the assertion above
-	// and the insertion on insertion to pending that neither field
-	// contains any duplicates.
+	// Local field names are unique. Equal lengths and a match for every
+	// local name require the wire fields to be a permutation, rejecting
+	// missing or duplicate names.
 	fieldOrder := make([]int, len(fields))
 	for i, name := range fields {
 		fieldOrder[i] = -1 // Sentinel.
@@ -321,8 +293,24 @@ var primitiveTypeDatabase = func() map[string]reflect.Type {
 // globalTypeDatabase is used for dispatching interfaces on decode.
 var globalTypeDatabase = map[string]reflect.Type{}
 
-// reverseTypeDatabase is a reverse mapping.
-var reverseTypeDatabase = map[reflect.Type]string{}
+// reverseTypeDatabase holds immutable metadata indexed by the original type.
+var reverseTypeDatabase = map[reflect.Type]wire.Type{}
+
+// noHooksTypes contains types registered with RegisterNoHooks.
+var noHooksTypes = map[reflect.Type]bool{}
+
+// identBases maps +stateify identtype struct types to their base struct types.
+var identBases = map[reflect.Type]reflect.Type{}
+
+func isNoHooks(t reflect.Type) bool {
+	for base, ok := identBases[t]; ok; base, ok = identBases[base] {
+		t = base
+	}
+	return noHooksTypes[t]
+}
+
+// binaryTypes maps types registered with registerBinary to their names.
+var binaryTypes = map[reflect.Type]string{}
 
 // Release releases references to global type databases.
 // Must only be called in contexts where they will definitely never be used,
@@ -330,55 +318,202 @@ var reverseTypeDatabase = map[reflect.Type]string{}
 func Release() {
 	globalTypeDatabase = nil
 	reverseTypeDatabase = nil
+	noHooksTypes = nil
+	identBases = nil
+	binaryTypes = nil
+	typeInfosMu.Lock()
+	typeInfos = nil
+	typeInfoCount = 0
+	typeInfoSlab = nil
+	slotsSlab = nil
+	itabs = nil
+	typeInfosMu.Unlock()
+}
+
+// binaryObject is a value with a self-contained binary representation.
+type binaryObject interface {
+	encoding.BinaryAppender
+	encoding.BinaryUnmarshaler
+}
+
+// saveBinary encodes a foreign struct's self-contained representation. Its
+// binary codec owns any internal pointer relationships.
+func (es *encodeState) saveBinary(value binaryObject, name string, s Sink) {
+	data, err := value.AppendBinary(es.binaryBuf[:0])
+	es.binaryBuf = data
+	if err != nil {
+		Failf("encoding %s: %w", name, err)
+	}
+	// Copy before reusing binaryBuf: wire objects are serialized only after
+	// the full graph is encoded. Strings also decode inline, so map keys are
+	// complete when decodeMap inserts them into the restored map.
+	s.SaveValue(0, string(data))
+}
+
+func loadBinary(value binaryObject, name string, s Source) {
+	var data string
+	s.Load(0, &data)
+	if err := value.UnmarshalBinary([]byte(data)); err != nil {
+		Failf("decoding %s: %w", name, err)
+	}
+}
+
+// eagerTypeInfo controls whether `Register` collects, validates and publishes
+// the metadata of ordinary types.
+// `Register` runs in `init` on every process start, this is on the startup
+// critical path. Enable it only in race-enabled builds.
+var eagerTypeInfo = raceEnabled
+
+// StructType is implemented by pointers to struct types with state methods.
+type StructType interface {
+	Type
+	SaverLoader
+}
+
+// RegisterStruct registers a struct type, like Register. Passing the type as
+// a StructType makes the interface table of StructType for the type static,
+// so that the state package does not build it at run time.
+//
+// This must be called on init and only done once.
+func RegisterStruct(t StructType) {
+	registerStruct(t, false)
+}
+
+// RegisterNoHooks registers a struct type whose StateSave and StateLoad
+// methods save and load its fields, and do nothing else, like RegisterStruct.
+// The state package may save values of the type without calling these
+// methods.
+//
+// This must be called on init and only done once.
+func RegisterNoHooks(t StructType) {
+	registerStruct(t, true)
+}
+
+// RegisterIdent registers a struct type defined over base (+stateify identtype),
+// inheriting base's RegisterNoHooks property regardless of init order.
+//
+// This must be called on init and only done once.
+func RegisterIdent(t, base StructType) {
+	typ := reflect.TypeOf(t)
+	baseTyp := reflect.TypeOf(base)
+	if typ == nil || typ.Kind() != reflect.Ptr || baseTyp == nil || baseTyp.Kind() != reflect.Ptr {
+		Failf("RegisterIdent must be called on pointers")
+	}
+	identBases[typ.Elem()] = baseTyp.Elem()
+	registerStruct(t, false)
+}
+
+func registerStruct(t StructType, noHooks bool) {
+	typ := reflect.TypeOf(t)
+	if typ == nil || typ.Kind() != reflect.Ptr {
+		Failf("RegisterStruct must be called on pointers")
+	}
+	typ = typ.Elem()
+	if noHooks {
+		noHooksTypes[typ] = true
+	}
+	if eagerTypeInfo {
+		Register(t)
+		return
+	}
+	// Unlike Register, this does not convert t to Type, which would look up
+	// an itab at run time.
+	registerName(typ, t.StateTypeName())
 }
 
 // Register registers a type.
 //
-// This must be called on init and only done once.
+// This must be called on init and only done once. Registration lets Load
+// reconstruct concrete types held in interfaces without a preceding Save.
 func Register(t Type) {
-	name := t.StateTypeName()
 	typ := reflect.TypeOf(t)
-	if raceEnabled {
-		assertValidType(name, t.StateFields())
-		// Register must always be called on pointers.
-		if typ.Kind() != reflect.Ptr {
-			Failf("Register must be called on pointers")
-		}
+	if typ == nil || typ.Kind() != reflect.Ptr {
+		Failf("Register must be called on pointers")
+	}
+	if !eagerTypeInfo {
+		registerName(typ.Elem(), t.StateTypeName())
+		return
 	}
 	typ = typ.Elem()
-	if raceEnabled {
-		if typ.Kind() == reflect.Struct {
-			// All registered structs must implement SaverLoader. We allow
-			// the registration is non-struct types with just the Type
-			// interface, but we need to call StateSave/StateLoad methods
-			// on aggregate types.
-			if _, ok := t.(SaverLoader); !ok {
-				Failf("struct %T does not implement SaverLoader", t)
-			}
-		} else {
-			// Non-structs must not have any fields. We don't support
-			// calling StateSave/StateLoad methods on any non-struct types.
-			// If custom behavior is required, these types should be
-			// wrapped in a structure of some kind.
-			if fields := t.StateFields(); len(fields) != 0 {
-				Failf("non-struct %T has non-zero fields %v", t, fields)
-			}
-			// We don't allow non-structs to implement StateSave/StateLoad
-			// methods, because they won't be called and it's confusing.
-			if _, ok := t.(SaverLoader); ok {
-				Failf("non-struct %T implements SaverLoader", t)
-			}
+	fields := t.StateFields()
+	if typ.Kind() == reflect.Struct {
+		// All registered structs must implement SaverLoader. We allow
+		// the registration is non-struct types with just the Type
+		// interface, but we need to call StateSave/StateLoad methods
+		// on aggregate types.
+		if _, ok := t.(SaverLoader); !ok {
+			Failf("struct %T does not implement SaverLoader", t)
 		}
+	} else {
+		// Non-structs must not have any fields. We don't support
+		// calling StateSave/StateLoad methods on any non-struct types.
+		// If custom behavior is required, these types should be
+		// wrapped in a structure of some kind.
+		if len(fields) != 0 {
+			Failf("non-struct %T has non-zero fields %v", t, fields)
+		}
+		// We don't allow non-structs to implement StateSave/StateLoad
+		// methods, because they won't be called and it's confusing.
+		if _, ok := t.(SaverLoader); ok {
+			Failf("non-struct %T implements SaverLoader", t)
+		}
+	}
+	registerInfo(typ, wire.Type{Name: t.StateTypeName(), Fields: fields})
+}
+
+// registerBinary registers a named foreign struct once, retaining its original
+// type for fields, map keys and interfaces. value must point to a named struct.
+// Metadata is always published eagerly, since it does not implement `Type`.
+func registerBinary(value binaryObject) {
+	typ := reflect.TypeOf(value).Elem()
+	binaryTypes[typ] = typ.PkgPath() + "." + typ.Name()
+	registerInfo(typ, wire.Type{
+		Name:   typ.PkgPath() + "." + typ.Name(),
+		Fields: []string{"value"},
+	})
+}
+
+// registerInfo validates and publishes `typ`'s metadata,
+// and registers in the reverse type database.
+func registerInfo(typ reflect.Type, info wire.Type) {
+	validateTypeInfo(info)
+	registerName(typ, info.Name)
+	reverseTypeDatabase[typ] = info
+}
+
+// registerName publishes `typ` but does not validate.
+func registerName(typ reflect.Type, name string) {
+	if raceEnabled {
 		if _, ok := primitiveTypeDatabase[name]; ok {
-			Failf("conflicting primitiveTypeDatabase entry for %T: used by primitive", t)
+			Failf("conflicting primitiveTypeDatabase entry for %v: used by primitive", typ)
 		}
 		if _, ok := globalTypeDatabase[name]; ok {
-			Failf("conflicting globalTypeDatabase entries for %T: name conflict", t)
+			Failf("conflicting globalTypeDatabase entries for %v: name conflict", typ)
 		}
 		if name == interfaceType {
-			Failf("conflicting name for %T: matches interfaceType", t)
+			Failf("conflicting name for %v: matches interfaceType", typ)
 		}
-		reverseTypeDatabase[typ] = name
 	}
 	globalTypeDatabase[name] = typ
+	fingerprint.Store(0)
+}
+
+// validateTypeInfo checks that a type has a name and unique, non-empty field
+// names.
+func validateTypeInfo(info wire.Type) {
+	if info.Name == "" {
+		Failf("type has empty name")
+	}
+	for i, field := range info.Fields {
+		if field == "" {
+			Failf("field has empty name for type %q", info.Name)
+		}
+		if slices.Contains(info.Fields[:i], field) {
+			Failf("duplicate field %q for type %s", field, info.Name)
+		}
+	}
+}
+
+func init() {
+	registerBinary((*time.Time)(nil))
 }

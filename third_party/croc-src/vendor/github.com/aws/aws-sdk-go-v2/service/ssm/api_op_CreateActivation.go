@@ -4,26 +4,26 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"time"
 )
 
 // Generates an activation code and activation ID you can use to register your
 // on-premises servers, edge devices, or virtual machine (VM) with Amazon Web
 // Services Systems Manager. Registering these machines with Systems Manager makes
-// it possible to manage them using Systems Manager capabilities. You use the
-// activation code and ID when installing SSM Agent on machines in your hybrid
-// environment. For more information about requirements for managing on-premises
-// machines using Systems Manager, see Setting up Amazon Web Services Systems
-// Manager for hybrid environments (https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-managedinstances.html)
-// in the Amazon Web Services Systems Manager User Guide. Amazon Elastic Compute
-// Cloud (Amazon EC2) instances, edge devices, and on-premises servers and VMs that
-// are configured for Systems Manager are all called managed nodes.
+// it possible to manage them using Systems Manager tools. You use the activation
+// code and ID when installing SSM Agent on machines in your hybrid environment.
+// For more information about requirements for managing on-premises machines using
+// Systems Manager, see [Using Amazon Web Services Systems Manager in hybrid and multicloud environments]in the Amazon Web Services Systems Manager User Guide.
+//
+// Amazon Elastic Compute Cloud (Amazon EC2) instances, edge devices, and
+// on-premises servers and VMs that are configured for Systems Manager are all
+// called managed nodes.
+//
+// [Using Amazon Web Services Systems Manager in hybrid and multicloud environments]: https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-hybrid-multicloud.html
 func (c *Client) CreateActivation(ctx context.Context, params *CreateActivationInput, optFns ...func(*Options)) (*CreateActivationOutput, error) {
 	if params == nil {
 		params = &CreateActivationInput{}
@@ -44,25 +44,32 @@ type CreateActivationInput struct {
 	// The name of the Identity and Access Management (IAM) role that you want to
 	// assign to the managed node. This IAM role must provide AssumeRole permissions
 	// for the Amazon Web Services Systems Manager service principal ssm.amazonaws.com
-	// . For more information, see Create an IAM service role for a hybrid environment (https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-service-role.html)
-	// in the Amazon Web Services Systems Manager User Guide. You can't specify an IAM
-	// service-linked role for this parameter. You must create a unique role.
+	// . For more information, see [Create the IAM service role required for Systems Manager in a hybrid and multicloud environments]in the Amazon Web Services Systems Manager User
+	// Guide.
+	//
+	// You can't specify an IAM service-linked role for this parameter. You must
+	// create a unique role.
+	//
+	// [Create the IAM service role required for Systems Manager in a hybrid and multicloud environments]: https://docs.aws.amazon.com/systems-manager/latest/userguide/hybrid-multicloud-service-role.html
 	//
 	// This member is required.
 	IamRole *string
 
 	// The name of the registered, managed node as it will appear in the Amazon Web
 	// Services Systems Manager console or when you use the Amazon Web Services command
-	// line tools to list Systems Manager resources. Don't enter personally
-	// identifiable information in this field.
+	// line tools to list Systems Manager resources.
+	//
+	// Don't enter personally identifiable information in this field.
 	DefaultInstanceName *string
 
 	// A user-defined description of the resource that you want to register with
-	// Systems Manager. Don't enter personally identifiable information in this field.
+	// Systems Manager.
+	//
+	// Don't enter personally identifiable information in this field.
 	Description *string
 
 	// The date by which this activation request should expire, in timestamp format,
-	// such as "2021-07-07T00:00:00". You can specify a date up to 30 days in advance.
+	// such as "2024-07-07T00:00:00". You can specify a date up to 30 days in advance.
 	// If you don't provide an expiration date, the activation code expires in 24
 	// hours.
 	ExpirationDate *time.Time
@@ -79,21 +86,56 @@ type CreateActivationInput struct {
 	// example, you might want to tag an activation to identify which servers or
 	// virtual machines (VMs) in your on-premises environment you intend to activate.
 	// In this case, you could specify the following key-value pairs:
+	//
 	//   - Key=OS,Value=Windows
+	//
 	//   - Key=Environment,Value=Production
+	//
 	// When you install SSM Agent on your on-premises servers and VMs, you specify an
 	// activation ID and code. When you specify the activation ID and code, tags
 	// assigned to the activation are automatically applied to the on-premises servers
-	// or VMs. You can't add tags to or delete tags from an existing activation. You
-	// can tag your on-premises servers, edge devices, and VMs after they connect to
-	// Systems Manager for the first time and are assigned a managed node ID. This
-	// means they are listed in the Amazon Web Services Systems Manager console with an
-	// ID that is prefixed with "mi-". For information about how to add tags to your
-	// managed nodes, see AddTagsToResource . For information about how to remove tags
-	// from your managed nodes, see RemoveTagsFromResource .
+	// or VMs.
+	//
+	// You can't add tags to or delete tags from an existing activation. You can tag
+	// your on-premises servers, edge devices, and VMs after they connect to Systems
+	// Manager for the first time and are assigned a managed node ID. This means they
+	// are listed in the Amazon Web Services Systems Manager console with an ID that is
+	// prefixed with "mi-". For information about how to add tags to your managed
+	// nodes, see AddTagsToResource. For information about how to remove tags from your managed nodes,
+	// see RemoveTagsFromResource.
 	Tags []types.Tag
 
 	noSmithyDocumentSerde
+}
+
+func (v *CreateActivationInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.CreateActivationRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *CreateActivationInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.DefaultInstanceName != nil {
+		s.WriteString(schemas.CreateActivationRequest_DefaultInstanceName, *v.DefaultInstanceName)
+	}
+	if v.Description != nil {
+		s.WriteString(schemas.CreateActivationRequest_Description, *v.Description)
+	}
+	if v.ExpirationDate != nil {
+		s.WriteTime(schemas.CreateActivationRequest_ExpirationDate, *v.ExpirationDate)
+	}
+	if v.IamRole != nil {
+		s.WriteString(schemas.CreateActivationRequest_IamRole, *v.IamRole)
+	}
+	if v.RegistrationLimit != nil {
+		s.WriteInt32(schemas.CreateActivationRequest_RegistrationLimit, *v.RegistrationLimit)
+	}
+	if v.RegistrationMetadata != nil {
+		serializeRegistrationMetadataList(s, schemas.CreateActivationRequest_RegistrationMetadata, v.RegistrationMetadata)
+	}
+	if v.Tags != nil {
+		serializeTagList(s, schemas.CreateActivationRequest_Tags, v.Tags)
+	}
 }
 
 type CreateActivationOutput struct {
@@ -112,68 +154,54 @@ type CreateActivationOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *CreateActivationOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.CreateActivationResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *CreateActivationOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ActivationCode != nil {
+		s.WriteString(schemas.CreateActivationResult_ActivationCode, *v.ActivationCode)
+	}
+	if v.ActivationId != nil {
+		s.WriteString(schemas.CreateActivationResult_ActivationId, *v.ActivationId)
+	}
+}
+func (v *CreateActivationOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.CreateActivationResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.CreateActivationResult_ActivationCode:
+			v.ActivationCode = new(string)
+			return d.ReadString(schemas.CreateActivationResult_ActivationCode, v.ActivationCode)
+		case schemas.CreateActivationResult_ActivationId:
+			v.ActivationId = new(string)
+			return d.ReadString(schemas.CreateActivationResult_ActivationId, v.ActivationId)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationCreateActivationMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.CreateActivation, schemas.CreateActivationRequest, schemas.CreateActivationResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpCreateActivation{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.CreateActivation, schemas.CreateActivationRequest, schemas.CreateActivationResult), output: &CreateActivationOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpCreateActivation{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "CreateActivation"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpCreateActivationValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opCreateActivation(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -188,13 +216,8 @@ func (c *Client) addOperationCreateActivationMiddlewares(stack *middleware.Stack
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opCreateActivation(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "CreateActivation",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

@@ -4,39 +4,62 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Registers a compliance type and other compliance details on a designated
 // resource. This operation lets you register custom compliance details with a
 // resource. This call overwrites existing compliance information on the resource,
 // so you must provide a full list of compliance items each time that you send the
-// request. ComplianceType can be one of the following:
+// request.
+//
+// ComplianceType can be one of the following:
+//
 //   - ExecutionId: The execution ID when the patch, association, or custom
 //     compliance item was applied.
+//
 //   - ExecutionType: Specify patch, association, or Custom: string .
+//
 //   - ExecutionTime. The time the patch, association, or custom compliance item
 //     was applied to the managed node.
-//   - Id: The patch, association, or custom compliance ID.
-//   - Title: A title.
-//   - Status: The status of the compliance item. For example, approved for
-//     patches, or Failed for associations.
-//   - Severity: A patch severity. For example, Critical .
-//   - DocumentName: An SSM document name. For example, AWS-RunPatchBaseline .
-//   - DocumentVersion: An SSM document version number. For example, 4.
-//   - Classification: A patch classification. For example, security updates .
-//   - PatchBaselineId: A patch baseline ID.
-//   - PatchSeverity: A patch severity. For example, Critical .
-//   - PatchState: A patch state. For example, InstancesWithFailedPatches .
-//   - PatchGroup: The name of a patch group.
-//   - InstalledTime: The time the association, patch, or custom compliance item
-//     was applied to the resource. Specify the time by using the following format:
-//     yyyy-MM-dd'T'HH:mm:ss'Z'
+//
+// For State Manager associations, this represents the time when compliance status
+//
+//	was captured by the Systems Manager service during its internal compliance
+//	aggregation workflow, not necessarily when the association was executed on the
+//	managed node. State Manager updates compliance information for all associations
+//	on an instance whenever any association executes, which may result in multiple
+//	associations showing the same execution time.
+//
+//	- Id: The patch, association, or custom compliance ID.
+//
+//	- Title: A title.
+//
+//	- Status: The status of the compliance item. For example, approved for
+//	patches, or Failed for associations.
+//
+//	- Severity: A patch severity. For example, Critical .
+//
+//	- DocumentName: An SSM document name. For example, AWS-RunPatchBaseline .
+//
+//	- DocumentVersion: An SSM document version number. For example, 4.
+//
+//	- Classification: A patch classification. For example, security updates .
+//
+//	- PatchBaselineId: A patch baseline ID.
+//
+//	- PatchSeverity: A patch severity. For example, Critical .
+//
+//	- PatchState: A patch state. For example, InstancesWithFailedPatches .
+//
+//	- PatchGroup: The name of a patch group.
+//
+//	- InstalledTime: The time the association, patch, or custom compliance item
+//	was applied to the resource. Specify the time by using the following format:
+//	yyyy-MM-dd'T'HH:mm:ss'Z'
 func (c *Client) PutComplianceItems(ctx context.Context, params *PutComplianceItemsInput, optFns ...func(*Options)) (*PutComplianceItemsOutput, error) {
 	if params == nil {
 		params = &PutComplianceItemsInput{}
@@ -62,7 +85,7 @@ type PutComplianceItemsInput struct {
 
 	// A summary of the call execution that includes an execution ID, the type of
 	// execution (for example, Command ), and the date/time of the execution using a
-	// datetime object that is saved in the following format: yyyy-MM-dd'T'HH:mm:ss'Z'.
+	// datetime object that is saved in the following format: yyyy-MM-dd'T'HH:mm:ss'Z'
 	//
 	// This member is required.
 	ExecutionSummary *types.ComplianceExecutionSummary
@@ -93,13 +116,48 @@ type PutComplianceItemsInput struct {
 	// The mode for uploading compliance items. You can specify COMPLETE or PARTIAL .
 	// In COMPLETE mode, the system overwrites all existing compliance information for
 	// the resource. You must provide a full list of compliance items each time you
-	// send the request. In PARTIAL mode, the system overwrites compliance information
-	// for a specific association. The association must be configured with
-	// SyncCompliance set to MANUAL . By default, all requests use COMPLETE mode. This
-	// attribute is only valid for association compliance.
+	// send the request.
+	//
+	// In PARTIAL mode, the system overwrites compliance information for a specific
+	// association. The association must be configured with SyncCompliance set to
+	// MANUAL . By default, all requests use COMPLETE mode.
+	//
+	// This attribute is only valid for association compliance.
 	UploadType types.ComplianceUploadType
 
 	noSmithyDocumentSerde
+}
+
+func (v *PutComplianceItemsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.PutComplianceItemsRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *PutComplianceItemsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ComplianceType != nil {
+		s.WriteString(schemas.PutComplianceItemsRequest_ComplianceType, *v.ComplianceType)
+	}
+	if v.ExecutionSummary != nil {
+		s.WriteStruct(schemas.PutComplianceItemsRequest_ExecutionSummary)
+		v.ExecutionSummary.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.ItemContentHash != nil {
+		s.WriteString(schemas.PutComplianceItemsRequest_ItemContentHash, *v.ItemContentHash)
+	}
+	if v.Items != nil {
+		serializeComplianceItemEntryList(s, schemas.PutComplianceItemsRequest_Items, v.Items)
+	}
+	if v.ResourceId != nil {
+		s.WriteString(schemas.PutComplianceItemsRequest_ResourceId, *v.ResourceId)
+	}
+	if v.ResourceType != nil {
+		s.WriteString(schemas.PutComplianceItemsRequest_ResourceType, *v.ResourceType)
+	}
+	if v.UploadType != "" {
+		s.WriteString(schemas.PutComplianceItemsRequest_UploadType, string(v.UploadType))
+	}
 }
 
 type PutComplianceItemsOutput struct {
@@ -109,68 +167,42 @@ type PutComplianceItemsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *PutComplianceItemsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.PutComplianceItemsResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *PutComplianceItemsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+}
+func (v *PutComplianceItemsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.PutComplianceItemsResult, func(s *smithy.Schema) error {
+		switch s {
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationPutComplianceItemsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.PutComplianceItems, schemas.PutComplianceItemsRequest, schemas.PutComplianceItemsResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpPutComplianceItems{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.PutComplianceItems, schemas.PutComplianceItemsRequest, schemas.PutComplianceItemsResult), output: &PutComplianceItemsOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpPutComplianceItems{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "PutComplianceItems"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpPutComplianceItemsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opPutComplianceItems(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -185,13 +217,8 @@ func (c *Client) addOperationPutComplianceItemsMiddlewares(stack *middleware.Sta
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opPutComplianceItems(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "PutComplianceItems",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

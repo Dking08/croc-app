@@ -19,13 +19,25 @@ const (
 	IdealBatchSize = 128 // maximum number of packets handled per read and write
 )
 
+// ReceivedPacket describes a packet read by a [ReceiveFunc].
+type ReceivedPacket struct {
+	// Offset is the starting byte offset.
+	Offset int
+	// Size is the size of the packet.
+	Size int
+	// Endpoint is the associated [Endpoint].
+	Endpoint Endpoint
+}
+
+func (r *ReceivedPacket) Bytes(slab []byte) []byte {
+	return slab[r.Offset : r.Offset+r.Size : r.Offset+r.Size]
+}
+
 // A ReceiveFunc receives at least one packet from the network and writes them
-// into packets. On a successful read it returns the number of elements of
-// sizes, packets, and endpoints that should be evaluated. Some elements of
-// sizes may be zero, and callers should ignore them. Callers must pass a sizes
-// and eps slice with a length greater than or equal to the length of packets.
-// These lengths must not exceed the length of the associated Bind.BatchSize().
-type ReceiveFunc func(packets [][]byte, sizes []int, eps []Endpoint) (n int, err error)
+// into slab. On a successful read it returns the number of elements of
+// packets that should be evaluated. Callers must pass a length of packets equal
+// to the associated [Bind.BatchSize].
+type ReceiveFunc func(slab []byte, packets []ReceivedPacket) (n int, err error)
 
 // A Bind listens on a port for both IPv6 and IPv4 UDP traffic.
 //

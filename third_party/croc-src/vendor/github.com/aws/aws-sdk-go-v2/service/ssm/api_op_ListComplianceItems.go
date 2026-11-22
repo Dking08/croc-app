@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // For a specified resource ID, this API operation returns a list of compliance
@@ -55,6 +54,30 @@ type ListComplianceItemsInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListComplianceItemsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListComplianceItemsRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListComplianceItemsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Filters != nil {
+		serializeComplianceStringFilterList(s, schemas.ListComplianceItemsRequest_Filters, v.Filters)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.ListComplianceItemsRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListComplianceItemsRequest_NextToken, *v.NextToken)
+	}
+	if v.ResourceIds != nil {
+		serializeComplianceResourceIdList(s, schemas.ListComplianceItemsRequest_ResourceIds, v.ResourceIds)
+	}
+	if v.ResourceTypes != nil {
+		serializeComplianceResourceTypeList(s, schemas.ListComplianceItemsRequest_ResourceTypes, v.ResourceTypes)
+	}
+}
+
 type ListComplianceItemsOutput struct {
 
 	// A list of compliance information for the specified resource ID.
@@ -70,65 +93,50 @@ type ListComplianceItemsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListComplianceItemsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListComplianceItemsResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListComplianceItemsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ComplianceItems != nil {
+		serializeComplianceItemList(s, schemas.ListComplianceItemsResult_ComplianceItems, v.ComplianceItems)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListComplianceItemsResult_NextToken, *v.NextToken)
+	}
+}
+func (v *ListComplianceItemsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListComplianceItemsResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListComplianceItemsResult_ComplianceItems:
+			return deserializeComplianceItemList(d, schemas.ListComplianceItemsResult_ComplianceItems, &v.ComplianceItems)
+		case schemas.ListComplianceItemsResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ListComplianceItemsResult_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListComplianceItemsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListComplianceItems, schemas.ListComplianceItemsRequest, schemas.ListComplianceItemsResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpListComplianceItems{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListComplianceItems, schemas.ListComplianceItemsRequest, schemas.ListComplianceItemsResult), output: &ListComplianceItemsOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpListComplianceItems{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ListComplianceItems"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opListComplianceItems(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -143,16 +151,11 @@ func (c *Client) addOperationListComplianceItemsMiddlewares(stack *middleware.St
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// ListComplianceItemsAPIClient is a client that implements the
-// ListComplianceItems operation.
-type ListComplianceItemsAPIClient interface {
-	ListComplianceItems(context.Context, *ListComplianceItemsInput, ...func(*Options)) (*ListComplianceItemsOutput, error)
-}
-
-var _ ListComplianceItemsAPIClient = (*Client)(nil)
 
 // ListComplianceItemsPaginatorOptions is the paginator options for
 // ListComplianceItems
@@ -219,6 +222,9 @@ func (p *ListComplianceItemsPaginator) NextPage(ctx context.Context, optFns ...f
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.ListComplianceItems(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -238,10 +244,10 @@ func (p *ListComplianceItemsPaginator) NextPage(ctx context.Context, optFns ...f
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opListComplianceItems(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ListComplianceItems",
-	}
+// ListComplianceItemsAPIClient is a client that implements the
+// ListComplianceItems operation.
+type ListComplianceItemsAPIClient interface {
+	ListComplianceItems(context.Context, *ListComplianceItemsInput, ...func(*Options)) (*ListComplianceItemsOutput, error)
 }
+
+var _ ListComplianceItemsAPIClient = (*Client)(nil)

@@ -4,12 +4,10 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Describes the specified Amazon Web Services Systems Manager document (SSM
@@ -33,6 +31,9 @@ type DescribeDocumentInput struct {
 
 	// The name of the SSM document.
 	//
+	// If you're calling a shared SSM document from a different Amazon Web Services
+	// account, Name is the full Amazon Resource Name (ARN) of the document.
+	//
 	// This member is required.
 	Name *string
 
@@ -48,6 +49,24 @@ type DescribeDocumentInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeDocumentInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeDocumentRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeDocumentInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.DocumentVersion != nil {
+		s.WriteString(schemas.DescribeDocumentRequest_DocumentVersion, *v.DocumentVersion)
+	}
+	if v.Name != nil {
+		s.WriteString(schemas.DescribeDocumentRequest_Name, *v.Name)
+	}
+	if v.VersionName != nil {
+		s.WriteString(schemas.DescribeDocumentRequest_VersionName, *v.VersionName)
+	}
+}
+
 type DescribeDocumentOutput struct {
 
 	// Information about the SSM document.
@@ -59,68 +78,50 @@ type DescribeDocumentOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeDocumentOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeDocumentResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeDocumentOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Document != nil {
+		s.WriteStruct(schemas.DescribeDocumentResult_Document)
+		v.Document.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *DescribeDocumentOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeDocumentResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeDocumentResult_Document:
+			v.Document = &types.DocumentDescription{}
+			return v.Document.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeDocumentMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeDocument, schemas.DescribeDocumentRequest, schemas.DescribeDocumentResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeDocument{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeDocument, schemas.DescribeDocumentRequest, schemas.DescribeDocumentResult), output: &DescribeDocumentOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDescribeDocument{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeDocument"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeDocumentValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeDocument(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -135,13 +136,8 @@ func (c *Client) addOperationDescribeDocumentMiddlewares(stack *middleware.Stack
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opDescribeDocument(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeDocument",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

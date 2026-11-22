@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Lists the commands requested by users of the Amazon Web Services account.
@@ -37,9 +36,10 @@ type ListCommandsInput struct {
 	// results.
 	Filters []types.CommandFilter
 
-	// (Optional) Lists commands issued against this managed node ID. You can't
-	// specify a managed node ID in the same command that you specify Status = Pending
-	// . This is because the command hasn't reached the managed node yet.
+	// (Optional) Lists commands issued against this managed node ID.
+	//
+	// You can't specify a managed node ID in the same command that you specify Status
+	// = Pending . This is because the command hasn't reached the managed node yet.
 	InstanceId *string
 
 	// (Optional) The maximum number of items to return for this call. The call also
@@ -52,6 +52,30 @@ type ListCommandsInput struct {
 	NextToken *string
 
 	noSmithyDocumentSerde
+}
+
+func (v *ListCommandsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListCommandsRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListCommandsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.CommandId != nil {
+		s.WriteString(schemas.ListCommandsRequest_CommandId, *v.CommandId)
+	}
+	if v.Filters != nil {
+		serializeCommandFilterList(s, schemas.ListCommandsRequest_Filters, v.Filters)
+	}
+	if v.InstanceId != nil {
+		s.WriteString(schemas.ListCommandsRequest_InstanceId, *v.InstanceId)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.ListCommandsRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListCommandsRequest_NextToken, *v.NextToken)
+	}
 }
 
 type ListCommandsOutput struct {
@@ -69,68 +93,53 @@ type ListCommandsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListCommandsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListCommandsResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListCommandsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Commands != nil {
+		serializeCommandList(s, schemas.ListCommandsResult_Commands, v.Commands)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListCommandsResult_NextToken, *v.NextToken)
+	}
+}
+func (v *ListCommandsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListCommandsResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListCommandsResult_Commands:
+			return deserializeCommandList(d, schemas.ListCommandsResult_Commands, &v.Commands)
+		case schemas.ListCommandsResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ListCommandsResult_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListCommandsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListCommands, schemas.ListCommandsRequest, schemas.ListCommandsResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpListCommands{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListCommands, schemas.ListCommandsRequest, schemas.ListCommandsResult), output: &ListCommandsOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpListCommands{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ListCommands"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListCommandsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opListCommands(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -145,15 +154,11 @@ func (c *Client) addOperationListCommandsMiddlewares(stack *middleware.Stack, op
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// ListCommandsAPIClient is a client that implements the ListCommands operation.
-type ListCommandsAPIClient interface {
-	ListCommands(context.Context, *ListCommandsInput, ...func(*Options)) (*ListCommandsOutput, error)
-}
-
-var _ ListCommandsAPIClient = (*Client)(nil)
 
 // ListCommandsPaginatorOptions is the paginator options for ListCommands
 type ListCommandsPaginatorOptions struct {
@@ -220,6 +225,9 @@ func (p *ListCommandsPaginator) NextPage(ctx context.Context, optFns ...func(*Op
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.ListCommands(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -239,10 +247,9 @@ func (p *ListCommandsPaginator) NextPage(ctx context.Context, optFns ...func(*Op
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opListCommands(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ListCommands",
-	}
+// ListCommandsAPIClient is a client that implements the ListCommands operation.
+type ListCommandsAPIClient interface {
+	ListCommands(context.Context, *ListCommandsInput, ...func(*Options)) (*ListCommandsOutput, error)
 }
+
+var _ ListCommandsAPIClient = (*Client)(nil)

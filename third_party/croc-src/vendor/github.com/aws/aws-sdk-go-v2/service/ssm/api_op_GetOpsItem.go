@@ -4,23 +4,23 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Get information about an OpsItem by using the ID. You must have permission in
 // Identity and Access Management (IAM) to view information about an OpsItem. For
-// more information, see Set up OpsCenter (https://docs.aws.amazon.com/systems-manager/latest/userguide/OpsCenter-setup.html)
-// in the Amazon Web Services Systems Manager User Guide. Operations engineers and
-// IT professionals use Amazon Web Services Systems Manager OpsCenter to view,
-// investigate, and remediate operational issues impacting the performance and
-// health of their Amazon Web Services resources. For more information, see
-// OpsCenter (https://docs.aws.amazon.com/systems-manager/latest/userguide/OpsCenter.html)
-// in the Amazon Web Services Systems Manager User Guide.
+// more information, see [Set up OpsCenter]in the Amazon Web Services Systems Manager User Guide.
+//
+// Operations engineers and IT professionals use Amazon Web Services Systems
+// Manager OpsCenter to view, investigate, and remediate operational issues
+// impacting the performance and health of their Amazon Web Services resources. For
+// more information, see [Amazon Web Services Systems Manager OpsCenter]in the Amazon Web Services Systems Manager User Guide.
+//
+// [Amazon Web Services Systems Manager OpsCenter]: https://docs.aws.amazon.com/systems-manager/latest/userguide/OpsCenter.html
+// [Set up OpsCenter]: https://docs.aws.amazon.com/systems-manager/latest/userguide/OpsCenter-setup.html
 func (c *Client) GetOpsItem(ctx context.Context, params *GetOpsItemInput, optFns ...func(*Options)) (*GetOpsItemOutput, error) {
 	if params == nil {
 		params = &GetOpsItemInput{}
@@ -49,6 +49,21 @@ type GetOpsItemInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetOpsItemInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetOpsItemRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetOpsItemInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.OpsItemArn != nil {
+		s.WriteString(schemas.GetOpsItemRequest_OpsItemArn, *v.OpsItemArn)
+	}
+	if v.OpsItemId != nil {
+		s.WriteString(schemas.GetOpsItemRequest_OpsItemId, *v.OpsItemId)
+	}
+}
+
 type GetOpsItemOutput struct {
 
 	// The OpsItem.
@@ -60,68 +75,50 @@ type GetOpsItemOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetOpsItemOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetOpsItemResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetOpsItemOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.OpsItem != nil {
+		s.WriteStruct(schemas.GetOpsItemResponse_OpsItem)
+		v.OpsItem.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *GetOpsItemOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.GetOpsItemResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.GetOpsItemResponse_OpsItem:
+			v.OpsItem = &types.OpsItem{}
+			return v.OpsItem.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationGetOpsItemMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetOpsItem, schemas.GetOpsItemRequest, schemas.GetOpsItemResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpGetOpsItem{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetOpsItem, schemas.GetOpsItemRequest, schemas.GetOpsItemResponse), output: &GetOpsItemOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpGetOpsItem{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "GetOpsItem"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetOpsItemValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opGetOpsItem(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -136,13 +133,8 @@ func (c *Client) addOperationGetOpsItemMiddlewares(stack *middleware.Stack, opti
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opGetOpsItem(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "GetOpsItem",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

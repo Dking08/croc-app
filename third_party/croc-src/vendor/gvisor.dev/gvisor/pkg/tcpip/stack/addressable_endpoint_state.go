@@ -41,12 +41,10 @@ type AddressableEndpointState struct {
 	// AddressableEndpointState.mu
 	//   addressState.mu
 	mu addressableEndpointStateRWMutex `state:"nosave"`
-	// TODO(b/361075310): Enable s/r for the below fields.
-	//
 	// +checklocks:mu
-	endpoints map[tcpip.Address]*addressState `state:"nosave"`
+	endpoints map[tcpip.Address]*addressState `state:"wait"`
 	// +checklocks:mu
-	primary []*addressState `state:"nosave"`
+	primary []*addressState
 }
 
 // AddressableEndpointStateOptions contains options used to configure an
@@ -600,6 +598,11 @@ func (a *AddressableEndpointState) AcquireAssignedAddressOrMatching(localAddr tc
 		return ep
 	}
 
+	// Do not create temporary addresses while the network endpoint is disabled.
+	if !a.networkEndpoint.Enabled() {
+		return nil
+	}
+
 	// Proceed to add a new temporary endpoint.
 	addr := localAddr.WithPrefix()
 	ep, err := a.addAndAcquireAddressLocked(addr, AddressProperties{PEB: tempPEB, Temporary: true}, Temporary)
@@ -719,6 +722,32 @@ func (a *AddressableEndpointState) PermanentAddresses() []tcpip.AddressWithPrefi
 	return addrs
 }
 
+// AddressInfos implements AddressableEndpoint.
+func (a *AddressableEndpointState) AddressInfos() []AddressInfo {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	var infos []AddressInfo
+	for _, ep := range a.endpoints {
+		switch kind := ep.GetKind(); kind {
+		case Permanent, PermanentTentative:
+		case Temporary, PermanentExpired:
+			continue
+		default:
+			panic(fmt.Sprintf("address %s has unknown kind %d", ep.AddressWithPrefix(), kind))
+		}
+
+		lifetimes := ep.Lifetimes()
+		validUntil := lifetimes.ValidUntil
+		infos = append(infos, AddressInfo{
+			AddressWithPrefix: ep.AddressWithPrefix(),
+			Permanent:         !ep.Temporary() && (validUntil == (tcpip.MonotonicTime{}) || validUntil == tcpip.MonotonicTimeInfinite()),
+		})
+	}
+
+	return infos
+}
+
 // Cleanup forcefully leaves all groups and removes all permanent addresses.
 func (a *AddressableEndpointState) Cleanup() {
 	a.mu.Lock()
@@ -738,6 +767,8 @@ func (a *AddressableEndpointState) Cleanup() {
 var _ AddressEndpoint = (*addressState)(nil)
 
 // addressState holds state for an address.
+//
+// +stateify savable
 type addressState struct {
 	addressableEndpointState *AddressableEndpointState
 	addr                     tcpip.AddressWithPrefix
@@ -748,7 +779,7 @@ type addressState struct {
 	//
 	// AddressableEndpointState.mu
 	//   addressState.mu
-	mu   addressStateRWMutex
+	mu   addressStateRWMutex `state:"nosave"`
 	refs addressStateRefs
 	// +checklocks:mu
 	kind AddressKind
@@ -766,7 +797,7 @@ type addressState struct {
 	// dispatcher.
 	//
 	// +checklocks:mu
-	disp AddressDispatcher
+	disp AddressDispatcher `state:"nosave"`
 }
 
 // AddressWithPrefix implements AddressEndpoint.
@@ -820,6 +851,9 @@ func (a *addressState) remove(reason AddressRemovalReason) {
 
 // IsAssigned implements AddressEndpoint.
 func (a *addressState) IsAssigned(allowExpired bool) bool {
+	if a.addressableEndpointState.options.HiddenWhileDisabled && !a.addressableEndpointState.networkEndpoint.Enabled() {
+		return false
+	}
 	switch kind := a.GetKind(); kind {
 	case PermanentTentative:
 		return false

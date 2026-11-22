@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Views information about a specific execution of a specific association.
@@ -42,7 +41,12 @@ type DescribeAssociationExecutionTargetsInput struct {
 	ExecutionId *string
 
 	// Filters for the request. You can specify the following filters and values.
-	// Status (EQUAL) ResourceId (EQUAL) ResourceType (EQUAL)
+	//
+	// Status (EQUAL)
+	//
+	// ResourceId (EQUAL)
+	//
+	// ResourceType (EQUAL)
 	Filters []types.AssociationExecutionTargetsFilter
 
 	// The maximum number of items to return for this call. The call also returns a
@@ -53,6 +57,30 @@ type DescribeAssociationExecutionTargetsInput struct {
 	NextToken *string
 
 	noSmithyDocumentSerde
+}
+
+func (v *DescribeAssociationExecutionTargetsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeAssociationExecutionTargetsRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeAssociationExecutionTargetsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AssociationId != nil {
+		s.WriteString(schemas.DescribeAssociationExecutionTargetsRequest_AssociationId, *v.AssociationId)
+	}
+	if v.ExecutionId != nil {
+		s.WriteString(schemas.DescribeAssociationExecutionTargetsRequest_ExecutionId, *v.ExecutionId)
+	}
+	if v.Filters != nil {
+		serializeAssociationExecutionTargetsFilterList(s, schemas.DescribeAssociationExecutionTargetsRequest_Filters, v.Filters)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.DescribeAssociationExecutionTargetsRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeAssociationExecutionTargetsRequest_NextToken, *v.NextToken)
+	}
 }
 
 type DescribeAssociationExecutionTargetsOutput struct {
@@ -70,68 +98,53 @@ type DescribeAssociationExecutionTargetsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeAssociationExecutionTargetsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeAssociationExecutionTargetsResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeAssociationExecutionTargetsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AssociationExecutionTargets != nil {
+		serializeAssociationExecutionTargetsList(s, schemas.DescribeAssociationExecutionTargetsResult_AssociationExecutionTargets, v.AssociationExecutionTargets)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeAssociationExecutionTargetsResult_NextToken, *v.NextToken)
+	}
+}
+func (v *DescribeAssociationExecutionTargetsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeAssociationExecutionTargetsResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeAssociationExecutionTargetsResult_AssociationExecutionTargets:
+			return deserializeAssociationExecutionTargetsList(d, schemas.DescribeAssociationExecutionTargetsResult_AssociationExecutionTargets, &v.AssociationExecutionTargets)
+		case schemas.DescribeAssociationExecutionTargetsResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.DescribeAssociationExecutionTargetsResult_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeAssociationExecutionTargetsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeAssociationExecutionTargets, schemas.DescribeAssociationExecutionTargetsRequest, schemas.DescribeAssociationExecutionTargetsResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeAssociationExecutionTargets{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeAssociationExecutionTargets, schemas.DescribeAssociationExecutionTargetsRequest, schemas.DescribeAssociationExecutionTargetsResult), output: &DescribeAssociationExecutionTargetsOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDescribeAssociationExecutionTargets{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeAssociationExecutionTargets"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeAssociationExecutionTargetsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeAssociationExecutionTargets(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -146,16 +159,11 @@ func (c *Client) addOperationDescribeAssociationExecutionTargetsMiddlewares(stac
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribeAssociationExecutionTargetsAPIClient is a client that implements the
-// DescribeAssociationExecutionTargets operation.
-type DescribeAssociationExecutionTargetsAPIClient interface {
-	DescribeAssociationExecutionTargets(context.Context, *DescribeAssociationExecutionTargetsInput, ...func(*Options)) (*DescribeAssociationExecutionTargetsOutput, error)
-}
-
-var _ DescribeAssociationExecutionTargetsAPIClient = (*Client)(nil)
 
 // DescribeAssociationExecutionTargetsPaginatorOptions is the paginator options
 // for DescribeAssociationExecutionTargets
@@ -224,6 +232,9 @@ func (p *DescribeAssociationExecutionTargetsPaginator) NextPage(ctx context.Cont
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeAssociationExecutionTargets(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -243,10 +254,10 @@ func (p *DescribeAssociationExecutionTargetsPaginator) NextPage(ctx context.Cont
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribeAssociationExecutionTargets(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeAssociationExecutionTargets",
-	}
+// DescribeAssociationExecutionTargetsAPIClient is a client that implements the
+// DescribeAssociationExecutionTargets operation.
+type DescribeAssociationExecutionTargetsAPIClient interface {
+	DescribeAssociationExecutionTargets(context.Context, *DescribeAssociationExecutionTargetsInput, ...func(*Options)) (*DescribeAssociationExecutionTargetsOutput, error)
 }
+
+var _ DescribeAssociationExecutionTargetsAPIClient = (*Client)(nil)

@@ -5,22 +5,22 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Lists your resource data sync configurations. Includes information about the
 // last time a sync attempted to start, the last sync status, and the last time a
-// sync successfully completed. The number of sync configurations might be too
-// large to return using a single call to ListResourceDataSync . You can limit the
-// number of sync configurations returned by using the MaxResults parameter. To
-// determine whether there are more sync configurations to list, check the value of
-// NextToken in the output. If there are more sync configurations to list, you can
-// request them by specifying the NextToken returned in the call to the parameter
-// of a subsequent call.
+// sync successfully completed.
+//
+// The number of sync configurations might be too large to return using a single
+// call to ListResourceDataSync . You can limit the number of sync configurations
+// returned by using the MaxResults parameter. To determine whether there are more
+// sync configurations to list, check the value of NextToken in the output. If
+// there are more sync configurations to list, you can request them by specifying
+// the NextToken returned in the call to the parameter of a subsequent call.
 func (c *Client) ListResourceDataSync(ctx context.Context, params *ListResourceDataSyncInput, optFns ...func(*Options)) (*ListResourceDataSyncOutput, error) {
 	if params == nil {
 		params = &ListResourceDataSyncInput{}
@@ -54,6 +54,24 @@ type ListResourceDataSyncInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListResourceDataSyncInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListResourceDataSyncRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListResourceDataSyncInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.ListResourceDataSyncRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListResourceDataSyncRequest_NextToken, *v.NextToken)
+	}
+	if v.SyncType != nil {
+		s.WriteString(schemas.ListResourceDataSyncRequest_SyncType, *v.SyncType)
+	}
+}
+
 type ListResourceDataSyncOutput struct {
 
 	// The token for the next set of items to return. Use this token to get the next
@@ -69,65 +87,50 @@ type ListResourceDataSyncOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListResourceDataSyncOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListResourceDataSyncResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListResourceDataSyncOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListResourceDataSyncResult_NextToken, *v.NextToken)
+	}
+	if v.ResourceDataSyncItems != nil {
+		serializeResourceDataSyncItemList(s, schemas.ListResourceDataSyncResult_ResourceDataSyncItems, v.ResourceDataSyncItems)
+	}
+}
+func (v *ListResourceDataSyncOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListResourceDataSyncResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListResourceDataSyncResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ListResourceDataSyncResult_NextToken, v.NextToken)
+		case schemas.ListResourceDataSyncResult_ResourceDataSyncItems:
+			return deserializeResourceDataSyncItemList(d, schemas.ListResourceDataSyncResult_ResourceDataSyncItems, &v.ResourceDataSyncItems)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListResourceDataSyncMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListResourceDataSync, schemas.ListResourceDataSyncRequest, schemas.ListResourceDataSyncResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpListResourceDataSync{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListResourceDataSync, schemas.ListResourceDataSyncRequest, schemas.ListResourceDataSyncResult), output: &ListResourceDataSyncOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpListResourceDataSync{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ListResourceDataSync"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opListResourceDataSync(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -142,16 +145,11 @@ func (c *Client) addOperationListResourceDataSyncMiddlewares(stack *middleware.S
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// ListResourceDataSyncAPIClient is a client that implements the
-// ListResourceDataSync operation.
-type ListResourceDataSyncAPIClient interface {
-	ListResourceDataSync(context.Context, *ListResourceDataSyncInput, ...func(*Options)) (*ListResourceDataSyncOutput, error)
-}
-
-var _ ListResourceDataSyncAPIClient = (*Client)(nil)
 
 // ListResourceDataSyncPaginatorOptions is the paginator options for
 // ListResourceDataSync
@@ -218,6 +216,9 @@ func (p *ListResourceDataSyncPaginator) NextPage(ctx context.Context, optFns ...
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.ListResourceDataSync(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -237,10 +238,10 @@ func (p *ListResourceDataSyncPaginator) NextPage(ctx context.Context, optFns ...
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opListResourceDataSync(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ListResourceDataSync",
-	}
+// ListResourceDataSyncAPIClient is a client that implements the
+// ListResourceDataSync operation.
+type ListResourceDataSyncAPIClient interface {
+	ListResourceDataSync(context.Context, *ListResourceDataSyncInput, ...func(*Options)) (*ListResourceDataSyncOutput, error)
 }
+
+var _ ListResourceDataSyncAPIClient = (*Client)(nil)

@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Delete a custom inventory type or the data associated with a custom Inventory
@@ -51,14 +50,38 @@ type DeleteInventoryInput struct {
 	// Use the SchemaDeleteOption to delete a custom inventory type (schema). If you
 	// don't choose this option, the system only deletes existing inventory data
 	// associated with the custom inventory type. Choose one of the following options:
+	//
 	// DisableSchema: If you choose this option, the system ignores all inventory data
 	// for the specified version, and any earlier versions. To enable this schema
 	// again, you must call the PutInventory operation for a version greater than the
-	// disabled version. DeleteSchema: This option deletes the specified custom type
-	// from the Inventory service. You can recreate the schema later, if you want.
+	// disabled version.
+	//
+	// DeleteSchema: This option deletes the specified custom type from the Inventory
+	// service. You can recreate the schema later, if you want.
 	SchemaDeleteOption types.InventorySchemaDeleteOption
 
 	noSmithyDocumentSerde
+}
+
+func (v *DeleteInventoryInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DeleteInventoryRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DeleteInventoryInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ClientToken != nil {
+		s.WriteString(schemas.DeleteInventoryRequest_ClientToken, *v.ClientToken)
+	}
+	if v.DryRun != false {
+		s.WriteBool(schemas.DeleteInventoryRequest_DryRun, v.DryRun)
+	}
+	if v.SchemaDeleteOption != "" {
+		s.WriteString(schemas.DeleteInventoryRequest_SchemaDeleteOption, string(v.SchemaDeleteOption))
+	}
+	if v.TypeName != nil {
+		s.WriteString(schemas.DeleteInventoryRequest_TypeName, *v.TypeName)
+	}
 }
 
 type DeleteInventoryOutput struct {
@@ -69,9 +92,10 @@ type DeleteInventoryOutput struct {
 	// begin other operations.
 	DeletionId *string
 
-	// A summary of the delete operation. For more information about this summary, see
-	// Deleting custom inventory (https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-inventory-custom.html#sysman-inventory-delete-summary)
+	// A summary of the delete operation. For more information about this summary, see [Deleting custom inventory]
 	// in the Amazon Web Services Systems Manager User Guide.
+	//
+	// [Deleting custom inventory]: https://docs.aws.amazon.com/systems-manager/latest/userguide/inventory-custom.html#delete-custom-inventory-summary
 	DeletionSummary *types.InventoryDeletionSummary
 
 	// The name of the inventory data type specified in the request.
@@ -83,71 +107,65 @@ type DeleteInventoryOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DeleteInventoryOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DeleteInventoryResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DeleteInventoryOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.DeletionId != nil {
+		s.WriteString(schemas.DeleteInventoryResult_DeletionId, *v.DeletionId)
+	}
+	if v.DeletionSummary != nil {
+		s.WriteStruct(schemas.DeleteInventoryResult_DeletionSummary)
+		v.DeletionSummary.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.TypeName != nil {
+		s.WriteString(schemas.DeleteInventoryResult_TypeName, *v.TypeName)
+	}
+}
+func (v *DeleteInventoryOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DeleteInventoryResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DeleteInventoryResult_DeletionId:
+			v.DeletionId = new(string)
+			return d.ReadString(schemas.DeleteInventoryResult_DeletionId, v.DeletionId)
+		case schemas.DeleteInventoryResult_DeletionSummary:
+			v.DeletionSummary = &types.InventoryDeletionSummary{}
+			return v.DeletionSummary.Deserialize(d)
+		case schemas.DeleteInventoryResult_TypeName:
+			v.TypeName = new(string)
+			return d.ReadString(schemas.DeleteInventoryResult_TypeName, v.TypeName)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDeleteInventoryMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DeleteInventory, schemas.DeleteInventoryRequest, schemas.DeleteInventoryResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDeleteInventory{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DeleteInventory, schemas.DeleteInventoryRequest, schemas.DeleteInventoryResult), output: &DeleteInventoryOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDeleteInventory{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DeleteInventory"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addIdempotencyToken_opDeleteInventoryMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDeleteInventoryValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDeleteInventory(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -160,6 +178,9 @@ func (c *Client) addOperationDeleteInventoryMiddlewares(stack *middleware.Stack,
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -196,12 +217,4 @@ func (m *idempotencyToken_initializeOpDeleteInventory) HandleInitialize(ctx cont
 }
 func addIdempotencyToken_opDeleteInventoryMiddleware(stack *middleware.Stack, cfg Options) error {
 	return stack.Initialize.Add(&idempotencyToken_initializeOpDeleteInventory{tokenProvider: cfg.IdempotencyTokenProvider}, middleware.Before)
-}
-
-func newServiceMetadataMiddleware_opDeleteInventory(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DeleteInventory",
-	}
 }

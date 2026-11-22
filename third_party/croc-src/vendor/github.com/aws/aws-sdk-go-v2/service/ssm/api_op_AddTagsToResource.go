@@ -4,12 +4,10 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Adds or overwrites one or more tags for the specified resource. Tags are
@@ -20,22 +18,32 @@ import (
 // value, both of which you define. For example, you could define a set of tags for
 // your account's managed nodes that helps you track each node's owner and stack
 // level. For example:
+//
 //   - Key=Owner,Value=DbAdmin
+//
 //   - Key=Owner,Value=SysAdmin
+//
 //   - Key=Owner,Value=Dev
+//
 //   - Key=Stack,Value=Production
+//
 //   - Key=Stack,Value=Pre-Production
+//
 //   - Key=Stack,Value=Test
 //
 // Most resources can have a maximum of 50 tags. Automations can have a maximum of
-// 5 tags. We recommend that you devise a set of tag keys that meets your needs for
-// each resource type. Using a consistent set of tag keys makes it easier for you
-// to manage your resources. You can search and filter the resources based on the
-// tags you add. Tags don't have any semantic meaning to and are interpreted
-// strictly as a string of characters. For more information about using tags with
-// Amazon Elastic Compute Cloud (Amazon EC2) instances, see Tagging your Amazon
-// EC2 resources (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html)
-// in the Amazon EC2 User Guide.
+// 5 tags.
+//
+// We recommend that you devise a set of tag keys that meets your needs for each
+// resource type. Using a consistent set of tag keys makes it easier for you to
+// manage your resources. You can search and filter the resources based on the tags
+// you add. Tags don't have any semantic meaning to and are interpreted strictly as
+// a string of characters.
+//
+// For more information about using tags with Amazon Elastic Compute Cloud (Amazon
+// EC2) instances, see [Tag your Amazon EC2 resources]in the Amazon EC2 User Guide.
+//
+// [Tag your Amazon EC2 resources]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html
 func (c *Client) AddTagsToResource(ctx context.Context, params *AddTagsToResourceInput, optFns ...func(*Options)) (*AddTagsToResourceOutput, error) {
 	if params == nil {
 		params = &AddTagsToResourceInput{}
@@ -53,39 +61,70 @@ func (c *Client) AddTagsToResource(ctx context.Context, params *AddTagsToResourc
 
 type AddTagsToResourceInput struct {
 
-	// The resource ID you want to tag. Use the ID of the resource. Here are some
-	// examples: MaintenanceWindow : mw-012345abcde PatchBaseline : pb-012345abcde
-	// Automation : example-c160-4567-8519-012345abcde OpsMetadata object: ResourceID
-	// for tagging is created from the Amazon Resource Name (ARN) for the object.
-	// Specifically, ResourceID is created from the strings that come after the word
-	// opsmetadata in the ARN. For example, an OpsMetadata object with an ARN of
+	// The resource ID you want to tag.
+	//
+	// Use the ID of the resource. Here are some examples:
+	//
+	// MaintenanceWindow : mw-012345abcde
+	//
+	// PatchBaseline : pb-012345abcde
+	//
+	// Automation : example-c160-4567-8519-012345abcde
+	//
+	// OpsMetadata object: ResourceID for tagging is created from the Amazon Resource
+	// Name (ARN) for the object. Specifically, ResourceID is created from the strings
+	// that come after the word opsmetadata in the ARN. For example, an OpsMetadata
+	// object with an ARN of
 	// arn:aws:ssm:us-east-2:1234567890:opsmetadata/aws/ssm/MyGroup/appmanager has a
 	// ResourceID of either aws/ssm/MyGroup/appmanager or /aws/ssm/MyGroup/appmanager .
+	//
 	// For the Document and Parameter values, use the name of the resource. If you're
 	// tagging a shared document, you must use the full ARN of the document.
-	// ManagedInstance : mi-012345abcde The ManagedInstance type for this API
-	// operation is only for on-premises managed nodes. You must specify the name of
-	// the managed node in the following format: mi-ID_number . For example,
-	// mi-1a2b3c4d5e6f .
+	//
+	// ManagedInstance : mi-012345abcde
+	//
+	// The ManagedInstance type for this API operation is only for on-premises managed
+	// nodes. You must specify the name of the managed node in the following format:
+	// mi-ID_number . For example, mi-1a2b3c4d5e6f .
 	//
 	// This member is required.
 	ResourceId *string
 
-	// Specifies the type of resource you are tagging. The ManagedInstance type for
-	// this API operation is for on-premises managed nodes. You must specify the name
-	// of the managed node in the following format: mi-ID_number . For example,
-	// mi-1a2b3c4d5e6f .
+	// Specifies the type of resource you are tagging.
+	//
+	// The ManagedInstance type for this API operation is for on-premises managed
+	// nodes. You must specify the name of the managed node in the following format:
+	// mi-ID_number . For example, mi-1a2b3c4d5e6f .
 	//
 	// This member is required.
 	ResourceType types.ResourceTypeForTagging
 
-	// One or more tags. The value parameter is required. Don't enter personally
-	// identifiable information in this field.
+	// One or more tags. The value parameter is required.
+	//
+	// Don't enter personally identifiable information in this field.
 	//
 	// This member is required.
 	Tags []types.Tag
 
 	noSmithyDocumentSerde
+}
+
+func (v *AddTagsToResourceInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.AddTagsToResourceRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *AddTagsToResourceInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ResourceId != nil {
+		s.WriteString(schemas.AddTagsToResourceRequest_ResourceId, *v.ResourceId)
+	}
+	if v.ResourceType != "" {
+		s.WriteString(schemas.AddTagsToResourceRequest_ResourceType, string(v.ResourceType))
+	}
+	if v.Tags != nil {
+		serializeTagList(s, schemas.AddTagsToResourceRequest_Tags, v.Tags)
+	}
 }
 
 type AddTagsToResourceOutput struct {
@@ -95,68 +134,42 @@ type AddTagsToResourceOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *AddTagsToResourceOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.AddTagsToResourceResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *AddTagsToResourceOutput) SerializeMembers(s smithy.ShapeSerializer) {
+}
+func (v *AddTagsToResourceOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.AddTagsToResourceResult, func(s *smithy.Schema) error {
+		switch s {
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationAddTagsToResourceMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.AddTagsToResource, schemas.AddTagsToResourceRequest, schemas.AddTagsToResourceResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpAddTagsToResource{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.AddTagsToResource, schemas.AddTagsToResourceRequest, schemas.AddTagsToResourceResult), output: &AddTagsToResourceOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpAddTagsToResource{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "AddTagsToResource"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpAddTagsToResourceValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opAddTagsToResource(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -171,13 +184,8 @@ func (c *Client) addOperationAddTagsToResourceMiddlewares(stack *middleware.Stac
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opAddTagsToResource(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "AddTagsToResource",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

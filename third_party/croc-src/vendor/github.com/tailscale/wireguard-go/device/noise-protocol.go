@@ -384,7 +384,7 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation, endpoint 
 	}
 
 	peer := device.LookupPeer(peerPK)
-	if peer == nil || !peer.isRunning.Load() {
+	if peer == nil || !peer.runningState.isRunning.Load() {
 		return nil
 	}
 
@@ -521,9 +521,9 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	return &msg, nil
 }
 
-func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
+func (device *Device) ConsumeMessageResponse(msg *MessageResponse) (peer *Peer, duplicate bool) {
 	if msg.Type != MessageResponseType {
-		return nil
+		return nil, false
 	}
 
 	// lookup handshake by receiver
@@ -531,7 +531,7 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 	lookup := device.indexTable.Lookup(msg.Receiver)
 	handshake := lookup.handshake
 	if handshake == nil {
-		return nil
+		return nil, lookup.keypair != nil
 	}
 
 	var (
@@ -601,24 +601,32 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 	}()
 
 	if !ok {
-		return nil
+		return nil, false
 	}
 
 	// update handshake state
 
 	handshake.mutex.Lock()
 
-	handshake.hash = hash
-	handshake.chainKey = chainKey
-	handshake.remoteIndex = msg.Sender
-	handshake.state = handshakeResponseConsumed
+	peer = lookup.peer
+	// We race with the duplicate response that already advanced the handshake,
+	// and with a retry initiation re-setting it to a new index.
+	if handshake.state == handshakeInitiationCreated && handshake.localIndex == msg.Receiver {
+		handshake.hash = hash
+		handshake.chainKey = chainKey
+		handshake.remoteIndex = msg.Sender
+		handshake.state = handshakeResponseConsumed
+	} else {
+		peer = nil
+		duplicate = true
+	}
 
 	handshake.mutex.Unlock()
 
 	setZero(hash[:])
 	setZero(chainKey[:])
 
-	return lookup.peer
+	return peer, duplicate
 }
 
 /* Derives a new keypair from the current handshake state

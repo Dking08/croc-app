@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // An invocation is copy of a command sent to a specific managed node. A command
@@ -60,6 +59,33 @@ type ListCommandInvocationsInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListCommandInvocationsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListCommandInvocationsRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListCommandInvocationsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.CommandId != nil {
+		s.WriteString(schemas.ListCommandInvocationsRequest_CommandId, *v.CommandId)
+	}
+	if v.Details != false {
+		s.WriteBool(schemas.ListCommandInvocationsRequest_Details, v.Details)
+	}
+	if v.Filters != nil {
+		serializeCommandFilterList(s, schemas.ListCommandInvocationsRequest_Filters, v.Filters)
+	}
+	if v.InstanceId != nil {
+		s.WriteString(schemas.ListCommandInvocationsRequest_InstanceId, *v.InstanceId)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.ListCommandInvocationsRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListCommandInvocationsRequest_NextToken, *v.NextToken)
+	}
+}
+
 type ListCommandInvocationsOutput struct {
 
 	// (Optional) A list of all invocations.
@@ -75,68 +101,53 @@ type ListCommandInvocationsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListCommandInvocationsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListCommandInvocationsResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListCommandInvocationsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.CommandInvocations != nil {
+		serializeCommandInvocationList(s, schemas.ListCommandInvocationsResult_CommandInvocations, v.CommandInvocations)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListCommandInvocationsResult_NextToken, *v.NextToken)
+	}
+}
+func (v *ListCommandInvocationsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListCommandInvocationsResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListCommandInvocationsResult_CommandInvocations:
+			return deserializeCommandInvocationList(d, schemas.ListCommandInvocationsResult_CommandInvocations, &v.CommandInvocations)
+		case schemas.ListCommandInvocationsResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ListCommandInvocationsResult_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListCommandInvocationsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListCommandInvocations, schemas.ListCommandInvocationsRequest, schemas.ListCommandInvocationsResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpListCommandInvocations{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListCommandInvocations, schemas.ListCommandInvocationsRequest, schemas.ListCommandInvocationsResult), output: &ListCommandInvocationsOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpListCommandInvocations{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ListCommandInvocations"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListCommandInvocationsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opListCommandInvocations(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -151,16 +162,11 @@ func (c *Client) addOperationListCommandInvocationsMiddlewares(stack *middleware
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// ListCommandInvocationsAPIClient is a client that implements the
-// ListCommandInvocations operation.
-type ListCommandInvocationsAPIClient interface {
-	ListCommandInvocations(context.Context, *ListCommandInvocationsInput, ...func(*Options)) (*ListCommandInvocationsOutput, error)
-}
-
-var _ ListCommandInvocationsAPIClient = (*Client)(nil)
 
 // ListCommandInvocationsPaginatorOptions is the paginator options for
 // ListCommandInvocations
@@ -228,6 +234,9 @@ func (p *ListCommandInvocationsPaginator) NextPage(ctx context.Context, optFns .
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.ListCommandInvocations(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -247,10 +256,10 @@ func (p *ListCommandInvocationsPaginator) NextPage(ctx context.Context, optFns .
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opListCommandInvocations(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ListCommandInvocations",
-	}
+// ListCommandInvocationsAPIClient is a client that implements the
+// ListCommandInvocations operation.
+type ListCommandInvocationsAPIClient interface {
+	ListCommandInvocations(context.Context, *ListCommandInvocationsInput, ...func(*Options)) (*ListCommandInvocationsOutput, error)
 }
+
+var _ ListCommandInvocationsAPIClient = (*Client)(nil)

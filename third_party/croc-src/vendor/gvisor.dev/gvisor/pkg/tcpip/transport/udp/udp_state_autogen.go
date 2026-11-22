@@ -8,11 +8,11 @@ import (
 	"gvisor.dev/gvisor/pkg/state"
 )
 
-func (p *udpPacket) StateTypeName() string {
+func (u *udpPacket) StateTypeName() string {
 	return "pkg/tcpip/transport/udp.udpPacket"
 }
 
-func (p *udpPacket) StateFields() []string {
+func (u *udpPacket) StateFields() []string {
 	return []string{
 		"udpPacketEntry",
 		"netProto",
@@ -26,37 +26,35 @@ func (p *udpPacket) StateFields() []string {
 	}
 }
 
-func (p *udpPacket) beforeSave() {}
+func (u *udpPacket) beforeSave() {}
 
 // +checklocksignore
-func (p *udpPacket) StateSave(stateSinkObject state.Sink) {
-	p.beforeSave()
-	receivedAtValue := p.saveReceivedAt()
-	_ = (int64)(receivedAtValue)
-	stateSinkObject.SaveValue(6, receivedAtValue)
-	stateSinkObject.Save(0, &p.udpPacketEntry)
-	stateSinkObject.Save(1, &p.netProto)
-	stateSinkObject.Save(2, &p.senderAddress)
-	stateSinkObject.Save(3, &p.destinationAddress)
-	stateSinkObject.Save(4, &p.packetInfo)
-	stateSinkObject.Save(5, &p.pkt)
-	stateSinkObject.Save(7, &p.tosOrTClass)
-	stateSinkObject.Save(8, &p.ttlOrHopLimit)
+func (u *udpPacket) StateSave(stateSinkObject state.Sink) {
+	u.beforeSave()
+	stateSinkObject.Save(0, &u.udpPacketEntry)
+	stateSinkObject.Save(1, &u.netProto)
+	stateSinkObject.Save(2, &u.senderAddress)
+	stateSinkObject.Save(3, &u.destinationAddress)
+	stateSinkObject.Save(4, &u.packetInfo)
+	stateSinkObject.Save(5, &u.pkt)
+	stateSinkObject.Save(6, &u.receivedAt)
+	stateSinkObject.SaveUint8(7, &u.tosOrTClass)
+	stateSinkObject.SaveUint8(8, &u.ttlOrHopLimit)
 }
 
-func (p *udpPacket) afterLoad(context.Context) {}
+func (u *udpPacket) afterLoad(context.Context) {}
 
 // +checklocksignore
-func (p *udpPacket) StateLoad(ctx context.Context, stateSourceObject state.Source) {
-	stateSourceObject.Load(0, &p.udpPacketEntry)
-	stateSourceObject.Load(1, &p.netProto)
-	stateSourceObject.Load(2, &p.senderAddress)
-	stateSourceObject.Load(3, &p.destinationAddress)
-	stateSourceObject.Load(4, &p.packetInfo)
-	stateSourceObject.Load(5, &p.pkt)
-	stateSourceObject.Load(7, &p.tosOrTClass)
-	stateSourceObject.Load(8, &p.ttlOrHopLimit)
-	stateSourceObject.LoadValue(6, new(int64), func(y any) { p.loadReceivedAt(ctx, y.(int64)) })
+func (u *udpPacket) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+	stateSourceObject.Load(0, &u.udpPacketEntry)
+	stateSourceObject.Load(1, &u.netProto)
+	stateSourceObject.Load(2, &u.senderAddress)
+	stateSourceObject.Load(3, &u.destinationAddress)
+	stateSourceObject.Load(4, &u.packetInfo)
+	stateSourceObject.Load(5, &u.pkt)
+	stateSourceObject.Load(6, &u.receivedAt)
+	stateSourceObject.LoadUint8(7, &u.tosOrTClass)
+	stateSourceObject.LoadUint8(8, &u.ttlOrHopLimit)
 }
 
 func (e *endpoint) StateTypeName() string {
@@ -96,19 +94,19 @@ func (e *endpoint) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(3, &e.net)
 	stateSinkObject.Save(4, &e.stats)
 	stateSinkObject.Save(5, &e.ops)
-	stateSinkObject.Save(6, &e.rcvReady)
+	stateSinkObject.SaveBool(6, &e.rcvReady)
 	stateSinkObject.Save(7, &e.rcvList)
-	stateSinkObject.Save(8, &e.rcvBufSize)
-	stateSinkObject.Save(9, &e.rcvClosed)
+	stateSinkObject.SaveInt(8, &e.rcvBufSize)
+	stateSinkObject.SaveBool(9, &e.rcvClosed)
 	stateSinkObject.Save(10, &e.lastError)
 	stateSinkObject.Save(11, &e.portFlags)
 	stateSinkObject.Save(12, &e.boundBindToDevice)
 	stateSinkObject.Save(13, &e.boundPortFlags)
-	stateSinkObject.Save(14, &e.readShutdown)
+	stateSinkObject.SaveBool(14, &e.readShutdown)
 	stateSinkObject.Save(15, &e.effectiveNetProtos)
-	stateSinkObject.Save(16, &e.frozen)
-	stateSinkObject.Save(17, &e.localPort)
-	stateSinkObject.Save(18, &e.remotePort)
+	stateSinkObject.SaveBool(16, &e.frozen)
+	stateSinkObject.SaveUint16(17, &e.localPort)
+	stateSinkObject.SaveUint16(18, &e.remotePort)
 }
 
 // +checklocksignore
@@ -119,20 +117,25 @@ func (e *endpoint) StateLoad(ctx context.Context, stateSourceObject state.Source
 	stateSourceObject.Load(3, &e.net)
 	stateSourceObject.Load(4, &e.stats)
 	stateSourceObject.Load(5, &e.ops)
-	stateSourceObject.Load(6, &e.rcvReady)
+	stateSourceObject.LoadBool(6, &e.rcvReady)
 	stateSourceObject.Load(7, &e.rcvList)
-	stateSourceObject.Load(8, &e.rcvBufSize)
-	stateSourceObject.Load(9, &e.rcvClosed)
+	stateSourceObject.LoadInt(8, &e.rcvBufSize)
+	stateSourceObject.LoadBool(9, &e.rcvClosed)
 	stateSourceObject.Load(10, &e.lastError)
 	stateSourceObject.Load(11, &e.portFlags)
 	stateSourceObject.Load(12, &e.boundBindToDevice)
 	stateSourceObject.Load(13, &e.boundPortFlags)
-	stateSourceObject.Load(14, &e.readShutdown)
+	stateSourceObject.LoadBool(14, &e.readShutdown)
 	stateSourceObject.Load(15, &e.effectiveNetProtos)
-	stateSourceObject.Load(16, &e.frozen)
-	stateSourceObject.Load(17, &e.localPort)
-	stateSourceObject.Load(18, &e.remotePort)
-	stateSourceObject.AfterLoad(func() { e.afterLoad(ctx) })
+	stateSourceObject.LoadBool(16, &e.frozen)
+	stateSourceObject.LoadUint16(17, &e.localPort)
+	stateSourceObject.LoadUint16(18, &e.remotePort)
+	stateSourceObject.AfterLoadTo(e)
+}
+
+// +checklocksignore
+func (e *endpoint) StateAfterLoad(ctx context.Context) {
+	e.afterLoad(ctx)
 }
 
 func (p *protocol) StateTypeName() string {
@@ -217,9 +220,9 @@ func (e *udpPacketEntry) StateLoad(ctx context.Context, stateSourceObject state.
 }
 
 func init() {
-	state.Register((*udpPacket)(nil))
-	state.Register((*endpoint)(nil))
-	state.Register((*protocol)(nil))
-	state.Register((*udpPacketList)(nil))
-	state.Register((*udpPacketEntry)(nil))
+	state.RegisterNoHooks((*udpPacket)(nil))
+	state.RegisterStruct((*endpoint)(nil))
+	state.RegisterNoHooks((*protocol)(nil))
+	state.RegisterNoHooks((*udpPacketList)(nil))
+	state.RegisterNoHooks((*udpPacketEntry)(nil))
 }

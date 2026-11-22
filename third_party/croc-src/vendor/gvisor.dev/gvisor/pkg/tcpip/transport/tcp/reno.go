@@ -61,8 +61,9 @@ func (r *renoState) updateCongestionAvoidance(packetsAcked int) {
 	// Consume the packets in congestion avoidance mode.
 	r.s.SndCAAckCount += packetsAcked
 	if r.s.SndCAAckCount >= r.s.SndCwnd {
-		r.s.SndCwnd += r.s.SndCAAckCount / r.s.SndCwnd
-		r.s.SndCAAckCount = r.s.SndCAAckCount % r.s.SndCwnd
+		increase := r.s.SndCAAckCount / r.s.SndCwnd
+		r.s.SndCAAckCount %= r.s.SndCwnd
+		r.s.SndCwnd += increase
 	}
 }
 
@@ -118,4 +119,11 @@ func (r *renoState) HandleRTOExpired() {
 // PostRecovery implements congestionControl.PostRecovery.
 func (r *renoState) PostRecovery() {
 	// noop.
+}
+
+// HandleWindowRestart implements congestionControl.HandleWindowRestart.
+//
+// +checklocks:r.s.ep.mu
+func (r *renoState) HandleWindowRestart() {
+	r.s.SndCAAckCount = 0
 }

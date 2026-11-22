@@ -4,33 +4,46 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // A parameter label is a user-defined alias to help you manage different versions
 // of a parameter. When you modify a parameter, Amazon Web Services Systems Manager
 // automatically saves a new version and increments the version number by one. A
 // label can help you remember the purpose of a parameter when there are multiple
-// versions. Parameter labels have the following requirements and restrictions.
+// versions.
+//
+// Parameter labels have the following requirements and restrictions.
+//
 //   - A version of a parameter can have a maximum of 10 labels.
+//
 //   - You can't attach the same label to different versions of the same
 //     parameter. For example, if version 1 has the label Production, then you can't
 //     attach Production to version 2.
+//
 //   - You can move a label from one version of a parameter to another.
+//
 //   - You can't create a label when you create a new parameter. You must attach a
 //     label to a specific version of a parameter.
+//
 //   - If you no longer want to use a parameter label, then you can either delete
 //     it or move it to a different version of a parameter.
+//
 //   - A label can have a maximum of 100 characters.
+//
 //   - Labels can contain letters (case sensitive), numbers, periods (.), hyphens
 //     (-), or underscores (_).
+//
 //   - Labels can't begin with a number, " aws " or " ssm " (not case sensitive).
 //     If a label fails to meet these requirements, then the label isn't associated
 //     with a parameter and the system displays it in the list of InvalidLabels.
+//
+//   - Parameter names can't contain spaces. The service removes any spaces
+//     specified for the beginning or end of a parameter name. If the specified name
+//     for a parameter contains spaces between characters, the request fails with a
+//     ValidationException error.
 func (c *Client) LabelParameterVersion(ctx context.Context, params *LabelParameterVersionInput, optFns ...func(*Options)) (*LabelParameterVersionOutput, error) {
 	if params == nil {
 		params = &LabelParameterVersionInput{}
@@ -55,6 +68,9 @@ type LabelParameterVersionInput struct {
 
 	// The parameter name on which you want to attach one or more labels.
 	//
+	// You can't enter the Amazon Resource Name (ARN) for a parameter, only the
+	// parameter name itself.
+	//
 	// This member is required.
 	Name *string
 
@@ -66,11 +82,30 @@ type LabelParameterVersionInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *LabelParameterVersionInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.LabelParameterVersionRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *LabelParameterVersionInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Labels != nil {
+		serializeParameterLabelList(s, schemas.LabelParameterVersionRequest_Labels, v.Labels)
+	}
+	if v.Name != nil {
+		s.WriteString(schemas.LabelParameterVersionRequest_Name, *v.Name)
+	}
+	if v.ParameterVersion != nil {
+		s.WriteInt64(schemas.LabelParameterVersionRequest_ParameterVersion, *v.ParameterVersion)
+	}
+}
+
 type LabelParameterVersionOutput struct {
 
 	// The label doesn't meet the requirements. For information about parameter label
-	// requirements, see Labeling parameters (https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-paramstore-labels.html)
-	// in the Amazon Web Services Systems Manager User Guide.
+	// requirements, see [Working with parameter labels]in the Amazon Web Services Systems Manager User Guide.
+	//
+	// [Working with parameter labels]: https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-paramstore-labels.html
 	InvalidLabels []string
 
 	// The version of the parameter that has been labeled.
@@ -82,68 +117,52 @@ type LabelParameterVersionOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *LabelParameterVersionOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.LabelParameterVersionResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *LabelParameterVersionOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.InvalidLabels != nil {
+		serializeParameterLabelList(s, schemas.LabelParameterVersionResult_InvalidLabels, v.InvalidLabels)
+	}
+	if v.ParameterVersion != 0 {
+		s.WriteInt64(schemas.LabelParameterVersionResult_ParameterVersion, v.ParameterVersion)
+	}
+}
+func (v *LabelParameterVersionOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.LabelParameterVersionResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.LabelParameterVersionResult_InvalidLabels:
+			return deserializeParameterLabelList(d, schemas.LabelParameterVersionResult_InvalidLabels, &v.InvalidLabels)
+		case schemas.LabelParameterVersionResult_ParameterVersion:
+			return d.ReadInt64(schemas.LabelParameterVersionResult_ParameterVersion, &v.ParameterVersion)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationLabelParameterVersionMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.LabelParameterVersion, schemas.LabelParameterVersionRequest, schemas.LabelParameterVersionResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpLabelParameterVersion{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.LabelParameterVersion, schemas.LabelParameterVersionRequest, schemas.LabelParameterVersionResult), output: &LabelParameterVersionOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpLabelParameterVersion{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "LabelParameterVersion"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpLabelParameterVersionValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opLabelParameterVersion(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -158,13 +177,8 @@ func (c *Client) addOperationLabelParameterVersionMiddlewares(stack *middleware.
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opLabelParameterVersion(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "LabelParameterVersion",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

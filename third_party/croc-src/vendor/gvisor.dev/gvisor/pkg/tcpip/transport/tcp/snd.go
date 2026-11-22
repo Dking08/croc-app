@@ -71,6 +71,11 @@ type congestionControl interface {
 	// HandleRTOExpired is invoked when the retransmit timer expires.
 	HandleRTOExpired()
 
+	// HandleWindowRestart is invoked when the sender reduces its window
+	// after an idle period (RFC 5681 section 4.1). Linux tcp_cwnd_restart()
+	// notifies congestion control with CA_EVENT_CWND_RESTART.
+	HandleWindowRestart()
+
 	// Update is invoked when processing inbound acks. It's passed the
 	// number of packet's that were acked by the most recent cumulative
 	// acknowledgement.  rtt is the round-trip time, or is set to unknownRTT
@@ -111,6 +116,11 @@ type sender struct {
 	// The endpoint may be in FIN_WAIT1/LAST_ACK while the FIN is still
 	// queued behind blocked data; finSent guards closing ACK completions.
 	finSent bool
+
+	// smallSegmentEnd is the sequence number after the last newly sent
+	// partial-MSS segment, including a partial tail in a GSO packet. Minshall's
+	// variant of Nagle holds another small segment until this one is ACKed.
+	smallSegmentEnd seqnum.Value
 
 	// lr is the loss recovery algorithm used by the sender.
 	lr lossRecovery
@@ -280,7 +290,8 @@ func initSender(ep *Endpoint, iss, irs seqnum.Value, sndWnd seqnum.Size, mss uin
 			},
 			RTO: 1 * time.Second,
 		},
-		gso: ep.gso.Type != stack.GSONone,
+		smallSegmentEnd: iss + 1,
+		gso:             ep.gso.Type != stack.GSONone,
 		writeList: protectedWriteList{
 			set: make(map[*segment]struct{}),
 		},
@@ -434,7 +445,17 @@ func (s *sender) updateMaxPayloadSize(mtu, count int) {
 // sendAck sends an ACK segment.
 // +checklocks:s.ep.mu
 func (s *sender) sendAck() {
-	s.sendEmptySegment(header.TCPFlagAck, s.SndNxt)
+	s.sendEmptyAck(s.SndNxt, s.ep.currentSACKBlocks(header.TCPFlagAck))
+}
+
+// sendDSACK reports duplicate in the first SACK block without adding it to
+// the receiver's SACK history (RFC 2883 section 4).
+// +checklocks:s.ep.mu
+func (s *sender) sendDSACK(duplicate header.SACKBlock) {
+	var blocks [1 + MaxSACKBlocks]header.SACKBlock
+	blocks[0] = duplicate
+	n := copy(blocks[1:], s.ep.currentSACKBlocks(header.TCPFlagAck))
+	s.sendEmptyAck(s.SndNxt, blocks[:1+n])
 }
 
 // updateRTO updates the retransmit timeout when a new roud-trip time is
@@ -511,10 +532,6 @@ func (s *sender) updateRTO(rtt time.Duration) {
 // resendSegment resends the first unacknowledged segment.
 // +checklocks:s.ep.mu
 func (s *sender) resendSegment() {
-	// Don't use any segments we already sent to measure RTT as they may
-	// have been affected by packets being lost.
-	s.RTTMeasureSeqNum = s.SndNxt
-
 	// Resend the segment.
 	if seg := s.writeList.Front(); seg != nil {
 		if seg.payloadSize() > s.MaxPayloadSize {
@@ -528,6 +545,11 @@ func (s *sender) resendSegment() {
 		s.FastRecovery.HighRxt = seg.sequenceNumber.Add(seqnum.Size(seg.payloadSize())) - 1
 		s.FastRecovery.RescueRxt = seg.sequenceNumber.Add(seqnum.Size(seg.payloadSize())) - 1
 		s.sendSegment(seg)
+		// An RTO can rewind writeNext to this segment. It has now been
+		// retransmitted, so sendData must not immediately send it again.
+		if s.writeNext == seg {
+			s.updateWriteNext(seg.Next())
+		}
 		s.ep.stack.Stats().TCP.FastRetransmit.Increment()
 		s.ep.stats.SendErrors.FastRetransmit.Increment()
 
@@ -599,8 +621,7 @@ func (s *sender) retransmitTimerExpired() tcpip.Error {
 		return &tcpip.ErrTimeout{}
 	}
 
-	// Set new timeout. The timer will be restarted by the call to sendData
-	// below.
+	// Back off the retransmission or zero-window probe timer.
 	s.RTO *= 2
 	// Cap the RTO as per RFC 1122 4.2.3.1, RFC 6298 5.5
 	if s.RTO > s.maxRTO {
@@ -610,6 +631,13 @@ func (s *sender) retransmitTimerExpired() tcpip.Error {
 	// Cap RTO to remaining time.
 	if s.RTO > remaining {
 		s.RTO = remaining
+	}
+
+	if s.zeroWindowProbing && s.SndUna == s.SndNxt {
+		// The peer has acknowledged all transmitted data. Probe its window
+		// without treating the unsent data as a congestion loss.
+		s.sendZeroWindowProbe()
+		return nil
 	}
 
 	// See: https://tools.ietf.org/html/rfc6582#section-3.2 Step 4.
@@ -841,7 +869,8 @@ func (s *sender) NextSeg(nextSegHint *segment) (nextSeg, hint *segment, rescueRt
 func (s *sender) maybeSendSegment(seg *segment, limit int, end seqnum.Value) (sent bool) {
 	// We abuse the flags field to determine if we have already
 	// assigned a sequence number to this segment.
-	if !s.isAssignedSequenceNumber(seg) {
+	newData := !s.isAssignedSequenceNumber(seg)
+	if newData {
 		// Merge segments if allowed.
 		if seg.payloadSize() != 0 {
 			available := int(s.SndNxt.Size(end))
@@ -869,27 +898,29 @@ func (s *sender) maybeSendSegment(seg *segment, limit int, end seqnum.Value) (se
 				s.writeList.Remove(nSeg)
 				nSeg.DecRef()
 			}
-			if !nextTooBig && seg.payloadSize() < available {
-				// Segment is not full.
-				if s.Outstanding > 0 && s.ep.ops.GetDelayOption() {
-					// Nagle's algorithm. From Wikipedia:
-					//   Nagle's algorithm works by
-					//   combining a number of small
-					//   outgoing messages and sending them
-					//   all at once. Specifically, as long
-					//   as there is a sent packet for which
-					//   the sender has received no
-					//   acknowledgment, the sender should
-					//   keep buffering its output until it
-					//   has a full packet's worth of
-					//   output, thus allowing output to be
-					//   sent all at once.
-					return false
-				}
-				// With TCP_CORK, hold back until minimum of the available
-				// send space and MSS.
-				if s.ep.ops.GetCorkOption() {
-					if seg.payloadSize() < s.MaxPayloadSize {
+			if !nextTooBig {
+				nagle := s.Outstanding > 0 && s.ep.ops.GetDelayOption() &&
+					s.SndUna.LessThan(s.smallSegmentEnd) && !s.SndNxt.LessThan(s.smallSegmentEnd)
+				cork := s.ep.ops.GetCorkOption()
+				if nagle || cork {
+					// GSO can send several segments at once. Send its full-MSS
+					// prefix while retaining the partial segment for coalescing.
+					// The receive window can also cut the send budget mid-segment.
+					// https://www.rfc-editor.org/rfc/rfc9293.html#section-3.7.4
+					full := min(seg.payloadSize(), available) / s.MaxPayloadSize * s.MaxPayloadSize
+					switch {
+					case full != 0:
+						limit = min(limit, full)
+						if cork {
+							s.startCork = false
+							s.corkTimer.disable()
+						}
+					case seg.payloadSize() < available:
+						// Preserve the exception for a short segment that fills
+						// the available window, and Nagle's precedence over CORK.
+						if nagle {
+							return false
+						}
 						if !s.startCork {
 							s.startCork = true
 							// Enable the timer for
@@ -899,17 +930,13 @@ func (s *sender) maybeSendSegment(seg *segment, limit int, end seqnum.Value) (se
 						}
 						return false
 					}
-					// Disable the TCP_CORK timer.
-					s.startCork = false
-					s.corkTimer.disable()
 				}
 			}
 		}
 
-		// Assign flags. We don't do it above so that we can merge
-		// additional data if Nagle holds the segment.
+		// Window calculations need the prospective sequence number. Leave
+		// flags unset until those checks pass so deferred data can still merge.
 		seg.sequenceNumber = s.SndNxt
-		seg.flags = header.TCPFlagAck | header.TCPFlagPsh
 	}
 
 	var segEnd seqnum.Value
@@ -966,11 +993,8 @@ func (s *sender) maybeSendSegment(seg *segment, limit int, end seqnum.Value) (se
 			}
 		}
 
-		// The segment size limit is computed as a function of sender
-		// congestion window and MSS. When sender congestion window is >
-		// 1, this limit can be larger than MSS. Ensure that the
-		// currently available send space is not greater than minimum of
-		// this limit and MSS.
+		// Cap the available send space by the congestion/GSO budget and any
+		// whole-segment limit imposed above by Nagle or CORK.
 		if available > limit {
 			available = limit
 		}
@@ -982,10 +1006,18 @@ func (s *sender) maybeSendSegment(seg *segment, limit int, end seqnum.Value) (se
 			available = s.MaxPayloadSize
 		}
 
+		if newData {
+			seg.flags = header.TCPFlagAck | header.TCPFlagPsh
+		}
 		if seg.payloadSize() > available {
 			// A negative value causes splitSeg to panic anyways, so just panic
 			// earlier to get more information about the cause.
 			s.splitSeg(seg, available)
+			if newData {
+				// splitSeg also serves retransmission. Only a fresh remainder
+				// is unsent and must recheck Nagle/CORK on its next visit.
+				seg.Next().flags = 0
+			}
 		}
 
 		segEnd = seg.sequenceNumber.Add(seqnum.Size(seg.payloadSize()))
@@ -1004,6 +1036,9 @@ func (s *sender) maybeSendSegment(seg *segment, limit int, end seqnum.Value) (se
 	// retransmitting some previously sent data).
 	if s.SndNxt.LessThan(segEnd) {
 		s.SndNxt = segEnd
+		if seg.payloadSize()%s.MaxPayloadSize != 0 {
+			s.smallSegmentEnd = segEnd
+		}
 	}
 
 	return true
@@ -1035,14 +1070,16 @@ func (s *sender) sendZeroWindowProbe() {
 
 // +checklocks:s.ep.mu
 func (s *sender) enableZeroWindowProbing() {
+	// The probe shares the retransmission timer. Preserve an existing
+	// probe's deadline across writes, but rearm the timer if an ACK
+	// stopped it after acknowledging all outstanding data.
+	if !s.zeroWindowProbing || !s.resendTimer.enabled() {
+		s.resendTimer.enable(s.RTO)
+	}
 	s.zeroWindowProbing = true
-	// We piggyback the probing on the retransmit timer with the
-	// current retranmission interval, as we may start probing while
-	// segment retransmissions.
 	if s.firstRetransmittedSegXmitTime == (tcpip.MonotonicTime{}) {
 		s.firstRetransmittedSegXmitTime = s.ep.stack.Clock().NowMonotonic()
 	}
-	s.resendTimer.enable(s.RTO)
 }
 
 func (s *sender) disableZeroWindowProbing() {
@@ -1105,6 +1142,7 @@ func (s *sender) sendData() {
 	if !s.FastRecovery.Active && s.state != tcpip.RTORecovery && s.ep.stack.Clock().NowMonotonic().Sub(s.LastSendTime) > s.RTO {
 		if s.SndCwnd > InitialCwnd {
 			s.SndCwnd = InitialCwnd
+			s.cc.HandleWindowRestart()
 		}
 	}
 
@@ -1721,8 +1759,9 @@ func (s *sender) handleRcvdSegment(rcvdSeg *segment) {
 		// Clear SACK information for all acked data.
 		s.ep.scoreboard.Delete(s.SndUna)
 
-		// Detect if the sender entered recovery spuriously.
-		if s.inRecovery() {
+		// Eifel compares the ACK's echo to the retransmission time (RFC 3522, section 3.2).
+		// Like Linux, treat a zero echo as unavailable for this comparison.
+		if s.inRecovery() && s.ep.SendTSOk && rcvdSeg.parsedOptions.TS && rcvdSeg.parsedOptions.TSEcr != 0 {
 			s.detectSpuriousRecovery(hasDSACK, rcvdSeg.parsedOptions.TSEcr)
 		}
 
@@ -1812,10 +1851,14 @@ func (s *sender) handleRcvdSegment(rcvdSeg *segment) {
 // +checklocks:s.ep.mu
 func (s *sender) sendSegment(seg *segment) tcpip.Error {
 	if seg.xmitCount > 0 {
-		s.ep.stack.Stats().TCP.Retransmits.Increment()
-		s.ep.stats.SendErrors.Retransmits.Increment()
+		// Karn's algorithm excludes ambiguous RTT samples after a
+		// retransmission, including a tail loss probe (RFC 6298, section 3).
+		// Timestamp-based samples are selected separately by the ACK path.
+		s.RTTMeasureSeqNum = s.SndNxt
+		packets := uint64(s.pCount(seg, s.MaxPayloadSize))
+		s.ep.countRetransmits(packets)
 		if s.SndCwnd < s.Ssthresh {
-			s.ep.stack.Stats().TCP.SlowStartRetransmits.Increment()
+			s.ep.stack.Stats().TCP.SlowStartRetransmits.IncrementBy(packets)
 		}
 	}
 	seg.xmitTime = s.ep.stack.Clock().NowMonotonic()
@@ -1824,17 +1867,18 @@ func (s *sender) sendSegment(seg *segment) tcpip.Error {
 
 	err := s.sendSegmentFromPacketBuffer(seg.pkt, seg.flags, seg.sequenceNumber)
 
-	// Every time a packet containing data is sent (including a
-	// retransmission), if SACK is enabled and we are retransmitting data
-	// then use the conservative timer described in RFC6675 Section 6.0,
-	// otherwise follow the standard time described in RFC6298 Section 5.1.
-	if err != nil && seg.payloadSize() != 0 {
-		if s.FastRecovery.Active && seg.xmitCount > 1 && s.ep.SACKPermitted {
-			s.resendTimer.enable(s.RTO)
-		} else {
+	if seg.payloadSize() != 0 {
+		switch {
+		case err != nil:
 			if !s.resendTimer.enabled() {
 				s.resendTimer.enable(s.RTO)
 			}
+		case s.FastRecovery.Active && s.ep.SACKPermitted && seg.xmitCount > 1 && seg == s.writeList.Front():
+			// Allow a full RTO after retransmitting the oldest outstanding
+			// data (RFC 6298, section 5). Retransmitting later holes in SACK
+			// recovery must not postpone the oldest segment's deadline.
+			s.probeTimer.disable()
+			s.resendTimer.enable(s.RTO)
 		}
 	}
 
@@ -1860,12 +1904,12 @@ func (s *sender) sendSegmentFromPacketBuffer(pkt *stack.PacketBuffer, flags head
 	pkt = pkt.Clone()
 	defer pkt.DecRef()
 
-	return s.ep.sendRaw(pkt, flags, seq, rcvNxt, rcvWnd)
+	return s.ep.sendRaw(pkt, flags, seq, rcvNxt, rcvWnd, s.ep.currentSACKBlocks(flags))
 }
 
-// sendEmptySegment sends a new empty segment, flags and sequence number.
+// sendEmptyAck sends an ACK with the given sequence number and SACK blocks.
 // +checklocks:s.ep.mu
-func (s *sender) sendEmptySegment(flags header.TCPFlags, seq seqnum.Value) tcpip.Error {
+func (s *sender) sendEmptyAck(seq seqnum.Value, sackBlocks []header.SACKBlock) tcpip.Error {
 	s.LastSendTime = s.ep.stack.Clock().NowMonotonic()
 	if seq == s.RTTMeasureSeqNum {
 		s.RTTMeasureTime = s.LastSendTime
@@ -1876,7 +1920,7 @@ func (s *sender) sendEmptySegment(flags header.TCPFlags, seq seqnum.Value) tcpip
 	// Remember the max sent ack.
 	s.MaxSentAck = rcvNxt
 
-	return s.ep.sendEmptyRaw(flags, seq, rcvNxt, rcvWnd)
+	return s.ep.sendEmptyRaw(header.TCPFlagAck, seq, rcvNxt, rcvWnd, sackBlocks)
 }
 
 // maybeSendOutOfWindowAck sends an ACK if we are not being rate limited

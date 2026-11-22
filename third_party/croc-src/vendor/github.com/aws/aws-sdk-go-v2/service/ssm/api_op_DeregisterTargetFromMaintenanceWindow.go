@@ -4,11 +4,9 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Removes a target from a maintenance window.
@@ -47,6 +45,24 @@ type DeregisterTargetFromMaintenanceWindowInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DeregisterTargetFromMaintenanceWindowInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DeregisterTargetFromMaintenanceWindowRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DeregisterTargetFromMaintenanceWindowInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Safe != nil {
+		s.WriteBool(schemas.DeregisterTargetFromMaintenanceWindowRequest_Safe, *v.Safe)
+	}
+	if v.WindowId != nil {
+		s.WriteString(schemas.DeregisterTargetFromMaintenanceWindowRequest_WindowId, *v.WindowId)
+	}
+	if v.WindowTargetId != nil {
+		s.WriteString(schemas.DeregisterTargetFromMaintenanceWindowRequest_WindowTargetId, *v.WindowTargetId)
+	}
+}
+
 type DeregisterTargetFromMaintenanceWindowOutput struct {
 
 	// The ID of the maintenance window the target was removed from.
@@ -61,68 +77,54 @@ type DeregisterTargetFromMaintenanceWindowOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DeregisterTargetFromMaintenanceWindowOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DeregisterTargetFromMaintenanceWindowResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DeregisterTargetFromMaintenanceWindowOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.WindowId != nil {
+		s.WriteString(schemas.DeregisterTargetFromMaintenanceWindowResult_WindowId, *v.WindowId)
+	}
+	if v.WindowTargetId != nil {
+		s.WriteString(schemas.DeregisterTargetFromMaintenanceWindowResult_WindowTargetId, *v.WindowTargetId)
+	}
+}
+func (v *DeregisterTargetFromMaintenanceWindowOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DeregisterTargetFromMaintenanceWindowResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DeregisterTargetFromMaintenanceWindowResult_WindowId:
+			v.WindowId = new(string)
+			return d.ReadString(schemas.DeregisterTargetFromMaintenanceWindowResult_WindowId, v.WindowId)
+		case schemas.DeregisterTargetFromMaintenanceWindowResult_WindowTargetId:
+			v.WindowTargetId = new(string)
+			return d.ReadString(schemas.DeregisterTargetFromMaintenanceWindowResult_WindowTargetId, v.WindowTargetId)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDeregisterTargetFromMaintenanceWindowMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DeregisterTargetFromMaintenanceWindow, schemas.DeregisterTargetFromMaintenanceWindowRequest, schemas.DeregisterTargetFromMaintenanceWindowResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDeregisterTargetFromMaintenanceWindow{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DeregisterTargetFromMaintenanceWindow, schemas.DeregisterTargetFromMaintenanceWindowRequest, schemas.DeregisterTargetFromMaintenanceWindowResult), output: &DeregisterTargetFromMaintenanceWindowOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDeregisterTargetFromMaintenanceWindow{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DeregisterTargetFromMaintenanceWindow"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDeregisterTargetFromMaintenanceWindowValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDeregisterTargetFromMaintenanceWindow(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -137,13 +139,8 @@ func (c *Client) addOperationDeregisterTargetFromMaintenanceWindowMiddlewares(st
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opDeregisterTargetFromMaintenanceWindow(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DeregisterTargetFromMaintenanceWindow",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

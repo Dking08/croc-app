@@ -4,12 +4,10 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Describes the permissions for a Amazon Web Services Systems Manager document
@@ -54,10 +52,31 @@ type DescribeDocumentPermissionInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeDocumentPermissionInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeDocumentPermissionRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeDocumentPermissionInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.DescribeDocumentPermissionRequest_MaxResults, *v.MaxResults)
+	}
+	if v.Name != nil {
+		s.WriteString(schemas.DescribeDocumentPermissionRequest_Name, *v.Name)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeDocumentPermissionRequest_NextToken, *v.NextToken)
+	}
+	if v.PermissionType != "" {
+		s.WriteString(schemas.DescribeDocumentPermissionRequest_PermissionType, string(v.PermissionType))
+	}
+}
+
 type DescribeDocumentPermissionOutput struct {
 
 	// The account IDs that have permission to use this document. The ID can be either
-	// an Amazon Web Services account or All.
+	// an Amazon Web Services account number or all .
 	AccountIds []string
 
 	// A list of Amazon Web Services accounts where the current document is shared and
@@ -74,68 +93,58 @@ type DescribeDocumentPermissionOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeDocumentPermissionOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeDocumentPermissionResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeDocumentPermissionOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AccountIds != nil {
+		serializeAccountIdList(s, schemas.DescribeDocumentPermissionResponse_AccountIds, v.AccountIds)
+	}
+	if v.AccountSharingInfoList != nil {
+		serializeAccountSharingInfoList(s, schemas.DescribeDocumentPermissionResponse_AccountSharingInfoList, v.AccountSharingInfoList)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeDocumentPermissionResponse_NextToken, *v.NextToken)
+	}
+}
+func (v *DescribeDocumentPermissionOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeDocumentPermissionResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeDocumentPermissionResponse_AccountIds:
+			return deserializeAccountIdList(d, schemas.DescribeDocumentPermissionResponse_AccountIds, &v.AccountIds)
+		case schemas.DescribeDocumentPermissionResponse_AccountSharingInfoList:
+			return deserializeAccountSharingInfoList(d, schemas.DescribeDocumentPermissionResponse_AccountSharingInfoList, &v.AccountSharingInfoList)
+		case schemas.DescribeDocumentPermissionResponse_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.DescribeDocumentPermissionResponse_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeDocumentPermissionMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeDocumentPermission, schemas.DescribeDocumentPermissionRequest, schemas.DescribeDocumentPermissionResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeDocumentPermission{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeDocumentPermission, schemas.DescribeDocumentPermissionRequest, schemas.DescribeDocumentPermissionResponse), output: &DescribeDocumentPermissionOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDescribeDocumentPermission{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeDocumentPermission"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeDocumentPermissionValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeDocumentPermission(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -150,13 +159,8 @@ func (c *Client) addOperationDescribeDocumentPermissionMiddlewares(stack *middle
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opDescribeDocumentPermission(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeDocumentPermission",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

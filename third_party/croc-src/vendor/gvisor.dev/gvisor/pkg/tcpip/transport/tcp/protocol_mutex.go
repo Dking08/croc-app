@@ -28,14 +28,14 @@ const ()
 // Lock locks m.
 // +checklocksignore
 func (m *protocolRWMutex) Lock() {
-	locking.AddGLock(protocolprefixIndex, -1)
+	locking.AddGLock(protocolprefixIndex, -1) // escapes: lockdep.
 	m.mu.Lock()
 }
 
 // NestedLock locks m knowing that another lock of the same type is held.
 // +checklocksignore
 func (m *protocolRWMutex) NestedLock(i protocollockNameIndex) {
-	locking.AddGLock(protocolprefixIndex, int(i))
+	locking.AddGLock(protocolprefixIndex, int(i)) // escapes: lockdep.
 	m.mu.Lock()
 }
 
@@ -43,20 +43,27 @@ func (m *protocolRWMutex) NestedLock(i protocollockNameIndex) {
 // +checklocksignore
 func (m *protocolRWMutex) Unlock() {
 	m.mu.Unlock()
-	locking.DelGLock(protocolprefixIndex, -1)
+	locking.DelGLock(protocolprefixIndex, -1) // escapes: lockdep.
 }
 
 // NestedUnlock unlocks m knowing that another lock of the same type is held.
 // +checklocksignore
 func (m *protocolRWMutex) NestedUnlock(i protocollockNameIndex) {
 	m.mu.Unlock()
-	locking.DelGLock(protocolprefixIndex, int(i))
+	locking.DelGLock(protocolprefixIndex, int(i)) // escapes: lockdep.
 }
 
 // RLock locks m for reading.
 // +checklocksignore
 func (m *protocolRWMutex) RLock() {
-	locking.AddGLock(protocolprefixIndex, -1)
+	locking.AddGLock(protocolprefixIndex, -1) // escapes: lockdep.
+	m.mu.RLock()
+}
+
+// NestedRLock locks m for reading knowing that another lock of the same type is held.
+// +checklocksignore
+func (m *protocolRWMutex) NestedRLock(i protocollockNameIndex) {
+	locking.AddGLock(protocolprefixIndex, int(i)) // escapes: lockdep.
 	m.mu.RLock()
 }
 
@@ -64,7 +71,14 @@ func (m *protocolRWMutex) RLock() {
 // +checklocksignore
 func (m *protocolRWMutex) RUnlock() {
 	m.mu.RUnlock()
-	locking.DelGLock(protocolprefixIndex, -1)
+	locking.DelGLock(protocolprefixIndex, -1) // escapes: lockdep.
+}
+
+// NestedRUnlock undoes a single NestedRLock call.
+// +checklocksignore
+func (m *protocolRWMutex) NestedRUnlock(i protocollockNameIndex) {
+	m.mu.RUnlock()
+	locking.DelGLock(protocolprefixIndex, int(i)) // escapes: lockdep.
 }
 
 // RLockBypass locks m for reading without executing the validator.

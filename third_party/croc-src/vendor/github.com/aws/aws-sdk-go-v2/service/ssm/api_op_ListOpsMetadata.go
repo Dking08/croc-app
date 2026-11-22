@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Amazon Web Services Systems Manager calls this API operation when displaying
@@ -45,6 +44,24 @@ type ListOpsMetadataInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListOpsMetadataInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListOpsMetadataRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListOpsMetadataInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Filters != nil {
+		serializeOpsMetadataFilterList(s, schemas.ListOpsMetadataRequest_Filters, v.Filters)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.ListOpsMetadataRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListOpsMetadataRequest_NextToken, *v.NextToken)
+	}
+}
+
 type ListOpsMetadataOutput struct {
 
 	// The token for the next set of items to return. Use this token to get the next
@@ -60,68 +77,53 @@ type ListOpsMetadataOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListOpsMetadataOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListOpsMetadataResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListOpsMetadataOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListOpsMetadataResult_NextToken, *v.NextToken)
+	}
+	if v.OpsMetadataList != nil {
+		serializeOpsMetadataList(s, schemas.ListOpsMetadataResult_OpsMetadataList, v.OpsMetadataList)
+	}
+}
+func (v *ListOpsMetadataOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListOpsMetadataResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListOpsMetadataResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ListOpsMetadataResult_NextToken, v.NextToken)
+		case schemas.ListOpsMetadataResult_OpsMetadataList:
+			return deserializeOpsMetadataList(d, schemas.ListOpsMetadataResult_OpsMetadataList, &v.OpsMetadataList)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListOpsMetadataMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListOpsMetadata, schemas.ListOpsMetadataRequest, schemas.ListOpsMetadataResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpListOpsMetadata{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListOpsMetadata, schemas.ListOpsMetadataRequest, schemas.ListOpsMetadataResult), output: &ListOpsMetadataOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpListOpsMetadata{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ListOpsMetadata"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListOpsMetadataValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opListOpsMetadata(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -136,16 +138,11 @@ func (c *Client) addOperationListOpsMetadataMiddlewares(stack *middleware.Stack,
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// ListOpsMetadataAPIClient is a client that implements the ListOpsMetadata
-// operation.
-type ListOpsMetadataAPIClient interface {
-	ListOpsMetadata(context.Context, *ListOpsMetadataInput, ...func(*Options)) (*ListOpsMetadataOutput, error)
-}
-
-var _ ListOpsMetadataAPIClient = (*Client)(nil)
 
 // ListOpsMetadataPaginatorOptions is the paginator options for ListOpsMetadata
 type ListOpsMetadataPaginatorOptions struct {
@@ -211,6 +208,9 @@ func (p *ListOpsMetadataPaginator) NextPage(ctx context.Context, optFns ...func(
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.ListOpsMetadata(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -230,10 +230,10 @@ func (p *ListOpsMetadataPaginator) NextPage(ctx context.Context, optFns ...func(
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opListOpsMetadata(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ListOpsMetadata",
-	}
+// ListOpsMetadataAPIClient is a client that implements the ListOpsMetadata
+// operation.
+type ListOpsMetadataAPIClient interface {
+	ListOpsMetadata(context.Context, *ListOpsMetadataInput, ...func(*Options)) (*ListOpsMetadataOutput, error)
 }
+
+var _ ListOpsMetadataAPIClient = (*Client)(nil)

@@ -28,14 +28,14 @@ const ()
 // Lock locks m.
 // +checklocksignore
 func (m *routeStackRWMutex) Lock() {
-	locking.AddGLock(routeStackprefixIndex, -1)
+	locking.AddGLock(routeStackprefixIndex, -1) // escapes: lockdep.
 	m.mu.Lock()
 }
 
 // NestedLock locks m knowing that another lock of the same type is held.
 // +checklocksignore
 func (m *routeStackRWMutex) NestedLock(i routeStacklockNameIndex) {
-	locking.AddGLock(routeStackprefixIndex, int(i))
+	locking.AddGLock(routeStackprefixIndex, int(i)) // escapes: lockdep.
 	m.mu.Lock()
 }
 
@@ -43,20 +43,27 @@ func (m *routeStackRWMutex) NestedLock(i routeStacklockNameIndex) {
 // +checklocksignore
 func (m *routeStackRWMutex) Unlock() {
 	m.mu.Unlock()
-	locking.DelGLock(routeStackprefixIndex, -1)
+	locking.DelGLock(routeStackprefixIndex, -1) // escapes: lockdep.
 }
 
 // NestedUnlock unlocks m knowing that another lock of the same type is held.
 // +checklocksignore
 func (m *routeStackRWMutex) NestedUnlock(i routeStacklockNameIndex) {
 	m.mu.Unlock()
-	locking.DelGLock(routeStackprefixIndex, int(i))
+	locking.DelGLock(routeStackprefixIndex, int(i)) // escapes: lockdep.
 }
 
 // RLock locks m for reading.
 // +checklocksignore
 func (m *routeStackRWMutex) RLock() {
-	locking.AddGLock(routeStackprefixIndex, -1)
+	locking.AddGLock(routeStackprefixIndex, -1) // escapes: lockdep.
+	m.mu.RLock()
+}
+
+// NestedRLock locks m for reading knowing that another lock of the same type is held.
+// +checklocksignore
+func (m *routeStackRWMutex) NestedRLock(i routeStacklockNameIndex) {
+	locking.AddGLock(routeStackprefixIndex, int(i)) // escapes: lockdep.
 	m.mu.RLock()
 }
 
@@ -64,7 +71,14 @@ func (m *routeStackRWMutex) RLock() {
 // +checklocksignore
 func (m *routeStackRWMutex) RUnlock() {
 	m.mu.RUnlock()
-	locking.DelGLock(routeStackprefixIndex, -1)
+	locking.DelGLock(routeStackprefixIndex, -1) // escapes: lockdep.
+}
+
+// NestedRUnlock undoes a single NestedRLock call.
+// +checklocksignore
+func (m *routeStackRWMutex) NestedRUnlock(i routeStacklockNameIndex) {
+	m.mu.RUnlock()
+	locking.DelGLock(routeStackprefixIndex, int(i)) // escapes: lockdep.
 }
 
 // RLockBypass locks m for reading without executing the validator.

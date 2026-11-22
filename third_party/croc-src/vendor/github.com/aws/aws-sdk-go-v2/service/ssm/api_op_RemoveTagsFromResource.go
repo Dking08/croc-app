@@ -4,12 +4,10 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Removes tag keys from the specified resource.
@@ -31,26 +29,36 @@ func (c *Client) RemoveTagsFromResource(ctx context.Context, params *RemoveTagsF
 type RemoveTagsFromResourceInput struct {
 
 	// The ID of the resource from which you want to remove tags. For example:
-	// ManagedInstance: mi-012345abcde MaintenanceWindow: mw-012345abcde Automation :
-	// example-c160-4567-8519-012345abcde PatchBaseline: pb-012345abcde OpsMetadata
-	// object: ResourceID for tagging is created from the Amazon Resource Name (ARN)
-	// for the object. Specifically, ResourceID is created from the strings that come
-	// after the word opsmetadata in the ARN. For example, an OpsMetadata object with
-	// an ARN of
+	//
+	// ManagedInstance: mi-012345abcde
+	//
+	// MaintenanceWindow: mw-012345abcde
+	//
+	// Automation : example-c160-4567-8519-012345abcde
+	//
+	// PatchBaseline: pb-012345abcde
+	//
+	// OpsMetadata object: ResourceID for tagging is created from the Amazon Resource
+	// Name (ARN) for the object. Specifically, ResourceID is created from the strings
+	// that come after the word opsmetadata in the ARN. For example, an OpsMetadata
+	// object with an ARN of
 	// arn:aws:ssm:us-east-2:1234567890:opsmetadata/aws/ssm/MyGroup/appmanager has a
 	// ResourceID of either aws/ssm/MyGroup/appmanager or /aws/ssm/MyGroup/appmanager .
-	// For the Document and Parameter values, use the name of the resource. The
-	// ManagedInstance type for this API operation is only for on-premises managed
+	//
+	// For the Document and Parameter values, use the name of the resource.
+	//
+	// The ManagedInstance type for this API operation is only for on-premises managed
 	// nodes. Specify the name of the managed node in the following format:
 	// mi-ID_number. For example, mi-1a2b3c4d5e6f.
 	//
 	// This member is required.
 	ResourceId *string
 
-	// The type of resource from which you want to remove a tag. The ManagedInstance
-	// type for this API operation is only for on-premises managed nodes. Specify the
-	// name of the managed node in the following format: mi-ID_number . For example,
-	// mi-1a2b3c4d5e6f .
+	// The type of resource from which you want to remove a tag.
+	//
+	// The ManagedInstance type for this API operation is only for on-premises managed
+	// nodes. Specify the name of the managed node in the following format:
+	// mi-ID_number . For example, mi-1a2b3c4d5e6f .
 	//
 	// This member is required.
 	ResourceType types.ResourceTypeForTagging
@@ -63,6 +71,24 @@ type RemoveTagsFromResourceInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *RemoveTagsFromResourceInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.RemoveTagsFromResourceRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *RemoveTagsFromResourceInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ResourceId != nil {
+		s.WriteString(schemas.RemoveTagsFromResourceRequest_ResourceId, *v.ResourceId)
+	}
+	if v.ResourceType != "" {
+		s.WriteString(schemas.RemoveTagsFromResourceRequest_ResourceType, string(v.ResourceType))
+	}
+	if v.TagKeys != nil {
+		serializeKeyList(s, schemas.RemoveTagsFromResourceRequest_TagKeys, v.TagKeys)
+	}
+}
+
 type RemoveTagsFromResourceOutput struct {
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -70,68 +96,42 @@ type RemoveTagsFromResourceOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *RemoveTagsFromResourceOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.RemoveTagsFromResourceResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *RemoveTagsFromResourceOutput) SerializeMembers(s smithy.ShapeSerializer) {
+}
+func (v *RemoveTagsFromResourceOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.RemoveTagsFromResourceResult, func(s *smithy.Schema) error {
+		switch s {
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationRemoveTagsFromResourceMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.RemoveTagsFromResource, schemas.RemoveTagsFromResourceRequest, schemas.RemoveTagsFromResourceResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpRemoveTagsFromResource{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.RemoveTagsFromResource, schemas.RemoveTagsFromResourceRequest, schemas.RemoveTagsFromResourceResult), output: &RemoveTagsFromResourceOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpRemoveTagsFromResource{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "RemoveTagsFromResource"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpRemoveTagsFromResourceValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opRemoveTagsFromResource(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -146,13 +146,8 @@ func (c *Client) addOperationRemoveTagsFromResourceMiddlewares(stack *middleware
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opRemoveTagsFromResource(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "RemoveTagsFromResource",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

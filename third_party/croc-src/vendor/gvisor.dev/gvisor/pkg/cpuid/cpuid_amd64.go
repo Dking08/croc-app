@@ -43,21 +43,39 @@ type FeatureSet struct {
 	//
 	// This is exported to allow direct calls of the underlying CPUID
 	// function, where required.
-	Function `state:".(Static)"`
+	Function `state:".([]byte)"`
 	// hwCap stores HWCAP1/2 exposed from the elf auxiliary vector.
 	hwCap hwCap
 }
 
-// saveFunction saves the function as a static query.
-func (fs *FeatureSet) saveFunction() Static {
-	if s, ok := fs.Function.(Static); ok {
-		return s
+// saveFunction saves the function as a static query, in the compact form of
+// Static.appendMarshal prefixed by a version byte.
+func (fs *FeatureSet) saveFunction() []byte {
+	if fs.Function == nil {
+		return nil
 	}
-	return fs.ToStatic()
+	s, ok := fs.Function.(Static)
+	if !ok {
+		s = fs.ToStatic()
+		s.normalize()
+	}
+	return s.appendMarshal(append(make([]byte, 0, 1+len(s)*staticEntrySize), 1))
 }
 
-// loadFunction saves the function as a static query.
-func (fs *FeatureSet) loadFunction(_ context.Context, s Static) {
+// loadFunction loads the function saved by saveFunction.
+func (fs *FeatureSet) loadFunction(_ context.Context, b []byte) {
+	if len(b) == 0 {
+		fs.Function = nil
+		return
+	}
+	if b[0] != 1 {
+		panic(fmt.Sprintf("unsupported CPUID function encoding version %d", b[0]))
+	}
+	s, err := unmarshalStatic(b[1:])
+	if err != nil {
+		panic(err)
+	}
+	s.normalize()
 	fs.Function = s
 }
 
@@ -323,22 +341,42 @@ func (fs FeatureSet) HasFeature(feature Feature) bool {
 	return feature.check(fs)
 }
 
-// WriteCPUInfoTo is to generate a section of one cpu in /proc/cpuinfo. This is
+// x86Family returns the CPU family printed in /proc/cpuinfo from a CPUID
+// leaf 1 EAX signature.
+//
+// This matches Linux arch/x86/lib/cpu.c:x86_family(). When the 4-bit
+// family ID is 0xf, the 8-bit extended family is added.
+func x86Family(sig uint32) uint32 {
+	family := (sig >> 8) & 0xf
+	if family == 0xf {
+		family += (sig >> 20) & 0xff
+	}
+	return family
+}
+
+// CPUFreqMHz returns the host CPU frequency to report in /proc/cpuinfo. It is
+// measured on the host when the process starts, before seccomps are installed.
+func (fs FeatureSet) CPUFreqMHz() float64 {
+	return cpuFreqMHz
+}
+
+// WriteCPUInfoTo is used to generate a section of one cpu in /proc/cpuinfo. This is
 // a minimal /proc/cpuinfo, it is missing some fields like "microcode" that are
-// not always printed in Linux. Several fields are simply made up.
-func (fs FeatureSet) WriteCPUInfoTo(cpu, numCPU uint, w io.Writer) {
+// not always printed in Linux. Several fields are simply made up. freqMHz is
+// reported as the CPU frequency.
+func (fs FeatureSet) WriteCPUInfoTo(cpu, numCPU uint, freqMHz float64, w io.Writer) {
 	// Avoid many redundant calls here, since this can occasionally appear
 	// in the hot path. Read all basic information up front, see above.
 	ax, _, _, _ := fs.query(featureInfo)
-	ef, em, _, f, m, _ := signatureSplit(ax)
+	_, em, _, _, m, _ := signatureSplit(ax)
 	vendor := fs.VendorID()
 	fmt.Fprintf(w, "processor\t: %d\n", cpu)
 	fmt.Fprintf(w, "vendor_id\t: %s\n", string(vendor[:]))
-	fmt.Fprintf(w, "cpu family\t: %d\n", ((ef<<4)&0xff)|f)
+	fmt.Fprintf(w, "cpu family\t: %d\n", x86Family(ax))
 	fmt.Fprintf(w, "model\t\t: %d\n", ((em<<4)&0xff)|m)
 	fmt.Fprintf(w, "model name\t: %s\n", "unknown") // Unknown for now.
 	fmt.Fprintf(w, "stepping\t: %s\n", "unknown")   // Unknown for now.
-	fmt.Fprintf(w, "cpu MHz\t\t: %.3f\n", cpuFreqMHz)
+	fmt.Fprintf(w, "cpu MHz\t\t: %.3f\n", freqMHz)
 	// Pretend the CPU has 8192 KB of cache. Note that real /proc/cpuinfo exposes total L3 cache
 	// size on Intel and per-core L2 cache size on AMD (as of Linux 6.1.0), so the value of this
 	// field is not really important in practice. Any value that is chosen here will be wrong
@@ -357,7 +395,7 @@ func (fs FeatureSet) WriteCPUInfoTo(cpu, numCPU uint, w io.Writer) {
 	fmt.Fprintf(w, "cpuid level\t: %d\n", uint32(xSaveInfo)) // Same as ax in vendorID.
 	fmt.Fprintf(w, "wp\t\t: yes\n")
 	fmt.Fprintf(w, "flags\t\t: %s\n", fs.FlagString())
-	fmt.Fprintf(w, "bogomips\t: %.02f\n", cpuFreqMHz) // It's bogus anyway.
+	fmt.Fprintf(w, "bogomips\t: %.02f\n", freqMHz) // It's bogus anyway.
 	fmt.Fprintf(w, "clflush size\t: %d\n", fs.CacheLine())
 	fmt.Fprintf(w, "cache_alignment\t: %d\n", fs.CacheLine())
 	fmt.Fprintf(w, "address sizes\t: %d bits physical, %d bits virtual\n", 46, 48)
@@ -384,6 +422,13 @@ func (fs FeatureSet) Intel() bool {
 	return fs.VendorID() == genuineIntel
 }
 
+// AMX state component numbers, which are both the XCR0 bits that enable
+// them and the leaf 0xD subleaves that describe them.
+const (
+	amxTileCfgComponent  = 17
+	amxTileDataComponent = 18
+)
+
 // Leaf 0 of xsaveinfo function returns the size for currently
 // enabled xsave features in ebx, the maximum size if all valid
 // features are saved with xsave in ecx, and valid XCR0 bits in
@@ -392,10 +437,11 @@ func (fs FeatureSet) Intel() bool {
 // If xSaveInfo isn't supported, cpuid will not fault but will
 // return bogus values.
 var (
-	xsaveSize       = native(In{Eax: uint32(xSaveInfo)}).Ebx
-	maxXsaveSize    = native(In{Eax: uint32(xSaveInfo)}).Ecx
-	amxTileCfgSize  = native(In{Eax: uint32(xSaveInfo), Ecx: 17}).Eax
-	amxTileDataSize = native(In{Eax: uint32(xSaveInfo), Ecx: 18}).Eax
+	xsaveSize         = native(In{Eax: uint32(xSaveInfo)}).Ebx
+	maxXsaveSize      = native(In{Eax: uint32(xSaveInfo)}).Ecx
+	amxTileCfgSize    = native(In{Eax: uint32(xSaveInfo), Ecx: amxTileCfgComponent}).Eax
+	amxTileDataSize   = native(In{Eax: uint32(xSaveInfo), Ecx: amxTileDataComponent}).Eax
+	amxTileDataOffset = native(In{Eax: uint32(xSaveInfo), Ecx: amxTileDataComponent}).Ebx
 )
 
 const (
@@ -404,11 +450,11 @@ const (
 	//
 	// See Intel® 64 and IA-32 Architectures Software Developer’s Manual Vol.1
 	// section 13.3 for details.
-	XCR0AmxCfgMask = uint64(1 << 17)
+	XCR0AmxCfgMask = uint64(1 << amxTileCfgComponent)
 
 	// XCR0AmxDataMask is the bits that enable xsave to operate on
 	// AMX TILEDATA.
-	XCR0AmxDataMask = uint64(1 << 18)
+	XCR0AmxDataMask = uint64(1 << amxTileDataComponent)
 )
 
 // ExtendedStateSize returns the number of bytes needed to save the "extended
@@ -430,18 +476,32 @@ func (fs FeatureSet) ExtendedStateSize() (size, align uint) {
 	return 512, 16
 }
 
+// excludeAMXTileData returns size without the AMX TILEDATA state component if
+// TILEDATA lies at the end of the XSAVE area.
+func excludeAMXTileData(size, tileDataOffset, tileDataSize uint32) uint32 {
+	if tileDataOffset != 0 && tileDataSize != 0 && tileDataOffset+tileDataSize == size {
+		return tileDataOffset
+	}
+	return size
+}
+
+func amxExtendedStateSize(xcr0 uint64, xsaveSize, tileDataOffset, tileDataSize uint32) uint {
+	// TILECFG is not part of AMX extended state, only TILEDATA. In some
+	// virtualized environments, XCR0[18] is cleared while CPUID(0xd, 0).EBX
+	// still includes the TILEDATA component.
+	if (xcr0&XCR0AmxDataMask) != 0 || excludeAMXTileData(xsaveSize, tileDataOffset, tileDataSize) != xsaveSize {
+		return uint(tileDataSize)
+	}
+	return 0
+}
+
 // AMXExtendedStateSize returns the number of bytes within the "extended state"
 // area that is used for AMX.
 func (fs FeatureSet) AMXExtendedStateSize() uint {
-	total := uint(0)
-	if fs.UseXsave() {
-		xcr0 := xgetbv(0)
-		// TILECFG is not part of AMX extended state, only TILEDATA.
-		if (xcr0 & XCR0AmxDataMask) != 0 {
-			total += uint(amxTileDataSize)
-		}
+	if !fs.UseXsave() {
+		return 0
 	}
-	return total
+	return amxExtendedStateSize(xgetbv(0), xsaveSize, amxTileDataOffset, amxTileDataSize)
 }
 
 // ValidXCR0Mask returns the valid bits in control register XCR0.
@@ -485,6 +545,14 @@ func (fs FeatureSet) UseFSGSBASE() bool {
 	return fs.HasFeature(X86FeatureFSGSBase) && ((fs.hwCap.hwCap2 & HWCAP2_FSGSBASE) != 0)
 }
 
+// archIgnoredFeatures is the list of features ignored during host
+// compatibility checks because they do not affect user-mode execution and may
+// differ between machines (e.g., when nested virtualization is enabled).
+var archIgnoredFeatures = []Feature{
+	X86FeatureVMX,
+	X86FeatureSVM,
+}
+
 // archCheckHostCompatible checks for compatibility.
 func (fs FeatureSet) archCheckHostCompatible(hfs FeatureSet) error {
 	// The size of a cache line must match, as it is critical to correctly
@@ -513,4 +581,15 @@ func (fs FeatureSet) AllowedHWCap1() uint64 {
 func (fs FeatureSet) AllowedHWCap2() uint64 {
 	// HWCAPS are not supported on amd64.
 	return 0
+}
+
+// UnsetFSGSBASE unsets features that should not be exposed to the guest workload.
+func (fs FeatureSet) UnsetFSGSBASE() FeatureSet {
+	s := fs.ToStatic()
+	// Disable FSGSBASE for guest processes. If userspace uses WRGSBASE without the Sentry's
+	// knowledge, it would corrupt the GS register used by Systrap for syscall patching.
+	X86FeatureFSGSBase.Unset(s)
+	sfs := s.ToFeatureSet()
+	sfs.hwCap = fs.hwCap
+	return sfs
 }

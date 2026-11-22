@@ -129,10 +129,11 @@ const (
 	// manipNotPerformed indicates that NAT has not been performed.
 	manipNotPerformed manipType = iota
 
-	// manipPerformed indicates that NAT was performed.
+	// manipPerformed indicates that NAT was performed and changed the tuple.
 	manipPerformed
 
-	// manipPerformedNoop indicates that NAT was performed but it was a no-op.
+	// manipPerformedNoop indicates that NAT was performed but left the tuple
+	// unchanged.
 	manipPerformedNoop
 )
 
@@ -463,7 +464,13 @@ func getTupleID(pkt *PacketBuffer) (tupleID, getTupleIDDisposition) {
 		}
 
 		// TODO(https://gvisor.dev/issue/6789): Handle extension headers.
-		if tid, ok := getTupleIDForPacketInICMPError(pkt, v6NetAndTransHdr, header.IPv6ProtocolNumber, header.IPv6MinimumSize, header.IPv6(h).TransportProtocol()); ok {
+		if tid, ok := getTupleIDForPacketInICMPError(
+			pkt,
+			v6NetAndTransHdr,
+			header.IPv6ProtocolNumber,
+			header.IPv6MinimumSize,
+			tcpip.TransportProtocolNumber(header.IPv6(h).NextHeader()),
+		); ok {
 			// Do not create a new connection in response to an ICMP error.
 			return tid, getTupleIDOKAndDontAllowNewConn
 		}
@@ -938,7 +945,7 @@ func (ct *ConnTrack) originalDst(epID TransportEndpointID, netProto tcpip.Networ
 	t := ct.connForTID(tid)
 	if t == nil {
 		// Not a tracked connection.
-		return tcpip.Address{}, 0, &tcpip.ErrNotConnected{}
+		return tcpip.Address{}, 0, &tcpip.ErrNoSuchFile{}
 	}
 
 	t.conn.mu.RLock()

@@ -20,6 +20,12 @@ const (
 // A FQDN is a fully-qualified DNS name or name suffix.
 type FQDN string
 
+// ToFQDN returns s as an FQDN, with a trailing dot added if missing. The
+// empty string and "." both parse as ".".
+//
+// Names containing whitespace or control characters are rejected. See the
+// comment in the label loop below for why other characters are not
+// validated.
 func ToFQDN(s string) (FQDN, error) {
 	if len(s) == 0 || s == "." {
 		return FQDN("."), nil
@@ -37,6 +43,18 @@ func ToFQDN(s string) (FQDN, error) {
 	}
 	if totalLen > maxNameLength {
 		return "", vizerror.Errorf("%q is too long to be a DNS name", s)
+	}
+
+	// DNS labels on the wire may contain any non-zero byte (see the note in
+	// the label loop below about issue 2024), but names we accept from
+	// control are also written verbatim into line-oriented OS configuration
+	// files like resolv.conf and hosts, where a newline or carriage return
+	// can inject whole new directives. Reject whitespace and control
+	// characters so a malicious control server can't do that.
+	for i := range len(s) {
+		if c := s[i]; c <= ' ' || c == 0x7f {
+			return "", vizerror.Errorf("%q contains invalid character %q", raw, c)
+		}
 	}
 
 	st := 0
@@ -109,11 +127,19 @@ func (f FQDN) Parent() FQDN {
 // ValidLabel reports whether label is a valid DNS label. All errors are
 // [vizerror.Error].
 func ValidLabel(label string) error {
+	return ValidLabelLike(label, maxLabelLength)
+}
+
+// ValidLabelLike reports whether label contains DNS-valid characters
+// only, adheres to a given maximum length, and starts and ends with
+// a letter or number. For strict DNS-validity use [ValidLabel].
+// All errors are [vizerror.Error].
+func ValidLabelLike(label string, maxLen int) error {
 	if len(label) == 0 {
 		return vizerror.New("empty DNS label")
 	}
-	if len(label) > maxLabelLength {
-		return vizerror.Errorf("%q is too long, max length is %d bytes", label, maxLabelLength)
+	if len(label) > maxLen {
+		return vizerror.Errorf("%q is too long, max length is %d bytes", label, maxLen)
 	}
 	if !isalphanum(label[0]) {
 		return vizerror.Errorf("%q is not a valid DNS label: must start with a letter or number", label)
@@ -121,7 +147,8 @@ func ValidLabel(label string) error {
 	if !isalphanum(label[len(label)-1]) {
 		return vizerror.Errorf("%q is not a valid DNS label: must end with a letter or number", label)
 	}
-	if len(label) < 2 {
+	if len(label) <= 2 {
+		// Return early because we've already checked start and end characters (the only 2) are alphanumeric.
 		return nil
 	}
 	for i := 1; i < len(label)-1; i++ {

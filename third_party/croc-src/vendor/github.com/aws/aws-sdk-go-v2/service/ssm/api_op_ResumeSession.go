@@ -4,18 +4,17 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Reconnects a session to a managed node after it has been disconnected.
 // Connections can be resumed for disconnected sessions, but not terminated
-// sessions. This command is primarily for use by client machines to automatically
-// reconnect during intermittent network issues. It isn't intended for any other
-// use.
+// sessions.
+//
+// This command is primarily for use by client machines to automatically reconnect
+// during intermittent network issues. It isn't intended for any other use.
 func (c *Client) ResumeSession(ctx context.Context, params *ResumeSessionInput, optFns ...func(*Options)) (*ResumeSessionOutput, error) {
 	if params == nil {
 		params = &ResumeSessionInput{}
@@ -41,6 +40,18 @@ type ResumeSessionInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ResumeSessionInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ResumeSessionRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ResumeSessionInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.SessionId != nil {
+		s.WriteString(schemas.ResumeSessionRequest_SessionId, *v.SessionId)
+	}
+}
+
 type ResumeSessionOutput struct {
 
 	// The ID of the session.
@@ -49,12 +60,17 @@ type ResumeSessionOutput struct {
 	// A URL back to SSM Agent on the managed node that the Session Manager client
 	// uses to send commands and receive output from the managed node. Format:
 	// wss://ssmmessages.region.amazonaws.com/v1/data-channel/session-id?stream=(input|output)
-	// . region represents the Region identifier for an Amazon Web Services Region
+	// .
+	//
+	// region represents the Region identifier for an Amazon Web Services Region
 	// supported by Amazon Web Services Systems Manager, such as us-east-2 for the US
 	// East (Ohio) Region. For a list of supported region values, see the Region column
-	// in Systems Manager service endpoints (https://docs.aws.amazon.com/general/latest/gr/ssm.html#ssm_region)
-	// in the Amazon Web Services General Reference. session-id represents the ID of a
-	// Session Manager session, such as 1a2b3c4dEXAMPLE .
+	// in [Systems Manager service endpoints]in the Amazon Web Services General Reference.
+	//
+	// session-id represents the ID of a Session Manager session, such as
+	// 1a2b3c4dEXAMPLE .
+	//
+	// [Systems Manager service endpoints]: https://docs.aws.amazon.com/general/latest/gr/ssm.html#ssm_region
 	StreamUrl *string
 
 	// An encrypted token value containing session and caller information. Used to
@@ -67,68 +83,60 @@ type ResumeSessionOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ResumeSessionOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ResumeSessionResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ResumeSessionOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.SessionId != nil {
+		s.WriteString(schemas.ResumeSessionResponse_SessionId, *v.SessionId)
+	}
+	if v.StreamUrl != nil {
+		s.WriteString(schemas.ResumeSessionResponse_StreamUrl, *v.StreamUrl)
+	}
+	if v.TokenValue != nil {
+		s.WriteString(schemas.ResumeSessionResponse_TokenValue, *v.TokenValue)
+	}
+}
+func (v *ResumeSessionOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ResumeSessionResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ResumeSessionResponse_SessionId:
+			v.SessionId = new(string)
+			return d.ReadString(schemas.ResumeSessionResponse_SessionId, v.SessionId)
+		case schemas.ResumeSessionResponse_StreamUrl:
+			v.StreamUrl = new(string)
+			return d.ReadString(schemas.ResumeSessionResponse_StreamUrl, v.StreamUrl)
+		case schemas.ResumeSessionResponse_TokenValue:
+			v.TokenValue = new(string)
+			return d.ReadString(schemas.ResumeSessionResponse_TokenValue, v.TokenValue)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationResumeSessionMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ResumeSession, schemas.ResumeSessionRequest, schemas.ResumeSessionResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpResumeSession{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ResumeSession, schemas.ResumeSessionRequest, schemas.ResumeSessionResponse), output: &ResumeSessionOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpResumeSession{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ResumeSession"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpResumeSessionValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opResumeSession(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -143,13 +151,8 @@ func (c *Client) addOperationResumeSessionMiddlewares(stack *middleware.Stack, o
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opResumeSession(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ResumeSession",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

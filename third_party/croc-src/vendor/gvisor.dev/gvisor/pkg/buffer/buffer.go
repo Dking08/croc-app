@@ -191,7 +191,7 @@ func (b *Buffer) GrowTo(length int64, zero bool) {
 
 		// Zero the written section.
 		if zero {
-			clear(v.chunk.data[v.write : v.write+sz])
+			clear(v.availableSlice()[:sz])
 		}
 
 		// Advance the index.
@@ -235,7 +235,7 @@ func (b *Buffer) Prepend(src *View) error {
 		}
 		b.size += int64(n)
 		v.write = old
-		src.write = srcStart
+		src.write = src.read + srcStart
 
 		// If there's no more to be written, then we're done.
 		if src.Size() == 0 {

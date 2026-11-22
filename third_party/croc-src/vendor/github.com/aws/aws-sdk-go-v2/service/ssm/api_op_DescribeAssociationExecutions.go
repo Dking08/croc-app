@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Views all executions for a specific association ID.
@@ -36,7 +35,12 @@ type DescribeAssociationExecutionsInput struct {
 	AssociationId *string
 
 	// Filters for the request. You can specify the following filters and values.
-	// ExecutionId (EQUAL) Status (EQUAL) CreatedTime (EQUAL, GREATER_THAN, LESS_THAN)
+	//
+	// ExecutionId (EQUAL)
+	//
+	// Status (EQUAL)
+	//
+	// CreatedTime (EQUAL, GREATER_THAN, LESS_THAN)
 	Filters []types.AssociationExecutionFilter
 
 	// The maximum number of items to return for this call. The call also returns a
@@ -47,6 +51,27 @@ type DescribeAssociationExecutionsInput struct {
 	NextToken *string
 
 	noSmithyDocumentSerde
+}
+
+func (v *DescribeAssociationExecutionsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeAssociationExecutionsRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeAssociationExecutionsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AssociationId != nil {
+		s.WriteString(schemas.DescribeAssociationExecutionsRequest_AssociationId, *v.AssociationId)
+	}
+	if v.Filters != nil {
+		serializeAssociationExecutionFilterList(s, schemas.DescribeAssociationExecutionsRequest_Filters, v.Filters)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.DescribeAssociationExecutionsRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeAssociationExecutionsRequest_NextToken, *v.NextToken)
+	}
 }
 
 type DescribeAssociationExecutionsOutput struct {
@@ -64,68 +89,53 @@ type DescribeAssociationExecutionsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeAssociationExecutionsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeAssociationExecutionsResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeAssociationExecutionsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AssociationExecutions != nil {
+		serializeAssociationExecutionsList(s, schemas.DescribeAssociationExecutionsResult_AssociationExecutions, v.AssociationExecutions)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeAssociationExecutionsResult_NextToken, *v.NextToken)
+	}
+}
+func (v *DescribeAssociationExecutionsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeAssociationExecutionsResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeAssociationExecutionsResult_AssociationExecutions:
+			return deserializeAssociationExecutionsList(d, schemas.DescribeAssociationExecutionsResult_AssociationExecutions, &v.AssociationExecutions)
+		case schemas.DescribeAssociationExecutionsResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.DescribeAssociationExecutionsResult_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeAssociationExecutionsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeAssociationExecutions, schemas.DescribeAssociationExecutionsRequest, schemas.DescribeAssociationExecutionsResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeAssociationExecutions{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeAssociationExecutions, schemas.DescribeAssociationExecutionsRequest, schemas.DescribeAssociationExecutionsResult), output: &DescribeAssociationExecutionsOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDescribeAssociationExecutions{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeAssociationExecutions"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeAssociationExecutionsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeAssociationExecutions(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -140,16 +150,11 @@ func (c *Client) addOperationDescribeAssociationExecutionsMiddlewares(stack *mid
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribeAssociationExecutionsAPIClient is a client that implements the
-// DescribeAssociationExecutions operation.
-type DescribeAssociationExecutionsAPIClient interface {
-	DescribeAssociationExecutions(context.Context, *DescribeAssociationExecutionsInput, ...func(*Options)) (*DescribeAssociationExecutionsOutput, error)
-}
-
-var _ DescribeAssociationExecutionsAPIClient = (*Client)(nil)
 
 // DescribeAssociationExecutionsPaginatorOptions is the paginator options for
 // DescribeAssociationExecutions
@@ -218,6 +223,9 @@ func (p *DescribeAssociationExecutionsPaginator) NextPage(ctx context.Context, o
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeAssociationExecutions(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -237,10 +245,10 @@ func (p *DescribeAssociationExecutionsPaginator) NextPage(ctx context.Context, o
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribeAssociationExecutions(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeAssociationExecutions",
-	}
+// DescribeAssociationExecutionsAPIClient is a client that implements the
+// DescribeAssociationExecutions operation.
+type DescribeAssociationExecutionsAPIClient interface {
+	DescribeAssociationExecutions(context.Context, *DescribeAssociationExecutionsInput, ...func(*Options)) (*DescribeAssociationExecutionsOutput, error)
 }
+
+var _ DescribeAssociationExecutionsAPIClient = (*Client)(nil)

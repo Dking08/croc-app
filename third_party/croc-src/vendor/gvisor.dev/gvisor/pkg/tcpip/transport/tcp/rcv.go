@@ -68,16 +68,7 @@ func newReceiver(ep *Endpoint, irs seqnum.Value, rcvWnd seqnum.Size, rcvWndScale
 // acceptable checks if the segment sequence number range is acceptable
 // according to the table on page 26 of RFC 793.
 func (r *receiver) acceptable(segSeq seqnum.Value, segLen seqnum.Size) bool {
-	// r.rcvWnd could be much larger than the window size we advertised in our
-	// outgoing packets, we should use what we have advertised for acceptability
-	// test.
-	scaledWindowSize := r.rcvWnd >> r.RcvWndScale
-	if scaledWindowSize > math.MaxUint16 {
-		// This is what we actually put in the Window field.
-		scaledWindowSize = math.MaxUint16
-	}
-	advertisedWindowSize := scaledWindowSize << r.RcvWndScale
-	return header.Acceptable(segSeq, segLen, r.RcvNxt, r.RcvNxt.Add(advertisedWindowSize))
+	return header.Acceptable(segSeq, segLen, r.RcvNxt, r.RcvNxt.Add(r.rcvWnd))
 }
 
 // currentWindow returns the available space in the window that was advertised
@@ -127,19 +118,7 @@ func (r *receiver) getSendParams() (RcvNxt seqnum.Value, rcvWnd seqnum.Size) {
 	// edge, as we are still advertising a window that we think can be serviced.
 	toGrow := unackLen >= SegOverheadSize || bufUsed <= r.prevBufUsed
 
-	// Update RcvAcc only if new window is > previously advertised window. We
-	// should never shrink the acceptable sequence space once it has been
-	// advertised the peer. If we shrink the acceptable sequence space then we
-	// would end up dropping bytes that might already be in flight.
-	// ====================================================  sequence space.
-	// ^             ^               ^                   ^
-	// rcvWUP       RcvNxt         RcvAcc          new RcvAcc
-	//               <=====curWnd ===>
-	//               <========= newWnd > curWnd ========= >
-	if r.RcvNxt.Add(curWnd).LessThan(r.RcvNxt.Add(newWnd)) && toGrow {
-		// If the new window moves the right edge, then update RcvAcc.
-		r.RcvAcc = r.RcvNxt.Add(newWnd)
-	} else {
+	if !toGrow || newWnd <= curWnd {
 		if newWnd == 0 {
 			// newWnd is zero but we can't advertise a zero as it would cause window
 			// to shrink so just increment a metric to record this event.
@@ -159,26 +138,22 @@ func (r *receiver) getSendParams() (RcvNxt seqnum.Value, rcvWnd seqnum.Size) {
 		r.ep.rcvQueueMu.Unlock()
 	}
 
-	// Stash away the non-scaled receive window as we use it for measuring
-	// receiver's estimated RTT.
-	r.rcvWnd = newWnd
 	r.rcvWUP = r.RcvNxt
 	r.prevBufUsed = bufUsed
-	scaledWnd := r.rcvWnd >> r.RcvWndScale
+	scaledWnd := min(newWnd>>r.RcvWndScale, math.MaxUint16)
+	// Rounding down must not retract space offered to data already in flight.
+	// Linux's tcp_select_window() likewise rounds a retained window up.
+	if scaledWnd<<r.RcvWndScale < curWnd {
+		scaledWnd++
+	}
 	if scaledWnd == 0 {
 		// Increment a metric if we are advertising an actual zero window.
 		r.ep.stats.ReceiveErrors.ZeroRcvWindowState.Increment()
 	}
 
-	// If we started off with a window larger than what can he held in
-	// the 16bit window field, we ceil the value to the max value.
-	if scaledWnd > math.MaxUint16 {
-		scaledWnd = seqnum.Size(math.MaxUint16)
-
-		// Ensure that the stashed receive window always reflects what
-		// is being advertised.
-		r.rcvWnd = scaledWnd << r.RcvWndScale
-	}
+	// Remember the window as the peer decodes it.
+	r.rcvWnd = scaledWnd << r.RcvWndScale
+	r.RcvAcc = r.RcvNxt.Add(r.rcvWnd)
 	return r.RcvNxt, scaledWnd
 }
 
@@ -196,9 +171,10 @@ func (r *receiver) nonZeroWindow() {
 // wasn't ready to be consumed then.
 //
 // Returns true if the segment was consumed, false if it cannot be consumed
-// yet because of a missing segment.
+// yet because of a missing segment. If this segment closes the receive side,
+// include duplicate in the FIN ACK.
 // +checklocks:r.ep.mu
-func (r *receiver) consumeSegment(s *segment, segSeq seqnum.Value, segLen seqnum.Size) bool {
+func (r *receiver) consumeSegment(s *segment, segSeq seqnum.Value, segLen seqnum.Size, duplicate header.SACKBlock) bool {
 	if segLen > 0 {
 		// If the segment doesn't include the seqnum we're expecting to
 		// consume now, we're missing a segment. We cannot proceed until
@@ -249,8 +225,12 @@ func (r *receiver) consumeSegment(s *segment, segSeq seqnum.Value, segLen seqnum
 	if s.flags.Contains(header.TCPFlagFin) {
 		r.RcvNxt++
 
-		// Send ACK immediately.
-		r.ep.snd.sendAck()
+		// Send the FIN ACK before changing the endpoint state.
+		if duplicate.Start != duplicate.End {
+			r.ep.snd.sendDSACK(duplicate)
+		} else {
+			r.ep.snd.sendAck()
+		}
 
 		// Tell any readers that no more data will come.
 		r.closed = true
@@ -302,11 +282,7 @@ func (r *receiver) consumeSegment(s *segment, segSeq seqnum.Value, segLen seqnum
 		switch r.ep.EndpointState() {
 		case StateFinWait1:
 			r.ep.setEndpointState(StateFinWait2)
-			if e := r.ep; e.closed {
-				// The socket has been closed and we are in
-				// FIN-WAIT-2 so start the FIN-WAIT-2 timer.
-				e.finWait2Timer = e.stack.Clock().AfterFunc(e.tcpLingerTimeout, e.finWait2TimerExpired)
-			}
+			r.ep.maybeStartFinWait2TimerLocked()
 
 		case StateClosing:
 			r.ep.setEndpointState(StateTimeWait)
@@ -459,11 +435,28 @@ func (r *receiver) handleRcvdSegment(s *segment) (drop bool, err tcpip.Error) {
 	segLen := seqnum.Size(s.payloadSize())
 	segSeq := s.sequenceNumber
 
+	var duplicate header.SACKBlock
+	if r.ep.SACKPermitted && segSeq.LessThan(r.RcvNxt) {
+		// Report only the already-acknowledged prefix, including a FIN's
+		// sequence number (RFC 2883 section 4; Linux tcp_send_dupack()).
+		duplicate = header.SACKBlock{Start: segSeq, End: segSeq.Add(min(s.logicalLen(), segSeq.Size(r.RcvNxt)))}
+	}
+
 	// If the sequence number range is outside the acceptable range, just
 	// send an ACK and stop further processing of the segment.
 	// This is according to RFC 793, page 68.
 	if !r.acceptable(segSeq, segLen) {
-		r.ep.snd.maybeSendOutOfWindowAck(s)
+		// A zero-window probe at RCV.NXT is not acceptable, but RFC 7323
+		// section 4.3 rule 2 still updates TS.Recent from it so the ACK
+		// echoes the probe's TSval.
+		if segSeq == r.RcvNxt && r.ep.SendTSOk && s.parsedOptions.TS {
+			r.ep.updateRecentTimestamp(s.parsedOptions.TSVal, r.ep.snd.MaxSentAck, segSeq)
+		}
+		if duplicate.Start != duplicate.End {
+			r.ep.snd.sendDSACK(duplicate)
+		} else {
+			r.ep.snd.maybeSendOutOfWindowAck(s)
+		}
 		return true, nil
 	}
 
@@ -480,7 +473,7 @@ func (r *receiver) handleRcvdSegment(s *segment) (drop bool, err tcpip.Error) {
 	r.lastRcvdAckTime = s.rcvdTime
 
 	// Defer segment processing if it can't be consumed now.
-	if !r.consumeSegment(s, segSeq, segLen) {
+	if !r.consumeSegment(s, segSeq, segLen, duplicate) {
 		if segLen > 0 || s.flags.Contains(header.TCPFlagFin) {
 			// We only store the segment if it's within our buffer
 			// size limit.
@@ -533,7 +526,7 @@ func (r *receiver) handleRcvdSegment(s *segment) (drop bool, err tcpip.Error) {
 
 		// Skip segment altogether if it has already been acknowledged.
 		if !segSeq.Add(segLen-1).LessThan(r.RcvNxt) &&
-			!r.consumeSegment(s, segSeq, segLen) {
+			!r.consumeSegment(s, segSeq, segLen, duplicate) {
 			break
 		}
 
@@ -542,6 +535,12 @@ func (r *receiver) handleRcvdSegment(s *segment) (drop bool, err tcpip.Error) {
 		r.PendingBufUsed -= s.segMemSize()
 		r.ep.rcvQueueMu.Unlock()
 		s.DecRef()
+	}
+	if duplicate.Start != duplicate.End && !r.closed {
+		// Send after draining so the ACK covers any gap the new suffix
+		// filled (RFC 2883 section 4.2; Linux tcp_data_queue()). A FIN
+		// consumed above already sent the duplicate block with its ACK.
+		r.ep.snd.sendDSACK(duplicate)
 	}
 	return false, nil
 }

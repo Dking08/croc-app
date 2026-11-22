@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Describes a specific delete inventory operation.
@@ -44,6 +43,24 @@ type DescribeInventoryDeletionsInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeInventoryDeletionsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeInventoryDeletionsRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeInventoryDeletionsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.DeletionId != nil {
+		s.WriteString(schemas.DescribeInventoryDeletionsRequest_DeletionId, *v.DeletionId)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.DescribeInventoryDeletionsRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeInventoryDeletionsRequest_NextToken, *v.NextToken)
+	}
+}
+
 type DescribeInventoryDeletionsOutput struct {
 
 	// A list of status items for deleted inventory.
@@ -59,65 +76,50 @@ type DescribeInventoryDeletionsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeInventoryDeletionsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeInventoryDeletionsResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeInventoryDeletionsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.InventoryDeletions != nil {
+		serializeInventoryDeletionsList(s, schemas.DescribeInventoryDeletionsResult_InventoryDeletions, v.InventoryDeletions)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeInventoryDeletionsResult_NextToken, *v.NextToken)
+	}
+}
+func (v *DescribeInventoryDeletionsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeInventoryDeletionsResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeInventoryDeletionsResult_InventoryDeletions:
+			return deserializeInventoryDeletionsList(d, schemas.DescribeInventoryDeletionsResult_InventoryDeletions, &v.InventoryDeletions)
+		case schemas.DescribeInventoryDeletionsResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.DescribeInventoryDeletionsResult_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeInventoryDeletionsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeInventoryDeletions, schemas.DescribeInventoryDeletionsRequest, schemas.DescribeInventoryDeletionsResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeInventoryDeletions{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeInventoryDeletions, schemas.DescribeInventoryDeletionsRequest, schemas.DescribeInventoryDeletionsResult), output: &DescribeInventoryDeletionsOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDescribeInventoryDeletions{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeInventoryDeletions"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeInventoryDeletions(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -132,16 +134,11 @@ func (c *Client) addOperationDescribeInventoryDeletionsMiddlewares(stack *middle
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribeInventoryDeletionsAPIClient is a client that implements the
-// DescribeInventoryDeletions operation.
-type DescribeInventoryDeletionsAPIClient interface {
-	DescribeInventoryDeletions(context.Context, *DescribeInventoryDeletionsInput, ...func(*Options)) (*DescribeInventoryDeletionsOutput, error)
-}
-
-var _ DescribeInventoryDeletionsAPIClient = (*Client)(nil)
 
 // DescribeInventoryDeletionsPaginatorOptions is the paginator options for
 // DescribeInventoryDeletions
@@ -210,6 +207,9 @@ func (p *DescribeInventoryDeletionsPaginator) NextPage(ctx context.Context, optF
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeInventoryDeletions(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -229,10 +229,10 @@ func (p *DescribeInventoryDeletionsPaginator) NextPage(ctx context.Context, optF
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribeInventoryDeletions(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeInventoryDeletions",
-	}
+// DescribeInventoryDeletionsAPIClient is a client that implements the
+// DescribeInventoryDeletions operation.
+type DescribeInventoryDeletionsAPIClient interface {
+	DescribeInventoryDeletions(context.Context, *DescribeInventoryDeletionsInput, ...func(*Options)) (*DescribeInventoryDeletionsOutput, error)
 }
+
+var _ DescribeInventoryDeletionsAPIClient = (*Client)(nil)

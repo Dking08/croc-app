@@ -52,7 +52,7 @@ func (*DropTarget) Action(*PacketBuffer, Hook, *Route, AddressableEndpoint) (Rul
 // RejectIPv4WithHandler handles rejecting a packet.
 type RejectIPv4WithHandler interface {
 	// SendRejectionError sends an error packet in response to the packet.
-	SendRejectionError(pkt *PacketBuffer, rejectWith RejectIPv4WithICMPType, inputHook bool) tcpip.Error
+	SendRejectionError(pkt *PacketBuffer, rejectWith RejectIPv4WithICMPType, hook Hook) tcpip.Error
 }
 
 // RejectIPv4WithICMPType indicates the type of ICMP error that should be sent.
@@ -87,10 +87,11 @@ func (rt *RejectIPv4Target) Action(pkt *PacketBuffer, hook Hook, _ *Route, _ Add
 	case Input, Forward, Output:
 		// There is nothing reasonable for us to do in response to an error here;
 		// we already drop the packet.
-		_ = rt.Handler.SendRejectionError(pkt, rt.RejectWith, hook == Input)
+		_ = rt.Handler.SendRejectionError(pkt, rt.RejectWith, hook)
 		return RuleDrop, 0
 	case Prerouting, Postrouting:
-		panic(fmt.Sprintf("%s hook not supported for REDIRECT", hook))
+		log.BugTracebackOnce(fmt.Errorf("%s not supported for REJECT", hook))
+		return RuleDrop, 0
 	default:
 		panic(fmt.Sprintf("unhandled hook = %s", hook))
 	}
@@ -99,7 +100,7 @@ func (rt *RejectIPv4Target) Action(pkt *PacketBuffer, hook Hook, _ *Route, _ Add
 // RejectIPv6WithHandler handles rejecting a packet.
 type RejectIPv6WithHandler interface {
 	// SendRejectionError sends an error packet in response to the packet.
-	SendRejectionError(pkt *PacketBuffer, rejectWith RejectIPv6WithICMPType, forwardingHook bool) tcpip.Error
+	SendRejectionError(pkt *PacketBuffer, rejectWith RejectIPv6WithICMPType, hook Hook) tcpip.Error
 }
 
 // RejectIPv6WithICMPType indicates the type of ICMP error that should be sent.
@@ -134,10 +135,11 @@ func (rt *RejectIPv6Target) Action(pkt *PacketBuffer, hook Hook, _ *Route, _ Add
 	case Input, Forward, Output:
 		// There is nothing reasonable for us to do in response to an error here;
 		// we already drop the packet.
-		_ = rt.Handler.SendRejectionError(pkt, rt.RejectWith, hook == Input)
+		_ = rt.Handler.SendRejectionError(pkt, rt.RejectWith, hook)
 		return RuleDrop, 0
 	case Prerouting, Postrouting:
-		panic(fmt.Sprintf("%s hook not supported for REDIRECT", hook))
+		log.BugTracebackOnce(fmt.Errorf("%s not supported for REJECT", hook))
+		return RuleDrop, 0
 	default:
 		panic(fmt.Sprintf("unhandled hook = %s", hook))
 	}
@@ -231,7 +233,8 @@ func (rt *DNATTarget) Action(pkt *PacketBuffer, hook Hook, r *Route, addressEP A
 	switch hook {
 	case Prerouting, Output:
 	case Input, Forward, Postrouting:
-		panic(fmt.Sprintf("%s not supported for DNAT", hook))
+		log.BugTracebackOnce(fmt.Errorf("%s not supported for DNAT", hook))
+		return RuleDrop, 0
 	default:
 		panic(fmt.Sprintf("%s unrecognized", hook))
 	}
@@ -277,8 +280,11 @@ func (rt *RedirectTarget) Action(pkt *PacketBuffer, hook Hook, r *Route, address
 	case Prerouting:
 		// addressEP is expected to be set for the prerouting hook.
 		address = addressEP.MainAddress().Address
+	case Input, Forward, Postrouting:
+		log.BugTracebackOnce(fmt.Errorf("%s not supported for REDIRECT", hook))
+		return RuleDrop, 0
 	default:
-		panic("redirect target is supported only on output and prerouting hooks")
+		panic(fmt.Sprintf("%s unrecognized", hook))
 	}
 
 	return dnatAction(pkt, hook, r, rt.Port, address, true /* changePort */, true /* changeAddress */)
@@ -376,7 +382,8 @@ func (st *SNATTarget) Action(pkt *PacketBuffer, hook Hook, r *Route, _ Addressab
 	switch hook {
 	case Postrouting, Input:
 	case Prerouting, Output, Forward:
-		panic(fmt.Sprintf("%s not supported", hook))
+		log.BugTracebackOnce(fmt.Errorf("%s not supported for SNAT", hook))
+		return RuleDrop, 0
 	default:
 		panic(fmt.Sprintf("%s unrecognized", hook))
 	}
@@ -391,6 +398,10 @@ type MasqueradeTarget struct {
 	// NetworkProtocol is the network protocol the target is used with. It
 	// is immutable.
 	NetworkProtocol tcpip.NetworkProtocolNumber
+
+	// Ports is the range of source ports (or ICMP idents) to map to. A zero
+	// Size selects the default range for the original port. It is immutable.
+	Ports PortOrIdentRange
 }
 
 // Action implements Target.Action.
@@ -405,7 +416,8 @@ func (mt *MasqueradeTarget) Action(pkt *PacketBuffer, hook Hook, r *Route, addre
 	switch hook {
 	case Postrouting:
 	case Prerouting, Input, Forward, Output:
-		panic(fmt.Sprintf("masquerade target is supported only on postrouting hook; hook = %d", hook))
+		log.BugTracebackOnce(fmt.Errorf("%s not supported for MASQUERADE", hook))
+		return RuleDrop, 0
 	default:
 		panic(fmt.Sprintf("%s unrecognized", hook))
 	}
@@ -419,6 +431,9 @@ func (mt *MasqueradeTarget) Action(pkt *PacketBuffer, hook Hook, r *Route, addre
 
 	address := ep.AddressWithPrefix().Address
 	ep.DecRef()
+	if mt.Ports.Size != 0 {
+		return natAction(pkt, hook, r, mt.Ports, address, false /* dnat */, true /* changePort */, true /* changeAddress */)
+	}
 	return snatAction(pkt, hook, r, 0 /* port */, address, true /* changePort */, true /* changeAddress */)
 }
 

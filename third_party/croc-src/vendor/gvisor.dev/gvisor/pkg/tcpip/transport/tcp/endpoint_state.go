@@ -269,7 +269,7 @@ func (e *Endpoint) Restore(s *stack.Stack) {
 		// that the socket is closed correctly.
 		switch epState {
 		case StateFinWait2:
-			e.finWait2Timer = e.stack.Clock().AfterFunc(e.tcpLingerTimeout, e.finWait2TimerExpired)
+			e.maybeStartFinWait2TimerLocked()
 		case StateTimeWait:
 			e.timeWaitTimer = e.stack.Clock().AfterFunc(e.getTimeWaitDuration(), e.timeWaitTimerExpired)
 		}
@@ -288,7 +288,7 @@ func (e *Endpoint) Restore(s *stack.Stack) {
 			connectedLoading.Wait()
 			e.LockUser()
 			// All endpoints will be moved to initial state after
-			// restore. Set endpoint to its originial listen state.
+			// restore. Set endpoint to its original listen state.
 			e.setEndpointState(StateListen)
 			// Initialize the listening context.
 			rcvWnd := seqnum.Size(e.receiveBufferAvailable())

@@ -16,6 +16,7 @@
 package ipv4
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"reflect"
@@ -29,7 +30,6 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/checksum"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/header/parse"
-	"gvisor.dev/gvisor/pkg/tcpip/network/hash"
 	"gvisor.dev/gvisor/pkg/tcpip/network/internal/fragmentation"
 	"gvisor.dev/gvisor/pkg/tcpip/network/internal/ip"
 	"gvisor.dev/gvisor/pkg/tcpip/network/internal/multicast"
@@ -58,9 +58,6 @@ const (
 	// DefaultTTL is the default time-to-live value for this endpoint.
 	DefaultTTL = 64
 
-	// buckets is the number of identifier buckets.
-	buckets = 2048
-
 	// The size of a fragment block, in bytes, as per RFC 791 section 3.1,
 	// page 14.
 	fragmentblockSize = 8
@@ -81,6 +78,7 @@ var _ stack.MulticastForwardingNetworkEndpoint = (*endpoint)(nil)
 var _ stack.GroupAddressableEndpoint = (*endpoint)(nil)
 var _ stack.AddressableEndpoint = (*endpoint)(nil)
 var _ stack.NetworkEndpoint = (*endpoint)(nil)
+var _ stack.RestorableNetworkEndpoint = (*endpoint)(nil)
 var _ IGMPEndpoint = (*endpoint)(nil)
 
 // +checklocksalias:igmp.ep.mu=mu
@@ -111,6 +109,17 @@ type endpoint struct {
 
 	// +checklocks:mu
 	igmp igmpState
+}
+
+// Restore implements stack.RestorableNetworkEndpoint.
+func (e *endpoint) Restore() {
+	e.mu.Lock()
+	e.igmp.restore()
+	e.mu.Unlock()
+
+	e.protocol.mu.Lock()
+	e.protocol.eps[e.nic.ID()] = e
+	e.protocol.mu.Unlock()
 }
 
 // SetIGMPVersion implements IGMPEndpoint.
@@ -520,8 +529,9 @@ func (e *endpoint) handleFragments(_ *stack.Route, networkMTU uint32, pkt *stack
 	}
 }
 
-// recalculateChecksum recalculates the checksum of a TCP packet.
-func recalculateChecksum(pkt *stack.PacketBuffer, r *stack.Route) tcpip.Error {
+// recalculateChecksum recalculates the transport checksum from the packet's
+// network header.
+func recalculateChecksum(pkt *stack.PacketBuffer) tcpip.Error {
 	// RXChecksumValidated indicates that checksum verification may be
 	// safely skipped.
 	if pkt.RXChecksumValidated {
@@ -540,7 +550,7 @@ func recalculateChecksum(pkt *stack.PacketBuffer, r *stack.Route) tcpip.Error {
 			return &tcpip.ErrMalformedHeader{}
 		}
 		tcp := header.TCP(transportHeader)
-		xsum := r.PseudoHeaderChecksum(header.TCPProtocolNumber, netHdr.PayloadLength())
+		xsum := header.PseudoHeaderChecksum(header.TCPProtocolNumber, netHdr.SourceAddress(), netHdr.DestinationAddress(), netHdr.PayloadLength())
 		xsum = checksum.Combine(xsum, pkt.Data().Checksum())
 		tcp.SetChecksum(0)
 		tcp.SetChecksum(^tcp.CalculateChecksum(xsum))
@@ -549,7 +559,7 @@ func recalculateChecksum(pkt *stack.PacketBuffer, r *stack.Route) tcpip.Error {
 			return &tcpip.ErrMalformedHeader{}
 		}
 		udp := header.UDP(transportHeader)
-		xsum := r.PseudoHeaderChecksum(header.UDPProtocolNumber, netHdr.PayloadLength())
+		xsum := header.PseudoHeaderChecksum(header.UDPProtocolNumber, netHdr.SourceAddress(), netHdr.DestinationAddress(), netHdr.PayloadLength())
 		xsum = checksum.Combine(xsum, pkt.Data().Checksum())
 		udp.SetChecksum(0)
 		csum := ^udp.CalculateChecksum(xsum)
@@ -591,7 +601,7 @@ func (e *endpoint) writePacket(r *stack.Route, pkt *stack.PacketBuffer) tcpip.Er
 	}
 
 	if nft := stk.NFTables(); nft != nil && stk.IsNFTablesConfigured() {
-		if !nft.CheckOutput(pkt, r, stack.IP) {
+		if !nft.CheckOutput(pkt, r, r.OutgoingNIC(), stack.IP) {
 			// nftables is telling us to drop the packet.
 			return nil
 		}
@@ -612,10 +622,10 @@ func (e *endpoint) writePacket(r *stack.Route, pkt *stack.PacketBuffer) tcpip.Er
 			return nil
 		}
 
-		// Similar to the `ip_route_me_harder` in the kernel,
-		// we need to find a new route for the packet.
-		// Implementation is similar to the func forwardUnicastPacket.
-		newRoute, err := stk.FindRoute(0 /* nic id */, netHeader.SourceAddress(), newDstAddr, header.IPv4ProtocolNumber, false /* multicastLoop */)
+		// Find a new route for the rewritten destination, like Linux
+		// ip_route_me_harder. As there, the packet's source address does not
+		// restrict the route and is left unchanged.
+		newRoute, err := stk.FindRoute(0 /* nic id */, tcpip.Address{} /* localAddr */, newDstAddr, header.IPv4ProtocolNumber, false /* multicastLoop */)
 		if err != nil {
 			e.stats.ip.OutgoingPacketErrors.Increment()
 			return err // Drop the packet
@@ -628,7 +638,7 @@ func (e *endpoint) writePacket(r *stack.Route, pkt *stack.PacketBuffer) tcpip.Er
 		// we must calculate the full checksum; otherwise, NAT should have already
 		// done it.
 		if !r.RequiresTXTransportChecksum() && newRoute.RequiresTXTransportChecksum() {
-			if err := recalculateChecksum(pkt, newRoute); err != nil {
+			if err := recalculateChecksum(pkt); err != nil {
 				e.stats.ip.OutgoingPacketErrors.Increment()
 				return err // Drop the packet
 			}
@@ -671,7 +681,7 @@ func (e *endpoint) writePacketPostRouting(r *stack.Route, pkt *stack.PacketBuffe
 	}
 
 	if nft := stk.NFTables(); nft != nil && stk.IsNFTablesConfigured() {
-		if !nft.CheckPostrouting(pkt, r, stack.IP) {
+		if !nft.CheckPostrouting(pkt, r, r.OutgoingNIC(), stack.IP) {
 			// nftables is telling us to drop the packet.
 			return nil
 		}
@@ -788,7 +798,7 @@ func (e *endpoint) forwardPacketWithRoute(route *stack.Route, pkt *stack.PacketB
 	}
 
 	if nft := stk.NFTables(); nft != nil && stk.IsNFTablesConfigured() {
-		if !nft.CheckForward(pkt, route, stack.IP) {
+		if !nft.CheckForward(pkt, route, route.OutgoingNIC(), stack.IP) {
 			// nftables is telling us to drop the packet.
 			return nil
 		}
@@ -901,7 +911,7 @@ func (e *endpoint) forwardUnicastPacket(pkt *stack.PacketBuffer) ip.ForwardingEr
 		}
 
 		if nft := stk.NFTables(); nft != nil && stk.IsNFTablesConfigured() {
-			if !nft.CheckForward(pkt, nil /* route */, stack.IP) {
+			if !nft.CheckForward(pkt, nil /* route */, 0 /* outNICID */, stack.IP) {
 				// nftables is telling us to drop the packet.
 				return nil
 			}
@@ -960,7 +970,7 @@ func (e *endpoint) HandlePacket(pkt *stack.PacketBuffer) {
 	defer hView.Release()
 
 	if !e.nic.IsLoopback() {
-		if !e.protocol.options.AllowExternalLoopbackTraffic {
+		if !e.protocol.allowExternalLoopbackTraffic.Load() && !e.nic.AllowExternalIPv4LoopbackTraffic() {
 			if header.IsV4LoopbackAddress(h.SourceAddress()) {
 				martianPacketLogger.Infof("Martian packet dropped with loopback source address. If your traffic is unexpectedly dropped, you may want to allow martian packets.")
 				stats.InvalidSourceAddressesReceived.Increment()
@@ -1015,6 +1025,11 @@ func (e *endpoint) HandlePacket(pkt *stack.PacketBuffer) {
 func (e *endpoint) handleLocalPacket(pkt *stack.PacketBuffer, canSkipRXChecksum bool) {
 	stats := e.stats.ip
 	stats.PacketsReceived.Increment()
+
+	if !e.isEnabled() {
+		stats.DisabledPacketsReceived.Increment()
+		return
+	}
 
 	pkt = pkt.CloneToInbound()
 	defer pkt.DecRef()
@@ -1418,7 +1433,13 @@ func (e *endpoint) deliverPacketLocally(h header.IPv4, pkt *stack.PacketBuffer, 
 
 		// The reassembler doesn't take care of fixing up the header, so we need
 		// to do it here.
-		h.SetTotalLength(uint16(pkt.Data().Size() + len(h)))
+		totalLength := pkt.Data().Size() + len(h)
+		if totalLength > math.MaxUint16 {
+			stats.ip.MalformedPacketsReceived.Increment()
+			stats.ip.MalformedFragmentsReceived.Increment()
+			return
+		}
+		h.SetTotalLength(uint16(totalLength))
 		h.SetFlagsFragmentOffset(0, 0)
 
 		e.protocol.parseTransport(pkt, tcpip.TransportProtocolNumber(transProtoNum))
@@ -1587,6 +1608,13 @@ func (e *endpoint) PermanentAddresses() []tcpip.AddressWithPrefix {
 	return e.addressableEndpointState.PermanentAddresses()
 }
 
+// AddressInfos implements stack.AddressableEndpoint.
+func (e *endpoint) AddressInfos() []stack.AddressInfo {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.addressableEndpointState.AddressInfos()
+}
+
 // JoinGroup implements stack.GroupAddressableEndpoint.
 func (e *endpoint) JoinGroup(addr tcpip.Address) tcpip.Error {
 	e.mu.Lock()
@@ -1647,7 +1675,7 @@ type protocol struct {
 	// eps is keyed by NICID to allow protocol methods to retrieve an endpoint
 	// when handling a packet, by looking at which NIC handled the packet.
 	// +checklocks:mu
-	eps map[tcpip.NICID]*endpoint
+	eps map[tcpip.NICID]*endpoint `state:"nosave"`
 
 	// ICMP types for which the stack's global rate limiting must apply.
 	// +checklocks:mu
@@ -1657,14 +1685,14 @@ type protocol struct {
 	// uint8 portion of it is meaningful.
 	defaultTTL atomicbitops.Uint32
 
-	ids    []atomicbitops.Uint32
-	hashIV uint32
-	// idTS is the unix timestamp in milliseconds 'ids' was last accessed.
-	idTS atomicbitops.Int64
-
 	fragmentation *fragmentation.Fragmentation
 
 	options Options
+
+	// allowExternalLoopbackTraffic mirrors options.AllowExternalLoopbackTraffic
+	// but is runtime-settable (via SetOption / the route_localnet sysctl). It is
+	// read lock-free on the packet path, so it is stored atomically.
+	allowExternalLoopbackTraffic atomicbitops.Bool
 
 	multicastRouteTable multicast.RouteTable
 	// multicastForwardingDisp is the multicast forwarding event dispatcher that
@@ -1672,6 +1700,15 @@ type protocol struct {
 	// that multicast packets will only be forwarded if this is non-nil.
 	// +checklocks:mu
 	multicastForwardingDisp stack.MulticastForwardingEventDispatcher
+}
+
+// afterLoad is invoked by stateify.
+//
+// +checklocksexclude:p.mu
+func (p *protocol) afterLoad(context.Context) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.eps = make(map[tcpip.NICID]*endpoint)
 }
 
 // Number returns the ipv4 protocol number.
@@ -1696,6 +1733,9 @@ func (p *protocol) SetOption(option tcpip.SettableNetworkProtocolOption) tcpip.E
 	case *tcpip.DefaultTTLOption:
 		p.SetDefaultTTL(uint8(*v))
 		return nil
+	case *tcpip.AllowExternalLoopbackTrafficOption:
+		p.allowExternalLoopbackTraffic.Store(bool(*v))
+		return nil
 	default:
 		return &tcpip.ErrUnknownProtocolOption{}
 	}
@@ -1706,6 +1746,9 @@ func (p *protocol) Option(option tcpip.GettableNetworkProtocolOption) tcpip.Erro
 	switch v := option.(type) {
 	case *tcpip.DefaultTTLOption:
 		*v = tcpip.DefaultTTLOption(p.DefaultTTL())
+		return nil
+	case *tcpip.AllowExternalLoopbackTrafficOption:
+		*v = tcpip.AllowExternalLoopbackTrafficOption(p.allowExternalLoopbackTraffic.Load())
 		return nil
 	default:
 		return &tcpip.ErrUnknownProtocolOption{}
@@ -1976,7 +2019,8 @@ func (p *protocol) allowICMPReply(icmpType header.ICMPv4Type, code header.ICMPv4
 }
 
 // SendRejectionError implements stack.RejectIPv4WithHandler.
-func (p *protocol) SendRejectionError(pkt *stack.PacketBuffer, rejectWith stack.RejectIPv4WithICMPType, inputHook bool) tcpip.Error {
+func (p *protocol) SendRejectionError(pkt *stack.PacketBuffer, rejectWith stack.RejectIPv4WithICMPType, hook stack.Hook) tcpip.Error {
+	inputHook := hook == stack.Input
 	switch rejectWith {
 	case stack.RejectIPv4WithICMPNetUnreachable:
 		return p.returnError(&icmpReasonNetworkUnreachable{}, pkt, inputHook)
@@ -1991,7 +2035,7 @@ func (p *protocol) SendRejectionError(pkt *stack.PacketBuffer, rejectWith stack.
 	case stack.RejectIPv4WithICMPAdminProhibited:
 		return p.returnError(&icmpReasonAdministrativelyProhibited{}, pkt, inputHook)
 	case stack.RejectIPv4WithTCPReset:
-		return ip.RejectWithTCPReset(pkt, ProtocolNumber, p.stack, inputHook)
+		return ip.RejectWithTCPReset(pkt, ProtocolNumber, p.stack, hook)
 	default:
 		panic(fmt.Sprintf("unhandled %[1]T = %[1]d", rejectWith))
 	}
@@ -2025,27 +2069,6 @@ func packetMustBeFragmented(pkt *stack.PacketBuffer, networkMTU uint32) bool {
 	return pkt.GSOOptions.Type == stack.GSONone && uint32(payload) > networkMTU
 }
 
-// addressToUint32 translates an IPv4 address into its little endian uint32
-// representation.
-//
-// This function does the same thing as binary.LittleEndian.Uint32 but operates
-// on a tcpip.Address (a string) without the need to convert it to a byte slice,
-// which would cause an allocation.
-func addressToUint32(addr tcpip.Address) uint32 {
-	addrBytes := addr.As4()
-	_ = addrBytes[3] // bounds check hint to compiler
-	return uint32(addrBytes[0]) | uint32(addrBytes[1])<<8 | uint32(addrBytes[2])<<16 | uint32(addrBytes[3])<<24
-}
-
-// hashRoute calculates a hash value for the given source/destination pair using
-// the addresses, transport protocol number and a 32-bit number to generate the
-// hash.
-func hashRoute(srcAddr, dstAddr tcpip.Address, protocol tcpip.TransportProtocolNumber, hashIV uint32) uint32 {
-	a := addressToUint32(srcAddr)
-	b := addressToUint32(dstAddr)
-	return hash.Hash3Words(a, b, uint32(protocol), hashIV)
-}
-
 // Options holds options to configure a new protocol.
 //
 // +stateify savable
@@ -2060,23 +2083,13 @@ type Options struct {
 
 // NewProtocolWithOptions returns an IPv4 network protocol.
 func NewProtocolWithOptions(opts Options) stack.NetworkProtocolFactory {
-	ids := make([]atomicbitops.Uint32, buckets)
-
-	// Randomly initialize hashIV and the ids.
-	r := hash.RandN32(1 + buckets)
-	for i := range ids {
-		ids[i] = atomicbitops.FromUint32(r[i])
-	}
-	hashIV := r[buckets]
-
 	return func(s *stack.Stack) stack.NetworkProtocol {
 		p := &protocol{
 			stack:      s,
-			ids:        ids,
-			hashIV:     hashIV,
 			defaultTTL: atomicbitops.FromUint32(DefaultTTL),
 			options:    opts,
 		}
+		p.allowExternalLoopbackTraffic.Store(opts.AllowExternalLoopbackTraffic)
 		p.fragmentation = fragmentation.NewFragmentation(fragmentblockSize, fragmentation.HighFragThreshold, fragmentation.LowFragThreshold, ReassembleTimeout, s.Clock(), p)
 		p.eps = make(map[tcpip.NICID]*endpoint)
 		// Set ICMP rate limiting to Linux defaults.

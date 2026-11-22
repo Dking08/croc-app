@@ -6,10 +6,10 @@
 package device
 
 const (
-	QueueStagedSize            = 128
-	QueueOutboundSize          = 1024
-	QueueInboundSize           = 1024
-	QueueHandshakeSize         = 1024
-	MaxSegmentSize             = 2048 - 32 // largest possible UDP datagram
-	PreallocatedBuffersPerPool = 0         // Disable and allow for infinite memory growth
+	DefaultQueueStagedSize            = 128
+	DefaultQueueOutboundSize          = 1024
+	DefaultQueueInboundSize           = 1024
+	DefaultQueueHandshakeSize         = 1024
+	MaxSegmentSize                    = 2048 - 32 // largest possible UDP datagram
+	DefaultPreallocatedBuffersPerPool = 0         // Disable and allow for infinite memory growth
 )

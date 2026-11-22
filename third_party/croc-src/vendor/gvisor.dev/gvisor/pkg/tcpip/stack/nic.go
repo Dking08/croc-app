@@ -17,6 +17,7 @@ package stack
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 
 	"gvisor.dev/gvisor/pkg/atomicbitops"
@@ -47,6 +48,15 @@ type nic struct {
 	kind    string
 	context NICContext
 
+	// minMTU and maxMTU are immutable bounds on MTU changes. Zero means that
+	// the corresponding bound is unrestricted.
+	minMTU uint32
+	maxMTU uint32
+
+	// multicast indicates whether the interface reports multicast support.
+	// It is immutable.
+	multicast bool
+
 	stats sharedStats
 
 	// enableDisableMu is used to synchronize attempts to enable/disable the NIC.
@@ -56,12 +66,23 @@ type nic struct {
 
 	// The network endpoints themselves may be modified by calling the interface's
 	// methods, but the map reference and entries must be constant.
-	networkEndpoints          map[tcpip.NetworkProtocolNumber]NetworkEndpoint
+	networkEndpoints          map[tcpip.NetworkProtocolNumber]NetworkEndpoint `state:"wait"`
 	linkAddrResolvers         map[tcpip.NetworkProtocolNumber]*linkResolver
 	duplicateAddressDetectors map[tcpip.NetworkProtocolNumber]DuplicateAddressDetector
 
+	// disabledNetworkProtocols indicates network protocols disabled on
+	// this NIC.
+	//
+	// +checklocks:enableDisableMu
+	disabledNetworkProtocols []tcpip.NetworkProtocolNumber
+
 	// enabled indicates whether the NIC is enabled.
 	enabled atomicbitops.Bool
+
+	// adminDown indicates whether the NIC is administratively down, i.e. its
+	// IFF_UP flag is cleared. A NIC that is administratively up stays disabled
+	// while external networking is paused, unless it is a loopback NIC.
+	adminDown atomicbitops.Bool
 
 	// spoofing indicates whether the NIC is spoofing.
 	spoofing atomicbitops.Bool
@@ -96,6 +117,10 @@ type nic struct {
 	// experimentIPOptionEnabled indicates whether the NIC supports the
 	// experiment IP option.
 	experimentIPOptionEnabled bool
+
+	// allowExternalIPv4LoopbackTraffic indicates whether IPv4 loopback packets
+	// should be accepted from external networks on this NIC.
+	allowExternalIPv4LoopbackTraffic bool
 }
 
 // makeNICStats initializes the NIC statistics and associates them to the global
@@ -183,20 +208,25 @@ func newNIC(stack *Stack, id tcpip.NICID, ep LinkEndpoint, opts NICOptions) *nic
 	// observe an MTU of at least 1280 bytes. Ensure that this requirement
 	// of IPv6 is supported on this endpoint's LinkEndpoint.
 	nic := &nic{
-		NetworkLinkEndpoint:       ep,
-		stack:                     stack,
-		id:                        id,
-		name:                      opts.Name,
-		context:                   opts.Context,
-		stats:                     makeNICStats(stack.Stats().NICs),
-		networkEndpoints:          make(map[tcpip.NetworkProtocolNumber]NetworkEndpoint),
-		linkAddrResolvers:         make(map[tcpip.NetworkProtocolNumber]*linkResolver),
-		duplicateAddressDetectors: make(map[tcpip.NetworkProtocolNumber]DuplicateAddressDetector),
-		packetEPs:                 make(map[tcpip.NetworkProtocolNumber]*packetEndpointList),
-		qDisc:                     qDisc,
-		deliverLinkPackets:        opts.DeliverLinkPackets,
-		experimentIPOptionEnabled: opts.EnableExperimentIPOption,
-		kind:                      opts.Kind,
+		NetworkLinkEndpoint:              ep,
+		stack:                            stack,
+		id:                               id,
+		name:                             opts.Name,
+		context:                          opts.Context,
+		stats:                            makeNICStats(stack.Stats().NICs),
+		networkEndpoints:                 make(map[tcpip.NetworkProtocolNumber]NetworkEndpoint),
+		linkAddrResolvers:                make(map[tcpip.NetworkProtocolNumber]*linkResolver),
+		duplicateAddressDetectors:        make(map[tcpip.NetworkProtocolNumber]DuplicateAddressDetector),
+		packetEPs:                        make(map[tcpip.NetworkProtocolNumber]*packetEndpointList),
+		qDisc:                            qDisc,
+		deliverLinkPackets:               opts.DeliverLinkPackets,
+		experimentIPOptionEnabled:        opts.EnableExperimentIPOption,
+		allowExternalIPv4LoopbackTraffic: opts.AllowExternalIPv4LoopbackTraffic,
+		kind:                             opts.Kind,
+		minMTU:                           opts.MinMTU,
+		maxMTU:                           opts.MaxMTU,
+		multicast:                        opts.Multicast,
+		adminDown:                        atomicbitops.FromBool(opts.Disabled),
 	}
 	nic.linkResQueue.init(nic)
 
@@ -298,18 +328,91 @@ func (n *nic) disableLocked() {
 func (n *nic) enable() tcpip.Error {
 	n.enableDisableMu.Lock()
 	defer n.enableDisableMu.Unlock()
+	return n.enableLocked()
+}
 
+// enableLocked enables n. See enable.
+//
+// +checklocks:n.enableDisableMu
+func (n *nic) enableLocked() tcpip.Error {
 	if !n.setEnabled(true) {
 		return nil
 	}
 
-	for _, ep := range n.networkEndpoints {
+	for netProto, ep := range n.networkEndpoints {
+		if n.isNetworkProtocolDisabledRLocked(netProto) {
+			continue
+		}
 		if err := ep.Enable(); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// +checklocksread:n.enableDisableMu
+func (n *nic) isNetworkProtocolDisabledRLocked(protocol tcpip.NetworkProtocolNumber) bool {
+	return slices.Contains(n.disabledNetworkProtocols, protocol)
+}
+
+func (n *nic) setNetworkProtocolEnabled(protocol tcpip.NetworkProtocolNumber, enable bool) tcpip.Error {
+	n.enableDisableMu.Lock()
+	defer n.enableDisableMu.Unlock()
+
+	ep := n.getNetworkEndpoint(protocol)
+	if ep == nil {
+		return &tcpip.ErrUnknownProtocol{}
+	}
+	if n.isNetworkProtocolDisabledRLocked(protocol) != enable {
+		return nil
+	}
+	if enable {
+		n.disabledNetworkProtocols = slices.DeleteFunc(n.disabledNetworkProtocols, func(p tcpip.NetworkProtocolNumber) bool {
+			return p == protocol
+		})
+		if n.Enabled() {
+			return ep.Enable()
+		}
+		return nil
+	}
+	n.disabledNetworkProtocols = append(n.disabledNetworkProtocols, protocol)
+	ep.Disable()
+
+	// Clear the neighbour table (including static entries) as we cannot
+	// guarantee that the current neighbour table will be valid when the
+	// protocol is enabled again.
+	if linkRes, ok := n.linkAddrResolvers[protocol]; ok {
+		linkRes.neigh.clear()
+	}
+	return nil
+}
+
+func (n *nic) networkProtocolEnabled(protocol tcpip.NetworkProtocolNumber) (bool, tcpip.Error) {
+	n.enableDisableMu.RLock()
+	defer n.enableDisableMu.RUnlock()
+	if n.getNetworkEndpoint(protocol) == nil {
+		return false, &tcpip.ErrUnknownProtocol{}
+	}
+	return !n.isNetworkProtocolDisabledRLocked(protocol), nil
+}
+
+// setAdminState sets the administrative state of n and enables or disables n
+// to match. If paused is true, n stays disabled even when it is
+// administratively up.
+func (n *nic) setAdminState(up, paused bool) tcpip.Error {
+	n.enableDisableMu.Lock()
+	defer n.enableDisableMu.Unlock()
+
+	n.adminDown.Store(!up)
+	if !up {
+		n.disableLocked()
+		return nil
+	}
+	if paused {
+		return nil
+	}
+	return n.enableLocked()
 }
 
 // remove detaches NIC from the link endpoint and releases network endpoint
@@ -362,6 +465,11 @@ func (n *nic) Promiscuous() bool {
 // IsLoopback implements NetworkInterface.
 func (n *nic) IsLoopback() bool {
 	return n.NetworkLinkEndpoint.Capabilities()&CapabilityLoopback != 0
+}
+
+// AllowExternalIPv4LoopbackTraffic implements NetworkInterface.
+func (n *nic) AllowExternalIPv4LoopbackTraffic() bool {
+	return n.allowExternalIPv4LoopbackTraffic
 }
 
 // WritePacket implements NetworkEndpoint.
@@ -568,6 +676,25 @@ func (n *nic) allPermanentAddresses() []tcpip.ProtocolAddress {
 		}
 	}
 	return addrs
+}
+
+func (n *nic) allAddressInfo() []ProtocolAddressInfo {
+	var infos []ProtocolAddressInfo
+	for p, ep := range n.networkEndpoints {
+		addressableEndpoint, ok := ep.(AddressableEndpoint)
+		if !ok {
+			continue
+		}
+
+		for _, info := range addressableEndpoint.AddressInfos() {
+			infos = append(infos, ProtocolAddressInfo{
+				Protocol:          p,
+				AddressWithPrefix: info.AddressWithPrefix,
+				Permanent:         info.Permanent,
+			})
+		}
+	}
+	return infos
 }
 
 // primaryAddresses returns the primary addresses associated with this NIC.

@@ -4,17 +4,43 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Get information about a single parameter by specifying the parameter name. To
-// get information about more than one parameter at a time, use the GetParameters
-// operation.
+// Get information about a single parameter by specifying the parameter name.
+//
+// Parameter names can't contain spaces. The service removes any spaces specified
+// for the beginning or end of a parameter name. If the specified name for a
+// parameter contains spaces between characters, the request fails with a
+// ValidationException error.
+//
+// To get information about more than one parameter at a time, use the GetParameters operation.
+//
+// This operation is authorized against the ssm:GetParameter action. Denying that
+// action alone doesn't restrict GetParameters, GetParameterHistory, or GetParametersByPath, each of which is authorized against its
+// own action. For more information, see [How Parameter Store authorizes parameter retrieval]in the Amazon Web Services Systems
+// Manager User Guide.
+//
+// Parameter Store throughput defines the number of API transactions per second
+// (TPS) that Systems Manager can process. This applies to GetParameter ,
+// GetParameters , and PutParameter API calls for your Amazon Web Services account
+// and Amazon Web Services Region. By default, Parameter Store is configured with a
+// standard throughput quota suitable for low- to moderate-volume workloads.
+// Applications that retrieve configuration data infrequently or operate at smaller
+// scale can use this default setting without additional cost.
+//
+// For higher-volume workloads, you can enable higher throughput. This increases
+// the maximum number of supported transactions per second for your account and
+// Region. Increased throughput supports applications and workloads that need
+// concurrent access to multiple parameters. If you experience
+// ThrottlingException: Rate exceeded errors, enable higher throughput. For more
+// information, see [Changing Parameter Store throughput].
+//
+// [How Parameter Store authorizes parameter retrieval]: https://docs.aws.amazon.com/systems-manager/latest/userguide/ps-retrieval-authorization.html
+// [Changing Parameter Store throughput]: https://docs.aws.amazon.com/systems-manager/latest/userguide/parameter-store-throughput.html
 func (c *Client) GetParameter(ctx context.Context, params *GetParameterInput, optFns ...func(*Options)) (*GetParameterOutput, error) {
 	if params == nil {
 		params = &GetParameterInput{}
@@ -32,9 +58,16 @@ func (c *Client) GetParameter(ctx context.Context, params *GetParameterInput, op
 
 type GetParameterInput struct {
 
-	// The name of the parameter you want to query. To query by parameter label, use
-	// "Name": "name:label" . To query by parameter version, use "Name": "name:version"
-	// .
+	// The name or Amazon Resource Name (ARN) of the parameter that you want to query.
+	// For parameters shared with you from another account, you must use the full ARN.
+	//
+	// To query by parameter label, use "Name": "name:label" . To query by parameter
+	// version, use "Name": "name:version" .
+	//
+	// For more information about shared parameters, see [Working with shared parameters] in the Amazon Web Services
+	// Systems Manager User Guide.
+	//
+	// [Working with shared parameters]: https://docs.aws.amazon.com/systems-manager/latest/userguide/parameter-store-shared-parameters.html
 	//
 	// This member is required.
 	Name *string
@@ -44,6 +77,21 @@ type GetParameterInput struct {
 	WithDecryption *bool
 
 	noSmithyDocumentSerde
+}
+
+func (v *GetParameterInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetParameterRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetParameterInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Name != nil {
+		s.WriteString(schemas.GetParameterRequest_Name, *v.Name)
+	}
+	if v.WithDecryption != nil {
+		s.WriteBool(schemas.GetParameterRequest_WithDecryption, *v.WithDecryption)
+	}
 }
 
 type GetParameterOutput struct {
@@ -57,68 +105,50 @@ type GetParameterOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetParameterOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetParameterResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetParameterOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Parameter != nil {
+		s.WriteStruct(schemas.GetParameterResult_Parameter)
+		v.Parameter.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *GetParameterOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.GetParameterResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.GetParameterResult_Parameter:
+			v.Parameter = &types.Parameter{}
+			return v.Parameter.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationGetParameterMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetParameter, schemas.GetParameterRequest, schemas.GetParameterResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpGetParameter{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetParameter, schemas.GetParameterRequest, schemas.GetParameterResult), output: &GetParameterOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpGetParameter{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "GetParameter"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetParameterValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opGetParameter(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -133,13 +163,8 @@ func (c *Client) addOperationGetParameterMiddlewares(stack *middleware.Stack, op
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opGetParameter(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "GetParameter",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }
