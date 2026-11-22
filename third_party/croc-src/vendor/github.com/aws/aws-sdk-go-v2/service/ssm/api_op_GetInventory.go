@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Query inventory information. This includes managed node status, such as Stopped
@@ -54,9 +53,34 @@ type GetInventoryInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetInventoryInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetInventoryRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetInventoryInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Aggregators != nil {
+		serializeInventoryAggregatorList(s, schemas.GetInventoryRequest_Aggregators, v.Aggregators)
+	}
+	if v.Filters != nil {
+		serializeInventoryFilterList(s, schemas.GetInventoryRequest_Filters, v.Filters)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.GetInventoryRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.GetInventoryRequest_NextToken, *v.NextToken)
+	}
+	if v.ResultAttributes != nil {
+		serializeResultAttributeList(s, schemas.GetInventoryRequest_ResultAttributes, v.ResultAttributes)
+	}
+}
+
 type GetInventoryOutput struct {
 
-	// Collection of inventory entities such as a collection of managed node inventory.
+	// Collection of inventory entities such as a collection of managed node
+	// inventory.
 	Entities []types.InventoryResultEntity
 
 	// The token to use when requesting the next set of items. If there are no
@@ -69,68 +93,53 @@ type GetInventoryOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetInventoryOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetInventoryResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetInventoryOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Entities != nil {
+		serializeInventoryResultEntityList(s, schemas.GetInventoryResult_Entities, v.Entities)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.GetInventoryResult_NextToken, *v.NextToken)
+	}
+}
+func (v *GetInventoryOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.GetInventoryResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.GetInventoryResult_Entities:
+			return deserializeInventoryResultEntityList(d, schemas.GetInventoryResult_Entities, &v.Entities)
+		case schemas.GetInventoryResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.GetInventoryResult_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationGetInventoryMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetInventory, schemas.GetInventoryRequest, schemas.GetInventoryResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpGetInventory{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetInventory, schemas.GetInventoryRequest, schemas.GetInventoryResult), output: &GetInventoryOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpGetInventory{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "GetInventory"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetInventoryValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opGetInventory(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -145,15 +154,11 @@ func (c *Client) addOperationGetInventoryMiddlewares(stack *middleware.Stack, op
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// GetInventoryAPIClient is a client that implements the GetInventory operation.
-type GetInventoryAPIClient interface {
-	GetInventory(context.Context, *GetInventoryInput, ...func(*Options)) (*GetInventoryOutput, error)
-}
-
-var _ GetInventoryAPIClient = (*Client)(nil)
 
 // GetInventoryPaginatorOptions is the paginator options for GetInventory
 type GetInventoryPaginatorOptions struct {
@@ -219,6 +224,9 @@ func (p *GetInventoryPaginator) NextPage(ctx context.Context, optFns ...func(*Op
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.GetInventory(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -238,10 +246,9 @@ func (p *GetInventoryPaginator) NextPage(ctx context.Context, optFns ...func(*Op
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opGetInventory(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "GetInventory",
-	}
+// GetInventoryAPIClient is a client that implements the GetInventory operation.
+type GetInventoryAPIClient interface {
+	GetInventory(context.Context, *GetInventoryInput, ...func(*Options)) (*GetInventoryOutput, error)
 }
+
+var _ GetInventoryAPIClient = (*Client)(nil)

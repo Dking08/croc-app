@@ -4,16 +4,20 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
+// Amazon Web Services Systems Manager Change Manager is no longer open to new
+// customers. Existing customers can continue to use the service as normal. For
+// more information, see [Amazon Web Services Systems Manager Change Manager availability change].
+//
 // Updates information related to approval reviews for a specific version of a
 // change template in Change Manager.
+//
+// [Amazon Web Services Systems Manager Change Manager availability change]: https://docs.aws.amazon.com/systems-manager/latest/userguide/change-manager-availability-change.html
 func (c *Client) UpdateDocumentMetadata(ctx context.Context, params *UpdateDocumentMetadataInput, optFns ...func(*Options)) (*UpdateDocumentMetadataOutput, error) {
 	if params == nil {
 		params = &UpdateDocumentMetadataInput{}
@@ -47,6 +51,26 @@ type UpdateDocumentMetadataInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UpdateDocumentMetadataInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UpdateDocumentMetadataRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UpdateDocumentMetadataInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.DocumentReviews != nil {
+		s.WriteStruct(schemas.UpdateDocumentMetadataRequest_DocumentReviews)
+		v.DocumentReviews.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.DocumentVersion != nil {
+		s.WriteString(schemas.UpdateDocumentMetadataRequest_DocumentVersion, *v.DocumentVersion)
+	}
+	if v.Name != nil {
+		s.WriteString(schemas.UpdateDocumentMetadataRequest_Name, *v.Name)
+	}
+}
+
 type UpdateDocumentMetadataOutput struct {
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -54,68 +78,42 @@ type UpdateDocumentMetadataOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UpdateDocumentMetadataOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UpdateDocumentMetadataResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UpdateDocumentMetadataOutput) SerializeMembers(s smithy.ShapeSerializer) {
+}
+func (v *UpdateDocumentMetadataOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.UpdateDocumentMetadataResponse, func(s *smithy.Schema) error {
+		switch s {
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationUpdateDocumentMetadataMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UpdateDocumentMetadata, schemas.UpdateDocumentMetadataRequest, schemas.UpdateDocumentMetadataResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpUpdateDocumentMetadata{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UpdateDocumentMetadata, schemas.UpdateDocumentMetadataRequest, schemas.UpdateDocumentMetadataResponse), output: &UpdateDocumentMetadataOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpUpdateDocumentMetadata{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "UpdateDocumentMetadata"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpUpdateDocumentMetadataValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opUpdateDocumentMetadata(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -130,13 +128,8 @@ func (c *Client) addOperationUpdateDocumentMetadataMiddlewares(stack *middleware
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opUpdateDocumentMetadata(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "UpdateDocumentMetadata",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

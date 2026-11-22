@@ -373,7 +373,10 @@ func (e *endpoint) handleICMP(pkt *stack.PacketBuffer) {
 		// per-stack default handler. Also preserve the IPv4 behavior for
 		// temporary local addresses: the packet is delivered above, but the
 		// stack does not synthesize an echo reply for it.
-		if defaultHandlerHandled || localAddressTemporary {
+		//
+		// Do not reply to echo requests sent to broadcast or multicast
+		// addresses, matching Linux's default icmp_echo_ignore_broadcasts=1.
+		if defaultHandlerHandled || localAddressTemporary || localAddressBroadcast || header.IsV4MulticastAddress(iph.DestinationAddress()) {
 			return
 		}
 
@@ -489,7 +492,7 @@ func (e *endpoint) sendICMPEchoReply(replyData *buffer.View, ipHdr header.IPv4, 
 	//     message, the source and destination addresses are simply reversed,
 	//     the type code changed to 0, and the checksum recomputed.
 	//
-	// This was interpreted by early implementors to mean that all options must
+	// This was interpreted by early implementers to mean that all options must
 	// be copied from the echo request IP header to the echo reply IP header
 	// and this behaviour is still relied upon by some applications.
 	//

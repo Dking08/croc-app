@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Karl Gaissmaier
+// Copyright (c) 2026 Karl Gaissmaier
 // SPDX-License-Identifier: MIT
 
 package nodes
@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/gaissmai/bart/internal/art"
-	"github.com/gaissmai/bart/internal/value"
 )
 
 // strideLen represents the byte stride length for the multibit trie.
@@ -159,41 +158,23 @@ func NewFringeNode[V any](val V) *FringeNode[V] {
 	return &FringeNode[V]{Value: val}
 }
 
-// IsFringe determines whether a prefix qualifies as a "fringe node" -
-// that is, a special kind of path-compressed leaf inserted at the final
-// possible trie level (depth == lastOctet).
+// IsFringe determines whether a prefix qualifies as a "FringeNode".
+// Only prefixes that are stride-aligned (i.e., /8, /16, ..., /128)
+// can be fringe-compressed. If these prefixes are inserted at a position
+// where depth == (strideCount-1), they are treated as FringeNodes;
+// at positions where depth < (strideCount-1), they are treated as LeafNodes.
 //
-// Both "leaves" and "fringes" are path-compressed terminal entries;
-// the distinction lies in their position within the trie:
+// Example for a stride-aligned prefix like 192.168.1.0/24 (strideCount = 3, modBits = 0):
 //
-//   - A leaf is inserted at any intermediate level if no further stride
-//     boundary matches (depth < lastOctet).
-//
-//   - A fringe is inserted at the last possible stride level
-//     (depth == lastOctet) before a prefix would otherwise land
-//     as a direct prefix (depth == lastOctet+1).
-//
-// Special property:
-//   - A fringe acts as a default route for all downstream bit patterns
-//     extending beyond its prefix.
-//
-// Examples:
-//
-//	e.g. prefix is addr/8, or addr/16, or ... addr/128
-//	depth <  lastOctet :  a leaf, path-compressed
-//	depth == lastOctet :  a fringe, path-compressed
-//	depth == lastOctet+1: a prefix with octet/pfx == 0/0 => idx == 1, a strides default route
-//
-// Logic:
-//   - A prefix qualifies as a fringe if:
-//     depth == lastOctet && lastBits == 0
-//     (i.e., aligned on stride boundary, /8, /16, ... /128 bits)
-func IsFringe(depth int, pfx netip.Prefix) bool {
-	lastOctetPlusOne, lastBits := LastOctetPlusOneAndLastBits(pfx)
-	return depth == lastOctetPlusOne-1 && lastBits == 0
+//	depth = 3,  depth == strideCount     : A direct prefix with 0/0 (default route for subtrie).
+//	depth = 2,  depth == (strideCount-1) : A path-compressed fringe.
+//	depth < 2,  depth  < (strideCount-1) : A path-compressed leaf.
+func IsFringe(depth int, pfxLen int) bool {
+	strideCount, modBits := DivMod8(pfxLen)
+	return depth == strideCount-1 && modBits == 0
 }
 
-// cmpIndexRank, sort indexes in prefix sort order.
+// CmpIndexRank, sort indexes in prefix sort order.
 func CmpIndexRank(aIdx, bIdx uint8) int {
 	// convert idx [1..255] to prefix
 	aOctet, aBits := art.IdxToPfx(aIdx)
@@ -218,7 +199,7 @@ func CmpIndexRank(aIdx, bIdx uint8) int {
 //
 // Returns the reconstructed netip.Prefix.
 func CidrFromPath(path StridePath, depth int, is4 bool, idx uint8) netip.Prefix {
-	depth = depth & DepthMask // BCE
+	depth &= DepthMask // BCE
 
 	// retrieve the last octet and pfxLen
 	octet, pfxLen := art.IdxToPfx(idx)
@@ -247,21 +228,21 @@ func CidrFromPath(path StridePath, depth int, is4 bool, idx uint8) netip.Prefix 
 
 // CidrForFringe reconstructs a CIDR prefix for a fringe node from the traversal path.
 // Since fringe nodes don't store their prefix explicitly, it's derived entirely
-// from the node's position in the trie.
+// from the node's position in the trie and its final byte value.
 //
 // Parameters:
-//   - octets: The path of octets leading to the fringe
-//   - depth: Current depth in the trie
-//   - is4: True for IPv4 processing, false for IPv6
-//   - lastOctet: The final octet where the fringe is located
+//   - octets:     The path of previous bytes leading up to the fringe.
+//   - depth:      Current depth in the trie (which equals strideCount - 1).
+//   - is4:        True for IPv4 processing, false for IPv6.
+//   - fringeByte: The actual 8-bit value (0-255) of the prefix at this final stride.
 //
 // Returns the reconstructed netip.Prefix for the fringe.
-func CidrForFringe(octets []byte, depth int, is4 bool, lastOctet uint8) netip.Prefix {
-	depth = depth & DepthMask // BCE
+func CidrForFringe(octets []byte, depth int, is4 bool, fringeByte uint8) netip.Prefix {
+	depth &= DepthMask // BCE
 
 	var path StridePath
 	copy(path[:], octets)
-	path[depth] = lastOctet
+	path[depth] = fringeByte
 
 	// canonicalize, fringe bit boundaries are always a multiple of a byte
 	clear(path[depth+1:])
@@ -274,7 +255,7 @@ func CidrForFringe(octets []byte, depth int, is4 bool, lastOctet uint8) netip.Pr
 		ip = netip.AddrFrom16(path)
 	}
 
-	// it's a fringe, bits are always /8, /16, /24, ...
+	// it's a fringe, bits are always aligned on stride boundaries (/8, /16, /24, ...)
 	bits := (depth + 1) << 3
 
 	// PrefixFrom does not allocate and does not mask off the host bits of ip.
@@ -282,31 +263,28 @@ func CidrForFringe(octets []byte, depth int, is4 bool, lastOctet uint8) netip.Pr
 	return netip.PrefixFrom(ip, bits)
 }
 
-// LastOctetPlusOneAndLastBits returns the count of full 8‑bit strides (bits/8)
-// and the leftover bits in the final stride (bits%8) for pfx.
+// DivMod8 returns the count of full 8‑bit strides (bits/8)
+// and the remaining bits in the final stride (bits%8) for pfxLen.
 //
-// lastOctetPlusOne is the count of full 8‑bit strides (bits/8).
-// lastBits is the remaining bit count in the final stride (bits%8),
-//
-// ATTENTION: Split the IP prefixes at 8bit borders, count from 0.
+// ATTENTION: Split the IP prefixes at 8-bit borders, count from 0.
 //
 //	/7, /15, /23, /31, ..., /127
 //
 //	BitPos: [0-7],[8-15],[16-23],[24-31],[32]
 //	BitPos: [0-7],[8-15],[16-23],[24-31],[32-39],[40-47],[48-55],[56-63],...,[120-127],[128]
 //
-//	0.0.0.0/0      => lastOctetPlusOne:  0, lastBits: 0 (default route)
-//	0.0.0.0/7      => lastOctetPlusOne:  0, lastBits: 7
-//	0.0.0.0/8      => lastOctetPlusOne:  1, lastBits: 0 (possible fringe)
-//	10.0.0.0/8     => lastOctetPlusOne:  1, lastBits: 0 (possible fringe)
-//	10.0.0.0/22    => lastOctetPlusOne:  2, lastBits: 6
-//	10.0.0.0/29    => lastOctetPlusOne:  3, lastBits: 5
-//	10.0.0.0/32    => lastOctetPlusOne:  4, lastBits: 0 (possible fringe)
+//	0.0.0.0/0      => strideCount:  0, modBits: 0 (default route)
+//	0.0.0.0/7      => strideCount:  0, modBits: 7
+//	0.0.0.0/8      => strideCount:  1, modBits: 0 (fringe candidate)
+//	10.0.0.0/8     => strideCount:  1, modBits: 0 (fringe candidate)
+//	10.0.0.0/22    => strideCount:  2, modBits: 6
+//	10.0.0.0/29    => strideCount:  3, modBits: 5
+//	10.0.0.0/32    => strideCount:  4, modBits: 0 (fringe candidate)
 //
-//	::/0           => lastOctetPlusOne:  0, lastBits: 0 (default route)
-//	::1/128        => lastOctetPlusOne: 16, lastBits: 0 (possible fringe)
-//	2001:db8::/42  => lastOctetPlusOne:  5, lastBits: 2
-//	2001:db8::/56  => lastOctetPlusOne:  7, lastBits: 0 (possible fringe)
+//	::/0           => strideCount:  0, modBits: 0 (default route)
+//	::1/128        => strideCount: 16, modBits: 0 (fringe candidate)
+//	2001:db8::/42  => strideCount:  5, modBits: 2
+//	2001:db8::/56  => strideCount:  7, modBits: 0 (fringe candidate)
 //
 //	/32 and /128 prefixes are special, they never form a new node,
 //	At the end of the trie (IPv4: depth 4, IPv6: depth 16) they are always
@@ -315,27 +293,22 @@ func CidrForFringe(octets []byte, depth int, is4 bool, lastOctet uint8) netip.Pr
 // We are not splitting at /8, /16, ..., because this would mean that the
 // first node would have 512 prefixes, 9 bits from [0-8]. All remaining nodes
 // would then only have 8 bits from [9-16], [17-24], [25..32], ...
-// but the algorithm would then require a variable length bitset.
+// but the algorithm would then require a variable length bitset
+// or imply a double-sized bitset.
 //
 // If you can commit to a fixed size of [4]uint64, then the algorithm is
 // much faster due to modern CPUs.
-//
-// Perhaps a future Go version that supports SIMD instructions for the [4]uint64 vectors
-// will make the algorithm even faster on suitable hardware.
-func LastOctetPlusOneAndLastBits(pfx netip.Prefix) (lastOctetPlusOne int, lastBits uint8) {
-	// lastOctetPlusOne:  range from 0..4 or 0..16 !ATTENTION: not 0..3 or 0..15
-	// lastBits:          range from 0..7
-	bits := pfx.Bits()
-
-	//nolint:gosec  // G115: narrowing conversion is safe here (bits in [0..128])
-	return bits >> 3, uint8(bits & 7)
+func DivMod8(pfxLen int) (strideCount int, modBits uint8) {
+	// strideCount: range from 0..4 or 0..16
+	// modBits:     range from 0..7
+	return pfxLen >> 3, uint8(pfxLen & 7)
 }
 
 // CloneLeaf creates and returns a copy of the leafNode receiver.
 // If cloneFn is nil, the value is copied directly without modification.
 // Otherwise, cloneFn is applied to the value for deep cloning.
 // The prefix field is always copied as is.
-func (l *LeafNode[V]) CloneLeaf(cloneFn value.CloneFunc[V]) *LeafNode[V] {
+func (l *LeafNode[V]) CloneLeaf(cloneFn func(V) V) *LeafNode[V] {
 	if l == nil {
 		return nil
 	}
@@ -346,10 +319,10 @@ func (l *LeafNode[V]) CloneLeaf(cloneFn value.CloneFunc[V]) *LeafNode[V] {
 	return &LeafNode[V]{Prefix: l.Prefix, Value: cloneFn(l.Value)}
 }
 
-// cloneFringe creates and returns a copy of the fringeNode receiver.
+// CloneFringe creates and returns a copy of the FringeNode receiver.
 // If cloneFn is nil, the value is copied directly without modification.
 // Otherwise, cloneFn is applied to the value for deep cloning.
-func (l *FringeNode[V]) CloneFringe(cloneFn value.CloneFunc[V]) *FringeNode[V] {
+func (l *FringeNode[V]) CloneFringe(cloneFn func(V) V) *FringeNode[V] {
 	if l == nil {
 		return nil
 	}

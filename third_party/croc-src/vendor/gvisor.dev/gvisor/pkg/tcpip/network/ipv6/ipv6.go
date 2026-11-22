@@ -16,6 +16,7 @@
 package ipv6
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"reflect"
@@ -177,6 +178,7 @@ var _ stack.MulticastForwardingNetworkEndpoint = (*endpoint)(nil)
 var _ stack.GroupAddressableEndpoint = (*endpoint)(nil)
 var _ stack.AddressableEndpoint = (*endpoint)(nil)
 var _ stack.NetworkEndpoint = (*endpoint)(nil)
+var _ stack.RestorableNetworkEndpoint = (*endpoint)(nil)
 var _ stack.NDPEndpoint = (*endpoint)(nil)
 var _ MLDEndpoint = (*endpoint)(nil)
 var _ NDPEndpoint = (*endpoint)(nil)
@@ -244,6 +246,30 @@ type endpoint struct {
 	//
 	// LOCK ORDERING: mu > dad.mu.
 	dad endpointDAD
+}
+
+// Restore implements stack.RestorableNetworkEndpoint.
+func (e *endpoint) Restore() {
+	e.mu.Lock()
+	e.dad.mu.Lock()
+	e.dad.mu.dad.Restore(&e.dad.mu, e.protocol.stack.SecureRNG().Reader)
+	e.dad.mu.Unlock()
+	e.mu.mld.restore()
+	e.mu.ndp.restore()
+	if e.Enabled() {
+		e.mu.addressableEndpointState.ForEachEndpoint(func(addressEndpoint stack.AddressEndpoint) bool {
+			addr := addressEndpoint.AddressWithPrefix().Address
+			if header.IsV6UnicastAddress(addr) && addressEndpoint.GetKind() == stack.PermanentTentative {
+				_ = e.mu.ndp.startDuplicateAddressDetection(addr, addressEndpoint) // +checklocksforce: ForEachEndpoint calls back synchronously with e.mu held.
+			}
+			return true
+		})
+	}
+	e.mu.Unlock()
+
+	e.protocol.mu.Lock()
+	e.protocol.mu.eps[e.nic.ID()] = e
+	e.protocol.mu.Unlock()
 }
 
 // NICNameFromID is a function that returns a stable name for the specified NIC,
@@ -828,8 +854,9 @@ func (e *endpoint) handleFragments(r *stack.Route, networkMTU uint32, pkt *stack
 	}
 }
 
-// recalculateChecksum recalculates the checksum of a TCP or UDP packet.
-func recalculateChecksum(pkt *stack.PacketBuffer, r *stack.Route) tcpip.Error {
+// recalculateChecksum recalculates the transport checksum from the packet's
+// network header.
+func recalculateChecksum(pkt *stack.PacketBuffer) tcpip.Error {
 	// RXChecksumValidated indicates that checksum verification may be
 	// safely skipped.
 	if pkt.RXChecksumValidated {
@@ -841,6 +868,7 @@ func recalculateChecksum(pkt *stack.PacketBuffer, r *stack.Route) tcpip.Error {
 		return nil
 	}
 	transportHeader := pkt.TransportHeader().Slice()
+	netHdr := header.IPv6(pkt.NetworkHeader().Slice())
 	payload := len(transportHeader) + pkt.Data().Size()
 	if payload > math.MaxUint16 {
 		return &tcpip.ErrMessageTooLong{}
@@ -852,7 +880,7 @@ func recalculateChecksum(pkt *stack.PacketBuffer, r *stack.Route) tcpip.Error {
 			return &tcpip.ErrMalformedHeader{}
 		}
 		tcp := header.TCP(transportHeader)
-		xsum := r.PseudoHeaderChecksum(header.TCPProtocolNumber, payloadLength)
+		xsum := header.PseudoHeaderChecksum(header.TCPProtocolNumber, netHdr.SourceAddress(), netHdr.DestinationAddress(), payloadLength)
 		xsum = checksum.Combine(xsum, pkt.Data().Checksum())
 		tcp.SetChecksum(0)
 		tcp.SetChecksum(^tcp.CalculateChecksum(xsum))
@@ -861,7 +889,7 @@ func recalculateChecksum(pkt *stack.PacketBuffer, r *stack.Route) tcpip.Error {
 			return &tcpip.ErrMalformedHeader{}
 		}
 		udp := header.UDP(transportHeader)
-		xsum := r.PseudoHeaderChecksum(header.UDPProtocolNumber, payloadLength)
+		xsum := header.PseudoHeaderChecksum(header.UDPProtocolNumber, netHdr.SourceAddress(), netHdr.DestinationAddress(), payloadLength)
 		xsum = checksum.Combine(xsum, pkt.Data().Checksum())
 		udp.SetChecksum(0)
 		csum := ^udp.CalculateChecksum(xsum)
@@ -877,8 +905,8 @@ func recalculateChecksum(pkt *stack.PacketBuffer, r *stack.Route) tcpip.Error {
 		icmp := header.ICMPv6(transportHeader)
 		icmp.SetChecksum(header.ICMPv6Checksum(header.ICMPv6ChecksumParams{
 			Header:      icmp,
-			Src:         r.LocalAddress(),
-			Dst:         r.RemoteAddress(),
+			Src:         netHdr.SourceAddress(),
+			Dst:         netHdr.DestinationAddress(),
 			PayloadCsum: pkt.Data().Checksum(),
 			PayloadLen:  pkt.Data().Size(),
 		}))
@@ -903,7 +931,7 @@ func (e *endpoint) WritePacket(r *stack.Route, params stack.NetworkHeaderParams,
 	}
 
 	if nft := stk.NFTables(); nft != nil && stk.IsNFTablesConfigured() {
-		if !nft.CheckOutput(pkt, r, stack.IP6) {
+		if !nft.CheckOutput(pkt, r, r.OutgoingNIC(), stack.IP6) {
 			// nftables is telling us to drop the packet.
 			return nil
 		}
@@ -925,10 +953,10 @@ func (e *endpoint) WritePacket(r *stack.Route, params stack.NetworkHeaderParams,
 			return nil
 		}
 
-		// Similar to the `ip_route_me_harder` in the kernel,
-		// we need to find a new route for the packet.
-		// Implementation is similar to the func forwardUnicastPacket.
-		newRoute, err := stk.FindRoute(0 /* nic id */, netHeader.SourceAddress(), newDstAddr, ProtocolNumber, false /* multicastLoop */)
+		// Find a new route for the rewritten destination, like Linux
+		// ip6_route_me_harder. As there, the packet's source address does not
+		// restrict the route and is left unchanged.
+		newRoute, err := stk.FindRoute(0 /* nic id */, tcpip.Address{} /* localAddr */, newDstAddr, ProtocolNumber, false /* multicastLoop */)
 		if err != nil {
 			e.stats.ip.OutgoingPacketErrors.Increment()
 			return err // Drop the packet
@@ -941,7 +969,7 @@ func (e *endpoint) WritePacket(r *stack.Route, params stack.NetworkHeaderParams,
 		// we must calculate the full checksum; otherwise, NAT should have already
 		// done it.
 		if !r.RequiresTXTransportChecksum() && newRoute.RequiresTXTransportChecksum() {
-			if err := recalculateChecksum(pkt, newRoute); err != nil {
+			if err := recalculateChecksum(pkt); err != nil {
 				e.stats.ip.OutgoingPacketErrors.Increment()
 				return err // Drop the packet
 			}
@@ -984,7 +1012,7 @@ func (e *endpoint) writePacket(r *stack.Route, pkt *stack.PacketBuffer, protocol
 	}
 
 	if nft := stk.NFTables(); nft != nil && stk.IsNFTablesConfigured() {
-		if !nft.CheckPostrouting(pkt, r, stack.IP6) {
+		if !nft.CheckPostrouting(pkt, r, r.OutgoingNIC(), stack.IP6) {
 			// nftables is telling us to drop the packet.
 			return nil
 		}
@@ -1132,7 +1160,7 @@ func (e *endpoint) forwardUnicastPacket(pkt *stack.PacketBuffer) ip.ForwardingEr
 
 		if nft := stk.NFTables(); nft != nil && stk.IsNFTablesConfigured() {
 
-			if !nft.CheckForward(pkt, nil, stack.IP6) {
+			if !nft.CheckForward(pkt, nil, 0 /* outNICID */, stack.IP6) {
 				// nftables is telling us to drop the packet.
 				return nil
 			}
@@ -1151,7 +1179,7 @@ func (e *endpoint) forwardUnicastPacket(pkt *stack.PacketBuffer) ip.ForwardingEr
 	r, err := stk.FindRoute(0, tcpip.Address{}, dstAddr, ProtocolNumber, false /* multicastLoop */)
 	switch err.(type) {
 	case nil:
-	case *tcpip.ErrNetworkUnreachable:
+	case *tcpip.ErrNetworkUnreachable, *tcpip.ErrBadLocalAddress:
 		// We return the original error rather than the result of returning the
 		// ICMP packet because the original error is more relevant to the caller.
 		_ = e.protocol.returnError(&icmpReasonNetUnreachable{}, pkt, false /* deliveredLocally */)
@@ -1180,7 +1208,7 @@ func (e *endpoint) forwardPacketWithRoute(route *stack.Route, pkt *stack.PacketB
 	}
 
 	if nft := stk.NFTables(); nft != nil && stk.IsNFTablesConfigured() {
-		if !nft.CheckForward(pkt, route, stack.IP6) {
+		if !nft.CheckForward(pkt, route, route.OutgoingNIC(), stack.IP6) {
 			// nftables is telling us to drop the packet.
 			return nil
 		}
@@ -1307,6 +1335,11 @@ func (e *endpoint) HandlePacket(pkt *stack.PacketBuffer) {
 func (e *endpoint) handleLocalPacket(pkt *stack.PacketBuffer, canSkipRXChecksum bool) {
 	stats := e.stats.ip
 	stats.PacketsReceived.Increment()
+
+	if !e.isEnabled() {
+		stats.DisabledPacketsReceived.Increment()
+		return
+	}
 
 	pkt = pkt.CloneToInbound()
 	defer pkt.DecRef()
@@ -1483,7 +1516,7 @@ func (e *endpoint) handleValidatedPacket(h header.IPv6, pkt *stack.PacketBuffer,
 
 	// Raw socket packets are delivered based solely on the transport protocol
 	// number. We only require that the packet be valid IPv6.
-	e.dispatcher.DeliverRawPacket(h.TransportProtocol(), pkt)
+	e.dispatcher.DeliverRawPacket(tcpip.TransportProtocolNumber(h.NextHeader()), pkt)
 
 	stats := e.stats.ip
 	stats.ValidPacketsReceived.Increment()
@@ -1637,6 +1670,17 @@ func (e *endpoint) processExtensionHeader(it *header.IPv6PayloadIterator, pkt **
 // Returns an error if the processing of a header failed or if the packet should
 // be discarded.
 func (e *endpoint) processExtensionHeaders(h header.IPv6, pkt *stack.PacketBuffer, forwarding bool) error {
+	if h.PayloadLength() == 0 && h.NextHeader() == uint8(header.IPv6HopByHopOptionsExtHdrIdentifier) {
+		// Jumbograms are unsupported. RFC 2675 section 3 requires this error
+		// for a zero payload length followed by a Hop-by-Hop Options header.
+		e.stats.ip.MalformedPacketsReceived.Increment()
+		_ = e.protocol.returnError(&icmpReasonParameterProblem{
+			code:    header.ICMPv6ErroneousHeader,
+			pointer: header.IPv6PayloadLenOffset,
+		}, pkt, !forwarding /* deliveredLocally */)
+		return fmt.Errorf("zero payload length with Hop-by-Hop Options header")
+	}
+
 	// Create a VV to parse the packet. We don't plan to modify anything here.
 	// vv consists of:
 	//	- Any IPv6 header bytes after the first 40 (i.e. extensions).
@@ -2403,6 +2447,13 @@ func (e *endpoint) PermanentAddresses() []tcpip.AddressWithPrefix {
 	return e.mu.addressableEndpointState.PermanentAddresses()
 }
 
+// AddressInfos implements stack.AddressableEndpoint.
+func (e *endpoint) AddressInfos() []stack.AddressInfo {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.mu.addressableEndpointState.AddressInfos()
+}
+
 // JoinGroup implements stack.GroupAddressableEndpoint.
 func (e *endpoint) JoinGroup(addr tcpip.Address) tcpip.Error {
 	e.mu.Lock()
@@ -2461,7 +2512,7 @@ type protocolMu struct {
 	// when handling a packet, by looking at which NIC handled the packet.
 	//
 	// +checklocks:RWMutex
-	eps map[tcpip.NICID]*endpoint
+	eps map[tcpip.NICID]*endpoint `state:"nosave"`
 
 	// ICMP types for which the stack's global rate limiting must apply.
 	//
@@ -2474,6 +2525,15 @@ type protocolMu struct {
 	//
 	// +checklocks:RWMutex
 	multicastForwardingDisp stack.MulticastForwardingEventDispatcher
+}
+
+// afterLoad is invoked by stateify.
+//
+// +checklocksexclude:p.RWMutex
+func (p *protocolMu) afterLoad(context.Context) {
+	p.Lock()
+	defer p.Unlock()
+	p.eps = make(map[tcpip.NICID]*endpoint)
 }
 
 // +stateify savable
@@ -2843,7 +2903,8 @@ func (p *protocol) allowICMPReply(icmpType header.ICMPv6Type) bool {
 }
 
 // SendRejectionError implements stack.RejectIPv6WithHandler.
-func (p *protocol) SendRejectionError(pkt *stack.PacketBuffer, rejectWith stack.RejectIPv6WithICMPType, inputHook bool) tcpip.Error {
+func (p *protocol) SendRejectionError(pkt *stack.PacketBuffer, rejectWith stack.RejectIPv6WithICMPType, hook stack.Hook) tcpip.Error {
+	inputHook := hook == stack.Input
 	switch rejectWith {
 	case stack.RejectIPv6WithICMPNoRoute:
 		return p.returnError(&icmpReasonNetUnreachable{}, pkt, inputHook)
@@ -2854,7 +2915,7 @@ func (p *protocol) SendRejectionError(pkt *stack.PacketBuffer, rejectWith stack.
 	case stack.RejectIPv6WithICMPAdminProhibited:
 		return p.returnError(&icmpReasonAdministrativelyProhibited{}, pkt, inputHook)
 	case stack.RejectIPv6WithTCPReset:
-		return ip.RejectWithTCPReset(pkt, ProtocolNumber, p.stack, inputHook)
+		return ip.RejectWithTCPReset(pkt, ProtocolNumber, p.stack, hook)
 	default:
 		panic(fmt.Sprintf("unhandled %[1]T = %[1]d", rejectWith))
 	}

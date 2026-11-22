@@ -5,17 +5,33 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Retrieves the history of all changes to a parameter. If you change the KMS key
-// alias for the KMS key used to encrypt a parameter, then you must also update the
-// key alias the parameter uses to reference KMS. Otherwise, GetParameterHistory
-// retrieves whatever the original key alias was referencing.
+// Retrieves the history of all changes to a parameter.
+//
+// Parameter names can't contain spaces. The service removes any spaces specified
+// for the beginning or end of a parameter name. If the specified name for a
+// parameter contains spaces between characters, the request fails with a
+// ValidationException error.
+//
+// If you change the KMS key alias for the KMS key used to encrypt a parameter,
+// then you must also update the key alias the parameter uses to reference KMS.
+// Otherwise, GetParameterHistory retrieves whatever the original key alias was
+// referencing.
+//
+// This operation is authorized against the ssm:GetParameterHistory action, not
+// against ssm:GetParameter . Because parameter history includes every version of a
+// parameter, including the current one, a principal who is denied ssm:GetParameter
+// , ssm:GetParameters , and ssm:GetParametersByPath but allowed
+// ssm:GetParameterHistory can still read the current value. To restrict access to
+// a parameter value, deny every action that can return it. For more information,
+// see [How Parameter Store authorizes parameter retrieval]in the Amazon Web Services Systems Manager User Guide.
+//
+// [How Parameter Store authorizes parameter retrieval]: https://docs.aws.amazon.com/systems-manager/latest/userguide/ps-retrieval-authorization.html
 func (c *Client) GetParameterHistory(ctx context.Context, params *GetParameterHistoryInput, optFns ...func(*Options)) (*GetParameterHistoryOutput, error) {
 	if params == nil {
 		params = &GetParameterHistoryInput{}
@@ -33,7 +49,9 @@ func (c *Client) GetParameterHistory(ctx context.Context, params *GetParameterHi
 
 type GetParameterHistoryInput struct {
 
-	// The name of the parameter for which you want to review history.
+	// The name or Amazon Resource Name (ARN) of the parameter for which you want to
+	// review history. For parameters shared with you from another account, you must
+	// use the full ARN.
 	//
 	// This member is required.
 	Name *string
@@ -53,6 +71,27 @@ type GetParameterHistoryInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetParameterHistoryInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetParameterHistoryRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetParameterHistoryInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.GetParameterHistoryRequest_MaxResults, *v.MaxResults)
+	}
+	if v.Name != nil {
+		s.WriteString(schemas.GetParameterHistoryRequest_Name, *v.Name)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.GetParameterHistoryRequest_NextToken, *v.NextToken)
+	}
+	if v.WithDecryption != nil {
+		s.WriteBool(schemas.GetParameterHistoryRequest_WithDecryption, *v.WithDecryption)
+	}
+}
+
 type GetParameterHistoryOutput struct {
 
 	// The token to use when requesting the next set of items. If there are no
@@ -68,68 +107,53 @@ type GetParameterHistoryOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetParameterHistoryOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetParameterHistoryResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetParameterHistoryOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.NextToken != nil {
+		s.WriteString(schemas.GetParameterHistoryResult_NextToken, *v.NextToken)
+	}
+	if v.Parameters != nil {
+		serializeParameterHistoryList(s, schemas.GetParameterHistoryResult_Parameters, v.Parameters)
+	}
+}
+func (v *GetParameterHistoryOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.GetParameterHistoryResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.GetParameterHistoryResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.GetParameterHistoryResult_NextToken, v.NextToken)
+		case schemas.GetParameterHistoryResult_Parameters:
+			return deserializeParameterHistoryList(d, schemas.GetParameterHistoryResult_Parameters, &v.Parameters)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationGetParameterHistoryMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetParameterHistory, schemas.GetParameterHistoryRequest, schemas.GetParameterHistoryResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpGetParameterHistory{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetParameterHistory, schemas.GetParameterHistoryRequest, schemas.GetParameterHistoryResult), output: &GetParameterHistoryOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpGetParameterHistory{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "GetParameterHistory"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetParameterHistoryValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opGetParameterHistory(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -144,16 +168,11 @@ func (c *Client) addOperationGetParameterHistoryMiddlewares(stack *middleware.St
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// GetParameterHistoryAPIClient is a client that implements the
-// GetParameterHistory operation.
-type GetParameterHistoryAPIClient interface {
-	GetParameterHistory(context.Context, *GetParameterHistoryInput, ...func(*Options)) (*GetParameterHistoryOutput, error)
-}
-
-var _ GetParameterHistoryAPIClient = (*Client)(nil)
 
 // GetParameterHistoryPaginatorOptions is the paginator options for
 // GetParameterHistory
@@ -220,6 +239,9 @@ func (p *GetParameterHistoryPaginator) NextPage(ctx context.Context, optFns ...f
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.GetParameterHistory(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -239,10 +261,10 @@ func (p *GetParameterHistoryPaginator) NextPage(ctx context.Context, optFns ...f
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opGetParameterHistory(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "GetParameterHistory",
-	}
+// GetParameterHistoryAPIClient is a client that implements the
+// GetParameterHistory operation.
+type GetParameterHistoryAPIClient interface {
+	GetParameterHistory(context.Context, *GetParameterHistoryInput, ...func(*Options)) (*GetParameterHistoryOutput, error)
 }
+
+var _ GetParameterHistoryAPIClient = (*Client)(nil)

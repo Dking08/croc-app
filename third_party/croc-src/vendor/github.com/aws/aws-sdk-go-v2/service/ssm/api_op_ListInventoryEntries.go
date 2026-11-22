@@ -4,12 +4,10 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // A list of inventory items returned by the request.
@@ -54,12 +52,36 @@ type ListInventoryEntriesInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListInventoryEntriesInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListInventoryEntriesRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListInventoryEntriesInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Filters != nil {
+		serializeInventoryFilterList(s, schemas.ListInventoryEntriesRequest_Filters, v.Filters)
+	}
+	if v.InstanceId != nil {
+		s.WriteString(schemas.ListInventoryEntriesRequest_InstanceId, *v.InstanceId)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.ListInventoryEntriesRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListInventoryEntriesRequest_NextToken, *v.NextToken)
+	}
+	if v.TypeName != nil {
+		s.WriteString(schemas.ListInventoryEntriesRequest_TypeName, *v.TypeName)
+	}
+}
+
 type ListInventoryEntriesOutput struct {
 
-	// The time that inventory information was collected for the managed node(s).
+	// The time that inventory information was collected for the managed nodes.
 	CaptureTime *string
 
-	// A list of inventory items on the managed node(s).
+	// A list of inventory items on the managed nodes.
 	Entries []map[string]string
 
 	// The managed node ID targeted by the request to query inventory information.
@@ -69,7 +91,7 @@ type ListInventoryEntriesOutput struct {
 	// additional items to return, the string is empty.
 	NextToken *string
 
-	// The inventory schema version used by the managed node(s).
+	// The inventory schema version used by the managed nodes.
 	SchemaVersion *string
 
 	// The type of inventory item returned by the request.
@@ -81,68 +103,77 @@ type ListInventoryEntriesOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListInventoryEntriesOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListInventoryEntriesResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListInventoryEntriesOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.CaptureTime != nil {
+		s.WriteString(schemas.ListInventoryEntriesResult_CaptureTime, *v.CaptureTime)
+	}
+	if v.Entries != nil {
+		serializeInventoryItemEntryList(s, schemas.ListInventoryEntriesResult_Entries, v.Entries)
+	}
+	if v.InstanceId != nil {
+		s.WriteString(schemas.ListInventoryEntriesResult_InstanceId, *v.InstanceId)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListInventoryEntriesResult_NextToken, *v.NextToken)
+	}
+	if v.SchemaVersion != nil {
+		s.WriteString(schemas.ListInventoryEntriesResult_SchemaVersion, *v.SchemaVersion)
+	}
+	if v.TypeName != nil {
+		s.WriteString(schemas.ListInventoryEntriesResult_TypeName, *v.TypeName)
+	}
+}
+func (v *ListInventoryEntriesOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListInventoryEntriesResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListInventoryEntriesResult_CaptureTime:
+			v.CaptureTime = new(string)
+			return d.ReadString(schemas.ListInventoryEntriesResult_CaptureTime, v.CaptureTime)
+		case schemas.ListInventoryEntriesResult_Entries:
+			return deserializeInventoryItemEntryList(d, schemas.ListInventoryEntriesResult_Entries, &v.Entries)
+		case schemas.ListInventoryEntriesResult_InstanceId:
+			v.InstanceId = new(string)
+			return d.ReadString(schemas.ListInventoryEntriesResult_InstanceId, v.InstanceId)
+		case schemas.ListInventoryEntriesResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ListInventoryEntriesResult_NextToken, v.NextToken)
+		case schemas.ListInventoryEntriesResult_SchemaVersion:
+			v.SchemaVersion = new(string)
+			return d.ReadString(schemas.ListInventoryEntriesResult_SchemaVersion, v.SchemaVersion)
+		case schemas.ListInventoryEntriesResult_TypeName:
+			v.TypeName = new(string)
+			return d.ReadString(schemas.ListInventoryEntriesResult_TypeName, v.TypeName)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListInventoryEntriesMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListInventoryEntries, schemas.ListInventoryEntriesRequest, schemas.ListInventoryEntriesResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpListInventoryEntries{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListInventoryEntries, schemas.ListInventoryEntriesRequest, schemas.ListInventoryEntriesResult), output: &ListInventoryEntriesOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpListInventoryEntries{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ListInventoryEntries"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListInventoryEntriesValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opListInventoryEntries(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -157,13 +188,8 @@ func (c *Client) addOperationListInventoryEntriesMiddlewares(stack *middleware.S
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opListInventoryEntries(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ListInventoryEntries",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

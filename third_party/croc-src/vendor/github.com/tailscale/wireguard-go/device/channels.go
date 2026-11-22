@@ -6,7 +6,6 @@
 package device
 
 import (
-	"runtime"
 	"sync"
 )
 
@@ -23,9 +22,9 @@ type outboundQueue struct {
 	wg sync.WaitGroup
 }
 
-func newOutboundQueue() *outboundQueue {
+func newOutboundQueue(capacity int) *outboundQueue {
 	q := &outboundQueue{
-		c: make(chan *QueueOutboundElementsContainer, QueueOutboundSize),
+		c: make(chan *QueueOutboundElementsContainer, capacity),
 	}
 	q.wg.Add(1)
 	go func() {
@@ -41,9 +40,9 @@ type inboundQueue struct {
 	wg sync.WaitGroup
 }
 
-func newInboundQueue() *inboundQueue {
+func newInboundQueue(capacity int) *inboundQueue {
 	q := &inboundQueue{
-		c: make(chan *QueueInboundElementsContainer, QueueInboundSize),
+		c: make(chan *QueueInboundElementsContainer, capacity),
 	}
 	q.wg.Add(1)
 	go func() {
@@ -59,9 +58,9 @@ type handshakeQueue struct {
 	wg sync.WaitGroup
 }
 
-func newHandshakeQueue() *handshakeQueue {
+func newHandshakeQueue(capacity int) *handshakeQueue {
 	q := &handshakeQueue{
-		c: make(chan QueueHandshakeElement, QueueHandshakeSize),
+		c: make(chan QueueHandshakeElement, capacity),
 	}
 	q.wg.Add(1)
 	go func() {
@@ -69,85 +68,4 @@ func newHandshakeQueue() *handshakeQueue {
 		close(q.c)
 	}()
 	return q
-}
-
-type autodrainingInboundQueue struct {
-	c chan *QueueInboundElementsContainer
-}
-
-// newAutodrainingInboundQueue returns a channel that will be drained when it gets GC'd.
-// It is useful in cases in which is it hard to manage the lifetime of the channel.
-// The returned channel must not be closed. Senders should signal shutdown using
-// some other means, such as sending a sentinel nil values.
-func newAutodrainingInboundQueue(device *Device) *autodrainingInboundQueue {
-	q := &autodrainingInboundQueue{
-		c: make(chan *QueueInboundElementsContainer, QueueInboundSize),
-	}
-	if device.needsInboundQueueFinalizer() {
-		runtime.AddCleanup(q, device.flushInboundQueue, q.c)
-	}
-	return q
-}
-
-func (device *Device) needsInboundQueueFinalizer() bool {
-	return device.pool.messageBuffers.hasAccounting() ||
-		device.pool.inboundElements.hasAccounting() ||
-		device.pool.inboundElementsContainer.hasAccounting()
-}
-
-func (device *Device) flushInboundQueue(c <-chan *QueueInboundElementsContainer) {
-	for {
-		select {
-		case elemsContainer := <-c:
-			elemsContainer.filling.Wait()
-			for _, elem := range elemsContainer.elems {
-				device.PutMessageBuffer(elem.buffer)
-				device.PutInboundElement(elem)
-			}
-			device.PutInboundElementsContainer(elemsContainer)
-		default:
-			return
-		}
-	}
-}
-
-type autodrainingOutboundQueue struct {
-	c chan *QueueOutboundElementsContainer
-}
-
-// newAutodrainingOutboundQueue returns a channel that will be drained when it gets GC'd.
-// It is useful in cases in which is it hard to manage the lifetime of the channel.
-// The returned channel must not be closed. Senders should signal shutdown using
-// some other means, such as sending a sentinel nil values.
-// All sends to the channel must be best-effort, because there may be no receivers.
-func newAutodrainingOutboundQueue(device *Device) *autodrainingOutboundQueue {
-	q := &autodrainingOutboundQueue{
-		c: make(chan *QueueOutboundElementsContainer, QueueOutboundSize),
-	}
-	if device.needsOutboundQueueFinalizer() {
-		runtime.AddCleanup(q, device.flushOutboundQueue, q.c)
-	}
-	return q
-}
-
-func (device *Device) needsOutboundQueueFinalizer() bool {
-	return device.pool.messageBuffers.hasAccounting() ||
-		device.pool.outboundElements.hasAccounting() ||
-		device.pool.outboundElementsContainer.hasAccounting()
-}
-
-func (device *Device) flushOutboundQueue(c <-chan *QueueOutboundElementsContainer) {
-	for {
-		select {
-		case elemsContainer := <-c:
-			elemsContainer.filling.Wait()
-			for _, elem := range elemsContainer.elems {
-				device.PutMessageBuffer(elem.buffer)
-				device.PutOutboundElement(elem)
-			}
-			device.PutOutboundElementsContainer(elemsContainer)
-		default:
-			return
-		}
-	}
 }

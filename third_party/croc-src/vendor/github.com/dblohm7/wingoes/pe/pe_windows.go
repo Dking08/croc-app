@@ -13,7 +13,17 @@ import (
 )
 
 func (pei *peModule) Close() error {
-	return windows.FreeLibrary(windows.Handle(pei.modLock))
+	if pei.modLock == 0 {
+		return nil
+	}
+
+	if err := windows.FreeLibrary(windows.Handle(pei.modLock)); err != nil {
+		return err
+	}
+
+	pei.Reader = nil
+	pei.modLock = 0
+	return nil
 }
 
 // NewPEFromBaseAddressAndSize parses the headers in a PE binary loaded
@@ -22,6 +32,10 @@ func (pei *peModule) Close() error {
 // Upon success it returns a non-nil *PEHeaders, otherwise it returns a nil
 // *PEHeaders and a non-nil error.
 func NewPEFromBaseAddressAndSize(baseAddr uintptr, size uint32) (*PEHeaders, error) {
+	if baseAddr == 0 || size == 0 {
+		return nil, os.ErrInvalid
+	}
+
 	// Grab a strong reference to the module until we're done with it.
 	var modLock windows.Handle
 	if err := windows.GetModuleHandleEx(

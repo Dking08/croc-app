@@ -5,15 +5,14 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Lists all related-item resources associated with a Systems Manager OpsCenter
-// OpsItem. OpsCenter is a capability of Amazon Web Services Systems Manager.
+// OpsItem. OpsCenter is a tool in Amazon Web Services Systems Manager.
 func (c *Client) ListOpsItemRelatedItems(ctx context.Context, params *ListOpsItemRelatedItemsInput, optFns ...func(*Options)) (*ListOpsItemRelatedItemsOutput, error) {
 	if params == nil {
 		params = &ListOpsItemRelatedItemsInput{}
@@ -49,6 +48,27 @@ type ListOpsItemRelatedItemsInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListOpsItemRelatedItemsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListOpsItemRelatedItemsRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListOpsItemRelatedItemsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Filters != nil {
+		serializeOpsItemRelatedItemsFilters(s, schemas.ListOpsItemRelatedItemsRequest_Filters, v.Filters)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.ListOpsItemRelatedItemsRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListOpsItemRelatedItemsRequest_NextToken, *v.NextToken)
+	}
+	if v.OpsItemId != nil {
+		s.WriteString(schemas.ListOpsItemRelatedItemsRequest_OpsItemId, *v.OpsItemId)
+	}
+}
+
 type ListOpsItemRelatedItemsOutput struct {
 
 	// The token for the next set of items to return. Use this token to get the next
@@ -64,68 +84,53 @@ type ListOpsItemRelatedItemsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListOpsItemRelatedItemsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListOpsItemRelatedItemsResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListOpsItemRelatedItemsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListOpsItemRelatedItemsResponse_NextToken, *v.NextToken)
+	}
+	if v.Summaries != nil {
+		serializeOpsItemRelatedItemSummaries(s, schemas.ListOpsItemRelatedItemsResponse_Summaries, v.Summaries)
+	}
+}
+func (v *ListOpsItemRelatedItemsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListOpsItemRelatedItemsResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListOpsItemRelatedItemsResponse_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ListOpsItemRelatedItemsResponse_NextToken, v.NextToken)
+		case schemas.ListOpsItemRelatedItemsResponse_Summaries:
+			return deserializeOpsItemRelatedItemSummaries(d, schemas.ListOpsItemRelatedItemsResponse_Summaries, &v.Summaries)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListOpsItemRelatedItemsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListOpsItemRelatedItems, schemas.ListOpsItemRelatedItemsRequest, schemas.ListOpsItemRelatedItemsResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpListOpsItemRelatedItems{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListOpsItemRelatedItems, schemas.ListOpsItemRelatedItemsRequest, schemas.ListOpsItemRelatedItemsResponse), output: &ListOpsItemRelatedItemsOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpListOpsItemRelatedItems{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ListOpsItemRelatedItems"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListOpsItemRelatedItemsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opListOpsItemRelatedItems(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -140,16 +145,11 @@ func (c *Client) addOperationListOpsItemRelatedItemsMiddlewares(stack *middlewar
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// ListOpsItemRelatedItemsAPIClient is a client that implements the
-// ListOpsItemRelatedItems operation.
-type ListOpsItemRelatedItemsAPIClient interface {
-	ListOpsItemRelatedItems(context.Context, *ListOpsItemRelatedItemsInput, ...func(*Options)) (*ListOpsItemRelatedItemsOutput, error)
-}
-
-var _ ListOpsItemRelatedItemsAPIClient = (*Client)(nil)
 
 // ListOpsItemRelatedItemsPaginatorOptions is the paginator options for
 // ListOpsItemRelatedItems
@@ -217,6 +217,9 @@ func (p *ListOpsItemRelatedItemsPaginator) NextPage(ctx context.Context, optFns 
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.ListOpsItemRelatedItems(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -236,10 +239,10 @@ func (p *ListOpsItemRelatedItemsPaginator) NextPage(ctx context.Context, optFns 
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opListOpsItemRelatedItems(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ListOpsItemRelatedItems",
-	}
+// ListOpsItemRelatedItemsAPIClient is a client that implements the
+// ListOpsItemRelatedItems operation.
+type ListOpsItemRelatedItemsAPIClient interface {
+	ListOpsItemRelatedItems(context.Context, *ListOpsItemRelatedItemsInput, ...func(*Options)) (*ListOpsItemRelatedItemsOutput, error)
 }
+
+var _ ListOpsItemRelatedItemsAPIClient = (*Client)(nil)

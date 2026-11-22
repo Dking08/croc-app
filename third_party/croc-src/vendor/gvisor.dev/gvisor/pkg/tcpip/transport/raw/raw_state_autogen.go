@@ -8,11 +8,11 @@ import (
 	"gvisor.dev/gvisor/pkg/state"
 )
 
-func (p *rawPacket) StateTypeName() string {
+func (r *rawPacket) StateTypeName() string {
 	return "pkg/tcpip/transport/raw.rawPacket"
 }
 
-func (p *rawPacket) StateFields() []string {
+func (r *rawPacket) StateFields() []string {
 	return []string{
 		"rawPacketEntry",
 		"data",
@@ -24,33 +24,31 @@ func (p *rawPacket) StateFields() []string {
 	}
 }
 
-func (p *rawPacket) beforeSave() {}
+func (r *rawPacket) beforeSave() {}
 
 // +checklocksignore
-func (p *rawPacket) StateSave(stateSinkObject state.Sink) {
-	p.beforeSave()
-	receivedAtValue := p.saveReceivedAt()
-	_ = (int64)(receivedAtValue)
-	stateSinkObject.SaveValue(2, receivedAtValue)
-	stateSinkObject.Save(0, &p.rawPacketEntry)
-	stateSinkObject.Save(1, &p.data)
-	stateSinkObject.Save(3, &p.senderAddr)
-	stateSinkObject.Save(4, &p.packetInfo)
-	stateSinkObject.Save(5, &p.tosOrTClass)
-	stateSinkObject.Save(6, &p.ttlOrHopLimit)
+func (r *rawPacket) StateSave(stateSinkObject state.Sink) {
+	r.beforeSave()
+	stateSinkObject.Save(0, &r.rawPacketEntry)
+	stateSinkObject.Save(1, &r.data)
+	stateSinkObject.Save(2, &r.receivedAt)
+	stateSinkObject.Save(3, &r.senderAddr)
+	stateSinkObject.Save(4, &r.packetInfo)
+	stateSinkObject.SaveUint8(5, &r.tosOrTClass)
+	stateSinkObject.SaveUint8(6, &r.ttlOrHopLimit)
 }
 
-func (p *rawPacket) afterLoad(context.Context) {}
+func (r *rawPacket) afterLoad(context.Context) {}
 
 // +checklocksignore
-func (p *rawPacket) StateLoad(ctx context.Context, stateSourceObject state.Source) {
-	stateSourceObject.Load(0, &p.rawPacketEntry)
-	stateSourceObject.Load(1, &p.data)
-	stateSourceObject.Load(3, &p.senderAddr)
-	stateSourceObject.Load(4, &p.packetInfo)
-	stateSourceObject.Load(5, &p.tosOrTClass)
-	stateSourceObject.Load(6, &p.ttlOrHopLimit)
-	stateSourceObject.LoadValue(2, new(int64), func(y any) { p.loadReceivedAt(ctx, y.(int64)) })
+func (r *rawPacket) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+	stateSourceObject.Load(0, &r.rawPacketEntry)
+	stateSourceObject.Load(1, &r.data)
+	stateSourceObject.Load(2, &r.receivedAt)
+	stateSourceObject.Load(3, &r.senderAddr)
+	stateSourceObject.Load(4, &r.packetInfo)
+	stateSourceObject.LoadUint8(5, &r.tosOrTClass)
+	stateSourceObject.LoadUint8(6, &r.ttlOrHopLimit)
 }
 
 func (e *endpoint) StateTypeName() string {
@@ -83,15 +81,15 @@ func (e *endpoint) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(1, &e.stack)
 	stateSinkObject.Save(2, &e.transProto)
 	stateSinkObject.Save(3, &e.waiterQueue)
-	stateSinkObject.Save(4, &e.associated)
+	stateSinkObject.SaveBool(4, &e.associated)
 	stateSinkObject.Save(5, &e.net)
 	stateSinkObject.Save(6, &e.stats)
 	stateSinkObject.Save(7, &e.ops)
 	stateSinkObject.Save(8, &e.rcvList)
-	stateSinkObject.Save(9, &e.rcvBufSize)
-	stateSinkObject.Save(10, &e.rcvClosed)
-	stateSinkObject.Save(11, &e.rcvDisabled)
-	stateSinkObject.Save(12, &e.ipv6ChecksumOffset)
+	stateSinkObject.SaveInt(9, &e.rcvBufSize)
+	stateSinkObject.SaveBool(10, &e.rcvClosed)
+	stateSinkObject.SaveBool(11, &e.rcvDisabled)
+	stateSinkObject.SaveInt(12, &e.ipv6ChecksumOffset)
 	stateSinkObject.Save(13, &e.icmpv6Filter)
 }
 
@@ -101,17 +99,22 @@ func (e *endpoint) StateLoad(ctx context.Context, stateSourceObject state.Source
 	stateSourceObject.Load(1, &e.stack)
 	stateSourceObject.Load(2, &e.transProto)
 	stateSourceObject.Load(3, &e.waiterQueue)
-	stateSourceObject.Load(4, &e.associated)
+	stateSourceObject.LoadBool(4, &e.associated)
 	stateSourceObject.Load(5, &e.net)
 	stateSourceObject.Load(6, &e.stats)
 	stateSourceObject.Load(7, &e.ops)
 	stateSourceObject.Load(8, &e.rcvList)
-	stateSourceObject.Load(9, &e.rcvBufSize)
-	stateSourceObject.Load(10, &e.rcvClosed)
-	stateSourceObject.Load(11, &e.rcvDisabled)
-	stateSourceObject.Load(12, &e.ipv6ChecksumOffset)
+	stateSourceObject.LoadInt(9, &e.rcvBufSize)
+	stateSourceObject.LoadBool(10, &e.rcvClosed)
+	stateSourceObject.LoadBool(11, &e.rcvDisabled)
+	stateSourceObject.LoadInt(12, &e.ipv6ChecksumOffset)
 	stateSourceObject.Load(13, &e.icmpv6Filter)
-	stateSourceObject.AfterLoad(func() { e.afterLoad(ctx) })
+	stateSourceObject.AfterLoadTo(e)
+}
+
+// +checklocksignore
+func (e *endpoint) StateAfterLoad(ctx context.Context) {
+	e.afterLoad(ctx)
 }
 
 func (e *EndpointFactory) StateTypeName() string {
@@ -213,10 +216,10 @@ func (e *rawPacketEntry) StateLoad(ctx context.Context, stateSourceObject state.
 }
 
 func init() {
-	state.Register((*rawPacket)(nil))
-	state.Register((*endpoint)(nil))
-	state.Register((*EndpointFactory)(nil))
-	state.Register((*CreateOnlyFactory)(nil))
-	state.Register((*rawPacketList)(nil))
-	state.Register((*rawPacketEntry)(nil))
+	state.RegisterNoHooks((*rawPacket)(nil))
+	state.RegisterStruct((*endpoint)(nil))
+	state.RegisterNoHooks((*EndpointFactory)(nil))
+	state.RegisterNoHooks((*CreateOnlyFactory)(nil))
+	state.RegisterNoHooks((*rawPacketList)(nil))
+	state.RegisterNoHooks((*rawPacketEntry)(nil))
 }

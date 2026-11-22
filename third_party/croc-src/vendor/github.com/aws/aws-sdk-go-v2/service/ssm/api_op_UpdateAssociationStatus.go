@@ -4,19 +4,18 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Updates the status of the Amazon Web Services Systems Manager document (SSM
-// document) associated with the specified managed node. UpdateAssociationStatus
-// is primarily used by the Amazon Web Services Systems Manager Agent (SSM Agent)
-// to report status updates about your associations and is only used for
-// associations created with the InstanceId legacy parameter.
+// document) associated with the specified managed node.
+//
+// UpdateAssociationStatus is primarily used by the Amazon Web Services Systems
+// Manager Agent (SSM Agent) to report status updates about your associations and
+// is only used for associations created with the InstanceId legacy parameter.
 func (c *Client) UpdateAssociationStatus(ctx context.Context, params *UpdateAssociationStatusInput, optFns ...func(*Options)) (*UpdateAssociationStatusOutput, error) {
 	if params == nil {
 		params = &UpdateAssociationStatusInput{}
@@ -52,6 +51,26 @@ type UpdateAssociationStatusInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UpdateAssociationStatusInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UpdateAssociationStatusRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UpdateAssociationStatusInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AssociationStatus != nil {
+		s.WriteStruct(schemas.UpdateAssociationStatusRequest_AssociationStatus)
+		v.AssociationStatus.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.InstanceId != nil {
+		s.WriteString(schemas.UpdateAssociationStatusRequest_InstanceId, *v.InstanceId)
+	}
+	if v.Name != nil {
+		s.WriteString(schemas.UpdateAssociationStatusRequest_Name, *v.Name)
+	}
+}
+
 type UpdateAssociationStatusOutput struct {
 
 	// Information about the association.
@@ -63,68 +82,50 @@ type UpdateAssociationStatusOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UpdateAssociationStatusOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UpdateAssociationStatusResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UpdateAssociationStatusOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AssociationDescription != nil {
+		s.WriteStruct(schemas.UpdateAssociationStatusResult_AssociationDescription)
+		v.AssociationDescription.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *UpdateAssociationStatusOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.UpdateAssociationStatusResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.UpdateAssociationStatusResult_AssociationDescription:
+			v.AssociationDescription = &types.AssociationDescription{}
+			return v.AssociationDescription.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationUpdateAssociationStatusMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UpdateAssociationStatus, schemas.UpdateAssociationStatusRequest, schemas.UpdateAssociationStatusResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpUpdateAssociationStatus{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UpdateAssociationStatus, schemas.UpdateAssociationStatusRequest, schemas.UpdateAssociationStatusResult), output: &UpdateAssociationStatusOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpUpdateAssociationStatus{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "UpdateAssociationStatus"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpUpdateAssociationStatusValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opUpdateAssociationStatus(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -139,13 +140,8 @@ func (c *Client) addOperationUpdateAssociationStatusMiddlewares(stack *middlewar
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opUpdateAssociationStatus(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "UpdateAssociationStatus",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

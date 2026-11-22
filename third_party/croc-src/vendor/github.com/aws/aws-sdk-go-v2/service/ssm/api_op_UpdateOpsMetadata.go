@@ -4,12 +4,10 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Amazon Web Services Systems Manager calls this API operation when you edit
@@ -45,6 +43,24 @@ type UpdateOpsMetadataInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UpdateOpsMetadataInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UpdateOpsMetadataRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UpdateOpsMetadataInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.KeysToDelete != nil {
+		serializeMetadataKeysToDeleteList(s, schemas.UpdateOpsMetadataRequest_KeysToDelete, v.KeysToDelete)
+	}
+	if v.MetadataToUpdate != nil {
+		serializeMetadataMap(s, schemas.UpdateOpsMetadataRequest_MetadataToUpdate, v.MetadataToUpdate)
+	}
+	if v.OpsMetadataArn != nil {
+		s.WriteString(schemas.UpdateOpsMetadataRequest_OpsMetadataArn, *v.OpsMetadataArn)
+	}
+}
+
 type UpdateOpsMetadataOutput struct {
 
 	// The Amazon Resource Name (ARN) of the OpsMetadata Object that was updated.
@@ -56,68 +72,48 @@ type UpdateOpsMetadataOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UpdateOpsMetadataOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UpdateOpsMetadataResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UpdateOpsMetadataOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.OpsMetadataArn != nil {
+		s.WriteString(schemas.UpdateOpsMetadataResult_OpsMetadataArn, *v.OpsMetadataArn)
+	}
+}
+func (v *UpdateOpsMetadataOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.UpdateOpsMetadataResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.UpdateOpsMetadataResult_OpsMetadataArn:
+			v.OpsMetadataArn = new(string)
+			return d.ReadString(schemas.UpdateOpsMetadataResult_OpsMetadataArn, v.OpsMetadataArn)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationUpdateOpsMetadataMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UpdateOpsMetadata, schemas.UpdateOpsMetadataRequest, schemas.UpdateOpsMetadataResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpUpdateOpsMetadata{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UpdateOpsMetadata, schemas.UpdateOpsMetadataRequest, schemas.UpdateOpsMetadataResult), output: &UpdateOpsMetadataOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpUpdateOpsMetadata{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "UpdateOpsMetadata"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpUpdateOpsMetadataValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opUpdateOpsMetadata(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -132,13 +128,8 @@ func (c *Client) addOperationUpdateOpsMetadataMiddlewares(stack *middleware.Stac
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opUpdateOpsMetadata(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "UpdateOpsMetadata",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

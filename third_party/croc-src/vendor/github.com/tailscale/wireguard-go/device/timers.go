@@ -73,7 +73,7 @@ func (timer *Timer) IsPending() bool {
 }
 
 func (peer *Peer) timersActive() bool {
-	return peer.isRunning.Load() && peer.device != nil && peer.device.isUp()
+	return peer.runningState.isRunning.Load() && peer.device != nil && peer.device.isUp()
 }
 
 func expiredRetransmitHandshake(peer *Peer) {

@@ -50,7 +50,7 @@ type packet struct {
 	packetEntry
 	// data holds the actual packet data, including any headers and payload.
 	data       *stack.PacketBuffer
-	receivedAt time.Time `state:".(int64)"`
+	receivedAt time.Time
 	// senderAddr is the network address of the sender.
 	senderAddr tcpip.FullAddress
 	// packetInfo holds additional information like the protocol
@@ -547,17 +547,17 @@ func (ep *endpoint) handlePacketInner(nicID tcpip.NICID, netProto tcpip.NetworkP
 		receivedAt: ep.stack.Clock().Now(),
 	}
 
-	if len(pkt.LinkHeader().Slice()) != 0 {
-		hdr := header.Ethernet(pkt.LinkHeader().Slice())
+	if hdr := header.Ethernet(pkt.LinkHeader().Slice()); len(hdr) != 0 {
 		rcvdPkt.senderAddr.LinkAddr = hdr.SourceAddress()
 	}
 
-	// Raw packet endpoints include link-headers in received packets.
-	pktBuf := pkt.ToBuffer()
+	// Cooked sockets receive the network packet; raw sockets also receive
+	// the link headers.
+	var pktBuf buffer.Buffer
 	if ep.cooked {
-		// Cooked packet endpoints don't include the link-headers in received
-		// packets.
-		pktBuf.TrimFront(int64(len(pkt.LinkHeader().Slice()) + len(pkt.VirtioNetHeader().Slice())))
+		pktBuf = stack.BufferSince(pkt.NetworkHeader())
+	} else {
+		pktBuf = pkt.ToBuffer()
 	}
 	rcvdPkt.data = stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: pktBuf})
 

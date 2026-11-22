@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Retrieves the high-level patch state for the managed nodes in the specified
@@ -38,8 +37,11 @@ type DescribeInstancePatchStatesForPatchGroupInput struct {
 	PatchGroup *string
 
 	// Each entry in the array is a structure containing:
+	//
 	//   - Key (string between 1 and 200 characters)
+	//
 	//   - Values (array containing a single string)
+	//
 	//   - Type (string "Equal", "NotEqual", "LessThan", "GreaterThan")
 	Filters []types.InstancePatchStateFilter
 
@@ -51,6 +53,27 @@ type DescribeInstancePatchStatesForPatchGroupInput struct {
 	NextToken *string
 
 	noSmithyDocumentSerde
+}
+
+func (v *DescribeInstancePatchStatesForPatchGroupInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeInstancePatchStatesForPatchGroupRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeInstancePatchStatesForPatchGroupInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Filters != nil {
+		serializeInstancePatchStateFilterList(s, schemas.DescribeInstancePatchStatesForPatchGroupRequest_Filters, v.Filters)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.DescribeInstancePatchStatesForPatchGroupRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeInstancePatchStatesForPatchGroupRequest_NextToken, *v.NextToken)
+	}
+	if v.PatchGroup != nil {
+		s.WriteString(schemas.DescribeInstancePatchStatesForPatchGroupRequest_PatchGroup, *v.PatchGroup)
+	}
 }
 
 type DescribeInstancePatchStatesForPatchGroupOutput struct {
@@ -68,68 +91,53 @@ type DescribeInstancePatchStatesForPatchGroupOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeInstancePatchStatesForPatchGroupOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeInstancePatchStatesForPatchGroupResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeInstancePatchStatesForPatchGroupOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.InstancePatchStates != nil {
+		serializeInstancePatchStatesList(s, schemas.DescribeInstancePatchStatesForPatchGroupResult_InstancePatchStates, v.InstancePatchStates)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeInstancePatchStatesForPatchGroupResult_NextToken, *v.NextToken)
+	}
+}
+func (v *DescribeInstancePatchStatesForPatchGroupOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeInstancePatchStatesForPatchGroupResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeInstancePatchStatesForPatchGroupResult_InstancePatchStates:
+			return deserializeInstancePatchStatesList(d, schemas.DescribeInstancePatchStatesForPatchGroupResult_InstancePatchStates, &v.InstancePatchStates)
+		case schemas.DescribeInstancePatchStatesForPatchGroupResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.DescribeInstancePatchStatesForPatchGroupResult_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeInstancePatchStatesForPatchGroupMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeInstancePatchStatesForPatchGroup, schemas.DescribeInstancePatchStatesForPatchGroupRequest, schemas.DescribeInstancePatchStatesForPatchGroupResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeInstancePatchStatesForPatchGroup{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeInstancePatchStatesForPatchGroup, schemas.DescribeInstancePatchStatesForPatchGroupRequest, schemas.DescribeInstancePatchStatesForPatchGroupResult), output: &DescribeInstancePatchStatesForPatchGroupOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDescribeInstancePatchStatesForPatchGroup{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeInstancePatchStatesForPatchGroup"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeInstancePatchStatesForPatchGroupValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeInstancePatchStatesForPatchGroup(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -144,16 +152,11 @@ func (c *Client) addOperationDescribeInstancePatchStatesForPatchGroupMiddlewares
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribeInstancePatchStatesForPatchGroupAPIClient is a client that implements
-// the DescribeInstancePatchStatesForPatchGroup operation.
-type DescribeInstancePatchStatesForPatchGroupAPIClient interface {
-	DescribeInstancePatchStatesForPatchGroup(context.Context, *DescribeInstancePatchStatesForPatchGroupInput, ...func(*Options)) (*DescribeInstancePatchStatesForPatchGroupOutput, error)
-}
-
-var _ DescribeInstancePatchStatesForPatchGroupAPIClient = (*Client)(nil)
 
 // DescribeInstancePatchStatesForPatchGroupPaginatorOptions is the paginator
 // options for DescribeInstancePatchStatesForPatchGroup
@@ -221,6 +224,9 @@ func (p *DescribeInstancePatchStatesForPatchGroupPaginator) NextPage(ctx context
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeInstancePatchStatesForPatchGroup(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -240,10 +246,10 @@ func (p *DescribeInstancePatchStatesForPatchGroupPaginator) NextPage(ctx context
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribeInstancePatchStatesForPatchGroup(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeInstancePatchStatesForPatchGroup",
-	}
+// DescribeInstancePatchStatesForPatchGroupAPIClient is a client that implements
+// the DescribeInstancePatchStatesForPatchGroup operation.
+type DescribeInstancePatchStatesForPatchGroupAPIClient interface {
+	DescribeInstancePatchStatesForPatchGroup(context.Context, *DescribeInstancePatchStatesForPatchGroupInput, ...func(*Options)) (*DescribeInstancePatchStatesForPatchGroupOutput, error)
 }
+
+var _ DescribeInstancePatchStatesForPatchGroupAPIClient = (*Client)(nil)

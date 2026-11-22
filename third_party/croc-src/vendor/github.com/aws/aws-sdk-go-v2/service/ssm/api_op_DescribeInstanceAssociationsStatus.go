@@ -5,14 +5,13 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// The status of the associations for the managed node(s).
+// The status of the associations for the managed nodes.
 func (c *Client) DescribeInstanceAssociationsStatus(ctx context.Context, params *DescribeInstanceAssociationsStatusInput, optFns ...func(*Options)) (*DescribeInstanceAssociationsStatusOutput, error) {
 	if params == nil {
 		params = &DescribeInstanceAssociationsStatusInput{}
@@ -46,6 +45,24 @@ type DescribeInstanceAssociationsStatusInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeInstanceAssociationsStatusInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeInstanceAssociationsStatusRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeInstanceAssociationsStatusInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.InstanceId != nil {
+		s.WriteString(schemas.DescribeInstanceAssociationsStatusRequest_InstanceId, *v.InstanceId)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.DescribeInstanceAssociationsStatusRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeInstanceAssociationsStatusRequest_NextToken, *v.NextToken)
+	}
+}
+
 type DescribeInstanceAssociationsStatusOutput struct {
 
 	// Status information about the association.
@@ -61,68 +78,53 @@ type DescribeInstanceAssociationsStatusOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeInstanceAssociationsStatusOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeInstanceAssociationsStatusResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeInstanceAssociationsStatusOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.InstanceAssociationStatusInfos != nil {
+		serializeInstanceAssociationStatusInfos(s, schemas.DescribeInstanceAssociationsStatusResult_InstanceAssociationStatusInfos, v.InstanceAssociationStatusInfos)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeInstanceAssociationsStatusResult_NextToken, *v.NextToken)
+	}
+}
+func (v *DescribeInstanceAssociationsStatusOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeInstanceAssociationsStatusResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeInstanceAssociationsStatusResult_InstanceAssociationStatusInfos:
+			return deserializeInstanceAssociationStatusInfos(d, schemas.DescribeInstanceAssociationsStatusResult_InstanceAssociationStatusInfos, &v.InstanceAssociationStatusInfos)
+		case schemas.DescribeInstanceAssociationsStatusResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.DescribeInstanceAssociationsStatusResult_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeInstanceAssociationsStatusMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeInstanceAssociationsStatus, schemas.DescribeInstanceAssociationsStatusRequest, schemas.DescribeInstanceAssociationsStatusResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeInstanceAssociationsStatus{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeInstanceAssociationsStatus, schemas.DescribeInstanceAssociationsStatusRequest, schemas.DescribeInstanceAssociationsStatusResult), output: &DescribeInstanceAssociationsStatusOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDescribeInstanceAssociationsStatus{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeInstanceAssociationsStatus"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeInstanceAssociationsStatusValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeInstanceAssociationsStatus(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -137,16 +139,11 @@ func (c *Client) addOperationDescribeInstanceAssociationsStatusMiddlewares(stack
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribeInstanceAssociationsStatusAPIClient is a client that implements the
-// DescribeInstanceAssociationsStatus operation.
-type DescribeInstanceAssociationsStatusAPIClient interface {
-	DescribeInstanceAssociationsStatus(context.Context, *DescribeInstanceAssociationsStatusInput, ...func(*Options)) (*DescribeInstanceAssociationsStatusOutput, error)
-}
-
-var _ DescribeInstanceAssociationsStatusAPIClient = (*Client)(nil)
 
 // DescribeInstanceAssociationsStatusPaginatorOptions is the paginator options for
 // DescribeInstanceAssociationsStatus
@@ -215,6 +212,9 @@ func (p *DescribeInstanceAssociationsStatusPaginator) NextPage(ctx context.Conte
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeInstanceAssociationsStatus(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -234,10 +234,10 @@ func (p *DescribeInstanceAssociationsStatusPaginator) NextPage(ctx context.Conte
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribeInstanceAssociationsStatus(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeInstanceAssociationsStatus",
-	}
+// DescribeInstanceAssociationsStatusAPIClient is a client that implements the
+// DescribeInstanceAssociationsStatus operation.
+type DescribeInstanceAssociationsStatusAPIClient interface {
+	DescribeInstanceAssociationsStatus(context.Context, *DescribeInstanceAssociationsStatusInput, ...func(*Options)) (*DescribeInstanceAssociationsStatusOutput, error)
 }
+
+var _ DescribeInstanceAssociationsStatusAPIClient = (*Client)(nil)

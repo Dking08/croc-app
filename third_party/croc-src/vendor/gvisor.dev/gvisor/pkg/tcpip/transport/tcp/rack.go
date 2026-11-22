@@ -30,6 +30,17 @@ const (
 	// See: https://tools.ietf.org/html/draft-ietf-tcpm-rack-08#section-7.5.
 	wcDelayedACKTimeout = 200 * time.Millisecond
 
+	// tcpTimeoutMin is the PTO inflation applied when FlightSize is greater
+	// than one segment. It mirrors TCP_TIMEOUT_MIN_US in Linux's
+	// tcp_schedule_loss_probe, which is the implementation RFC 8985
+	// documents. On paths whose RTT is of the same order as end-host or
+	// transport jitter (e.g. receiver-side GRO/batched delivery on
+	// loopback-class transports), a bare 2*SRTT PTO fires while ACKs are
+	// merely delayed; the resulting probe typically overtakes the original
+	// transmission, so no DSACK is generated and TLP recovery detection
+	// converts the spurious probe into a congestion response.
+	tcpTimeoutMin = 2 * time.Millisecond
+
 	// tcpRACKRecoveryThreshold is the number of loss recoveries for which
 	// the reorder window is inflated and after that the reorder window is
 	// reset to its initial value of minRTT/4.
@@ -71,12 +82,14 @@ type rackControl struct {
 // init initializes RACK specific fields.
 func (rc *rackControl) init(snd *sender, iss seqnum.Value) {
 	rc.FACK = iss
+	rc.EndSequence = iss
+	rc.RTTSeq = iss
 	rc.ReoWndIncr = 1
 	rc.snd = snd
 }
 
 // update will update the RACK related fields when an ACK has been received.
-// See: https://tools.ietf.org/html/draft-ietf-tcpm-rack-09#section-6.2
+// See: https://www.rfc-editor.org/rfc/rfc8985.html#section-6.2
 //
 // +checklocks:rc.snd.ep.mu
 func (rc *rackControl) update(seg *segment, ackSeg *segment) {
@@ -92,15 +105,15 @@ func (rc *rackControl) update(seg *segment, ackSeg *segment) {
 
 	// If the ACK is for a retransmitted packet, do not update if it is a
 	// spurious inference which is determined by below checks:
-	// 1. When Timestamping option is available, if the TSVal is less than
+	// 1. When Timestamping option is available, if the TSecr is less than
 	// the transmit time of the most recent retransmitted packet.
-	// 2. When RTT calculated for the packet is less than the smoothed RTT
+	// 2. When RTT calculated for the packet is less than the minimum RTT
 	// for the connection.
-	// See: https://tools.ietf.org/html/draft-ietf-tcpm-rack-08#section-7.2
-	// step 2
+	// See: https://www.rfc-editor.org/rfc/rfc8985.html#section-6.2, step 2.
 	if seg.xmitCount > 1 {
 		if ackSeg.parsedOptions.TS && ackSeg.parsedOptions.TSEcr != 0 {
-			if ackSeg.parsedOptions.TSEcr < rc.snd.ep.tsVal(seg.xmitTime) {
+			retransmitTS := rc.snd.ep.tsVal(seg.xmitTime)
+			if seqnum.Value(ackSeg.parsedOptions.TSEcr).LessThan(seqnum.Value(retransmitTS)) {
 				return
 			}
 		}
@@ -183,6 +196,8 @@ func (s *sender) schedulePTO() {
 		pto = s.rtt.TCPRTTState.SRTT * 2
 		if s.Outstanding == 1 {
 			pto += wcDelayedACKTimeout
+		} else {
+			pto += tcpTimeoutMin
 		}
 	}
 	s.rtt.Unlock()
@@ -378,6 +393,7 @@ func (rc *rackControl) exitRecovery() {
 func (rc *rackControl) detectLoss(rcvTime tcpip.MonotonicTime) int {
 	var timeout time.Duration
 	numLost := 0
+	clockResolution := rc.snd.ep.stack.ClockResolution()
 	for seg := rc.snd.writeList.Front(); seg != nil && seg.xmitCount != 0; seg = seg.Next() {
 		if rc.snd.ep.scoreboard.IsSACKED(seg.sackBlock()) {
 			continue
@@ -389,13 +405,27 @@ func (rc *rackControl) detectLoss(rcvTime tcpip.MonotonicTime) int {
 		}
 
 		endSeq := seg.sequenceNumber.Add(seqnum.Size(seg.payloadSize()))
-		if seg.xmitTime.Before(rc.XmitTime) || (seg.xmitTime == rc.XmitTime && rc.EndSequence.LessThan(endSeq)) {
-			timeRemaining := seg.xmitTime.Sub(rcvTime) + rc.RTT + rc.ReoWnd
-			if timeRemaining <= 0 {
+		if seg.xmitTime.Before(rc.XmitTime) || (seg.xmitTime == rc.XmitTime && endSeq.LessThan(rc.EndSequence)) {
+			// Timestamp quantization can make two events less than one clock tick
+			// apart appear a full tick apart. Keep that uncertainty separate from
+			// the network reordering window, which RACK may intentionally reduce to
+			// zero during recovery.
+			timeRemaining := seg.xmitTime.Sub(rcvTime) + rc.RTT + rc.ReoWnd + clockResolution
+			if timeRemaining < 0 || (timeRemaining == 0 && clockResolution == 0) {
 				seg.lost = true
 				numLost++
-			} else if timeRemaining > timeout {
-				timeout = timeRemaining
+			} else {
+				// Arm the timer through the uncertainty boundary, so that a timer
+				// target re-evaluation is strictly negative and loss is declared on
+				// the first expiry. Arming only to timeRemaining would make the
+				// expiry a no-op at equality that re-arms a second timer.
+				timeWait := timeRemaining
+				if clockResolution > 0 {
+					timeWait += clockResolution
+				}
+				if timeWait > timeout {
+					timeout = timeWait
+				}
 			}
 		}
 	}

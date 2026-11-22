@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Returns a list of all OpsItem events in the current Amazon Web Services Region
@@ -46,6 +45,24 @@ type ListOpsItemEventsInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListOpsItemEventsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListOpsItemEventsRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListOpsItemEventsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Filters != nil {
+		serializeOpsItemEventFilters(s, schemas.ListOpsItemEventsRequest_Filters, v.Filters)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.ListOpsItemEventsRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListOpsItemEventsRequest_NextToken, *v.NextToken)
+	}
+}
+
 type ListOpsItemEventsOutput struct {
 
 	// The token for the next set of items to return. Use this token to get the next
@@ -61,68 +78,53 @@ type ListOpsItemEventsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListOpsItemEventsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListOpsItemEventsResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListOpsItemEventsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListOpsItemEventsResponse_NextToken, *v.NextToken)
+	}
+	if v.Summaries != nil {
+		serializeOpsItemEventSummaries(s, schemas.ListOpsItemEventsResponse_Summaries, v.Summaries)
+	}
+}
+func (v *ListOpsItemEventsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListOpsItemEventsResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListOpsItemEventsResponse_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ListOpsItemEventsResponse_NextToken, v.NextToken)
+		case schemas.ListOpsItemEventsResponse_Summaries:
+			return deserializeOpsItemEventSummaries(d, schemas.ListOpsItemEventsResponse_Summaries, &v.Summaries)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListOpsItemEventsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListOpsItemEvents, schemas.ListOpsItemEventsRequest, schemas.ListOpsItemEventsResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpListOpsItemEvents{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListOpsItemEvents, schemas.ListOpsItemEventsRequest, schemas.ListOpsItemEventsResponse), output: &ListOpsItemEventsOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpListOpsItemEvents{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ListOpsItemEvents"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListOpsItemEventsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opListOpsItemEvents(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -137,16 +139,11 @@ func (c *Client) addOperationListOpsItemEventsMiddlewares(stack *middleware.Stac
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// ListOpsItemEventsAPIClient is a client that implements the ListOpsItemEvents
-// operation.
-type ListOpsItemEventsAPIClient interface {
-	ListOpsItemEvents(context.Context, *ListOpsItemEventsInput, ...func(*Options)) (*ListOpsItemEventsOutput, error)
-}
-
-var _ ListOpsItemEventsAPIClient = (*Client)(nil)
 
 // ListOpsItemEventsPaginatorOptions is the paginator options for ListOpsItemEvents
 type ListOpsItemEventsPaginatorOptions struct {
@@ -212,6 +209,9 @@ func (p *ListOpsItemEventsPaginator) NextPage(ctx context.Context, optFns ...fun
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.ListOpsItemEvents(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -231,10 +231,10 @@ func (p *ListOpsItemEventsPaginator) NextPage(ctx context.Context, optFns ...fun
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opListOpsItemEvents(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ListOpsItemEvents",
-	}
+// ListOpsItemEventsAPIClient is a client that implements the ListOpsItemEvents
+// operation.
+type ListOpsItemEventsAPIClient interface {
+	ListOpsItemEvents(context.Context, *ListOpsItemEventsInput, ...func(*Options)) (*ListOpsItemEventsOutput, error)
 }
+
+var _ ListOpsItemEventsAPIClient = (*Client)(nil)

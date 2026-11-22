@@ -58,6 +58,10 @@ const (
 	LinkAddressSize = 6
 )
 
+// GVisorGSOMaxSize is a maximum allowed size of a software GSO segment.
+// This isn't a hard limit, because it is never set into packet headers.
+const GVisorGSOMaxSize = 1 << 16
+
 // Known IP address.
 var (
 	IPv4Zero = []byte{0, 0, 0, 0}
@@ -630,7 +634,7 @@ type SendableControlMessages struct {
 type ReceivableControlMessages struct {
 	// Timestamp is the time that the last packet used to create the read data
 	// was received.
-	Timestamp time.Time `state:".(int64)"`
+	Timestamp time.Time
 
 	// HasInq indicates whether Inq is valid/set.
 	HasInq bool
@@ -850,7 +854,7 @@ type Endpoint interface {
 	// protocol-specific and is primarily used for diagnostics.
 	State() uint32
 
-	// ModerateRecvBuf should be called everytime data is copied to the user
+	// ModerateRecvBuf should be called every time data is copied to the user
 	// space. This allows for dynamic tuning of recv buffer space for a
 	// given socket.
 	//
@@ -1067,6 +1071,16 @@ func (*DefaultTTLOption) isGettableNetworkProtocolOption() {}
 
 func (*DefaultTTLOption) isSettableNetworkProtocolOption() {}
 
+// AllowExternalLoopbackTrafficOption enables or disables acceptance of martian
+// loopback packets (packets with a loopback source or destination address
+// arriving on a non-loopback NIC). It mirrors Linux's
+// net.ipv4.conf.*.route_localnet.
+type AllowExternalLoopbackTrafficOption bool
+
+func (*AllowExternalLoopbackTrafficOption) isGettableNetworkProtocolOption() {}
+
+func (*AllowExternalLoopbackTrafficOption) isSettableNetworkProtocolOption() {}
+
 // GettableTransportProtocolOption is a marker interface for transport protocol
 // options that may be queried.
 type GettableTransportProtocolOption interface {
@@ -1271,12 +1285,24 @@ type TCPInfoOption struct {
 	// SndCwnd is the congestion window, in packets.
 	SndCwnd uint32
 
+	// SndMss is the maximum TCP payload size, in bytes.
+	SndMss uint32
+
+	// TotalRetrans is the lifetime number of retransmitted TCP segments.
+	TotalRetrans uint32
+
 	// SndSsthresh is the threshold between slow start and congestion
 	// avoidance.
 	SndSsthresh uint32
 
 	// ReorderSeen indicates if reordering is seen in the endpoint.
 	ReorderSeen bool
+
+	// Timestamps is true if TCP timestamps were negotiated.
+	Timestamps bool
+
+	// SACKPermitted is true if selective acknowledgments were negotiated.
+	SACKPermitted bool
 }
 
 func (*TCPInfoOption) isGettableSocketOption() {}

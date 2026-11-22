@@ -28,14 +28,14 @@ const ()
 // Lock locks m.
 // +checklocksignore
 func (m *addressStateRWMutex) Lock() {
-	locking.AddGLock(addressStateprefixIndex, -1)
+	locking.AddGLock(addressStateprefixIndex, -1) // escapes: lockdep.
 	m.mu.Lock()
 }
 
 // NestedLock locks m knowing that another lock of the same type is held.
 // +checklocksignore
 func (m *addressStateRWMutex) NestedLock(i addressStatelockNameIndex) {
-	locking.AddGLock(addressStateprefixIndex, int(i))
+	locking.AddGLock(addressStateprefixIndex, int(i)) // escapes: lockdep.
 	m.mu.Lock()
 }
 
@@ -43,20 +43,27 @@ func (m *addressStateRWMutex) NestedLock(i addressStatelockNameIndex) {
 // +checklocksignore
 func (m *addressStateRWMutex) Unlock() {
 	m.mu.Unlock()
-	locking.DelGLock(addressStateprefixIndex, -1)
+	locking.DelGLock(addressStateprefixIndex, -1) // escapes: lockdep.
 }
 
 // NestedUnlock unlocks m knowing that another lock of the same type is held.
 // +checklocksignore
 func (m *addressStateRWMutex) NestedUnlock(i addressStatelockNameIndex) {
 	m.mu.Unlock()
-	locking.DelGLock(addressStateprefixIndex, int(i))
+	locking.DelGLock(addressStateprefixIndex, int(i)) // escapes: lockdep.
 }
 
 // RLock locks m for reading.
 // +checklocksignore
 func (m *addressStateRWMutex) RLock() {
-	locking.AddGLock(addressStateprefixIndex, -1)
+	locking.AddGLock(addressStateprefixIndex, -1) // escapes: lockdep.
+	m.mu.RLock()
+}
+
+// NestedRLock locks m for reading knowing that another lock of the same type is held.
+// +checklocksignore
+func (m *addressStateRWMutex) NestedRLock(i addressStatelockNameIndex) {
+	locking.AddGLock(addressStateprefixIndex, int(i)) // escapes: lockdep.
 	m.mu.RLock()
 }
 
@@ -64,7 +71,14 @@ func (m *addressStateRWMutex) RLock() {
 // +checklocksignore
 func (m *addressStateRWMutex) RUnlock() {
 	m.mu.RUnlock()
-	locking.DelGLock(addressStateprefixIndex, -1)
+	locking.DelGLock(addressStateprefixIndex, -1) // escapes: lockdep.
+}
+
+// NestedRUnlock undoes a single NestedRLock call.
+// +checklocksignore
+func (m *addressStateRWMutex) NestedRUnlock(i addressStatelockNameIndex) {
+	m.mu.RUnlock()
+	locking.DelGLock(addressStateprefixIndex, int(i)) // escapes: lockdep.
 }
 
 // RLockBypass locks m for reading without executing the validator.

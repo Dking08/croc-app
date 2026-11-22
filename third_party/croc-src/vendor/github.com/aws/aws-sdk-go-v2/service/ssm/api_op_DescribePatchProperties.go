@@ -5,27 +5,42 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Lists the properties of available patches organized by product, product family,
 // classification, severity, and other properties of available patches. You can use
 // the reported properties in the filters you specify in requests for operations
-// such as CreatePatchBaseline , UpdatePatchBaseline , DescribeAvailablePatches ,
-// and DescribePatchBaselines . The following section lists the properties that can
-// be used in filters for each major operating system type: AMAZON_LINUX Valid
-// properties: PRODUCT | CLASSIFICATION | SEVERITY AMAZON_LINUX_2 Valid
-// properties: PRODUCT | CLASSIFICATION | SEVERITY CENTOS Valid properties: PRODUCT
-// | CLASSIFICATION | SEVERITY DEBIAN Valid properties: PRODUCT | PRIORITY MACOS
-// Valid properties: PRODUCT | CLASSIFICATION ORACLE_LINUX Valid properties:
-// PRODUCT | CLASSIFICATION | SEVERITY REDHAT_ENTERPRISE_LINUX Valid properties:
-// PRODUCT | CLASSIFICATION | SEVERITY SUSE Valid properties: PRODUCT |
-// CLASSIFICATION | SEVERITY UBUNTU Valid properties: PRODUCT | PRIORITY WINDOWS
-// Valid properties: PRODUCT | PRODUCT_FAMILY | CLASSIFICATION | MSRC_SEVERITY
+// such as CreatePatchBaseline, UpdatePatchBaseline, DescribeAvailablePatches, and DescribePatchBaselines.
+//
+// The following section lists the properties that can be used in filters for each
+// major operating system type:
+//
+// AMAZON_LINUX Valid properties: PRODUCT | CLASSIFICATION | SEVERITY
+//
+// AMAZON_LINUX_2 Valid properties: PRODUCT | CLASSIFICATION | SEVERITY
+//
+// AMAZON_LINUX_2023 Valid properties: PRODUCT | CLASSIFICATION | SEVERITY
+//
+// CENTOS Valid properties: PRODUCT | CLASSIFICATION | SEVERITY
+//
+// DEBIAN Valid properties: PRODUCT | PRIORITY
+//
+// MACOS Valid properties: PRODUCT | CLASSIFICATION
+//
+// ORACLE_LINUX Valid properties: PRODUCT | CLASSIFICATION | SEVERITY
+//
+// REDHAT_ENTERPRISE_LINUX Valid properties: PRODUCT | CLASSIFICATION | SEVERITY
+//
+// SUSE Valid properties: PRODUCT | CLASSIFICATION | SEVERITY
+//
+// UBUNTU Valid properties: PRODUCT | PRIORITY
+//
+// WINDOWS Valid properties: PRODUCT | PRODUCT_FAMILY | CLASSIFICATION |
+// MSRC_SEVERITY
 func (c *Client) DescribePatchProperties(ctx context.Context, params *DescribePatchPropertiesInput, optFns ...func(*Options)) (*DescribePatchPropertiesOutput, error) {
 	if params == nil {
 		params = &DescribePatchPropertiesInput{}
@@ -69,6 +84,30 @@ type DescribePatchPropertiesInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribePatchPropertiesInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribePatchPropertiesRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribePatchPropertiesInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.DescribePatchPropertiesRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribePatchPropertiesRequest_NextToken, *v.NextToken)
+	}
+	if v.OperatingSystem != "" {
+		s.WriteString(schemas.DescribePatchPropertiesRequest_OperatingSystem, string(v.OperatingSystem))
+	}
+	if v.PatchSet != "" {
+		s.WriteString(schemas.DescribePatchPropertiesRequest_PatchSet, string(v.PatchSet))
+	}
+	if v.Property != "" {
+		s.WriteString(schemas.DescribePatchPropertiesRequest_Property, string(v.Property))
+	}
+}
+
 type DescribePatchPropertiesOutput struct {
 
 	// The token for the next set of items to return. (You use this token in the next
@@ -84,68 +123,53 @@ type DescribePatchPropertiesOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribePatchPropertiesOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribePatchPropertiesResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribePatchPropertiesOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribePatchPropertiesResult_NextToken, *v.NextToken)
+	}
+	if v.Properties != nil {
+		serializePatchPropertiesList(s, schemas.DescribePatchPropertiesResult_Properties, v.Properties)
+	}
+}
+func (v *DescribePatchPropertiesOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribePatchPropertiesResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribePatchPropertiesResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.DescribePatchPropertiesResult_NextToken, v.NextToken)
+		case schemas.DescribePatchPropertiesResult_Properties:
+			return deserializePatchPropertiesList(d, schemas.DescribePatchPropertiesResult_Properties, &v.Properties)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribePatchPropertiesMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribePatchProperties, schemas.DescribePatchPropertiesRequest, schemas.DescribePatchPropertiesResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribePatchProperties{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribePatchProperties, schemas.DescribePatchPropertiesRequest, schemas.DescribePatchPropertiesResult), output: &DescribePatchPropertiesOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDescribePatchProperties{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribePatchProperties"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribePatchPropertiesValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribePatchProperties(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -160,16 +184,11 @@ func (c *Client) addOperationDescribePatchPropertiesMiddlewares(stack *middlewar
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribePatchPropertiesAPIClient is a client that implements the
-// DescribePatchProperties operation.
-type DescribePatchPropertiesAPIClient interface {
-	DescribePatchProperties(context.Context, *DescribePatchPropertiesInput, ...func(*Options)) (*DescribePatchPropertiesOutput, error)
-}
-
-var _ DescribePatchPropertiesAPIClient = (*Client)(nil)
 
 // DescribePatchPropertiesPaginatorOptions is the paginator options for
 // DescribePatchProperties
@@ -237,6 +256,9 @@ func (p *DescribePatchPropertiesPaginator) NextPage(ctx context.Context, optFns 
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribePatchProperties(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -256,10 +278,10 @@ func (p *DescribePatchPropertiesPaginator) NextPage(ctx context.Context, optFns 
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribePatchProperties(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribePatchProperties",
-	}
+// DescribePatchPropertiesAPIClient is a client that implements the
+// DescribePatchProperties operation.
+type DescribePatchPropertiesAPIClient interface {
+	DescribePatchProperties(context.Context, *DescribePatchPropertiesInput, ...func(*Options)) (*DescribePatchPropertiesOutput, error)
 }
+
+var _ DescribePatchPropertiesAPIClient = (*Client)(nil)

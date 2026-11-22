@@ -108,7 +108,8 @@ type Waitable interface {
 
 	// EventRegister registers the given waiter entry to receive
 	// notifications when an event occurs that makes the object ready for
-	// at least one of the events in mask.
+	// at least one of the events in mask. On error, the entry must not
+	// remain registered.
 	EventRegister(e *Entry) error
 
 	// EventUnregister unregisters a waiter entry previously registered with
@@ -142,7 +143,10 @@ type Entry struct {
 	// eventListener receives the notification.
 	eventListener EventListener
 
-	// mask should be immutable once queued.
+	// mask is initialized before registration. While queued, SetQueuedMask
+	// updates it under the owning queue's mu. Calls to Mask or NotifyEvent
+	// must not race with mask updates. The queue is not stored in Entry, so
+	// its lock cannot be named by a field annotation.
 	mask EventMask
 }
 
@@ -157,6 +161,8 @@ func (e *Entry) Init(eventListener EventListener, mask EventMask) {
 // SetQueuedMask changes the entry mask.
 //
 // Preconditions: The Entry must be registered to the given Queue.
+//
+// +checklocksexclude:q.mu
 func (e *Entry) SetQueuedMask(q *Queue, mask EventMask) {
 	q.mu.Lock()
 	e.mask = mask
@@ -225,11 +231,14 @@ func (NoopListener) NotifyEvent(mask EventMask) {}
 //
 // +stateify savable
 type Queue struct {
+	// +checklocks:mu
 	list waiterList
 	mu   sync.RWMutex `state:"nosave"`
 }
 
 // EventRegister adds a waiter to the wait queue.
+//
+// +checklocksexclude:q.mu
 func (q *Queue) EventRegister(e *Entry) {
 	q.mu.Lock()
 	q.list.PushBack(e)
@@ -237,6 +246,8 @@ func (q *Queue) EventRegister(e *Entry) {
 }
 
 // EventUnregister removes the given waiter entry from the wait queue.
+//
+// +checklocksexclude:q.mu
 func (q *Queue) EventUnregister(e *Entry) {
 	q.mu.Lock()
 	q.list.Remove(e)
@@ -245,6 +256,11 @@ func (q *Queue) EventUnregister(e *Entry) {
 
 // Notify notifies all waiters in the queue whose masks have at least one bit
 // in common with the notification mask.
+//
+// Callbacks run with q.mu read-locked and must not call methods that acquire
+// the same mutex. checklocks cannot convey that owner through EventListener.
+//
+// +checklocksexclude:q.mu
 func (q *Queue) Notify(mask EventMask) {
 	q.mu.RLock()
 	for e := q.list.Front(); e != nil; e = e.Next() {
@@ -259,6 +275,8 @@ func (q *Queue) Notify(mask EventMask) {
 
 // Events returns the set of events being waited on. It is the union of the
 // masks of all registered entries.
+//
+// +checklocksexclude:q.mu
 func (q *Queue) Events() EventMask {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
@@ -270,6 +288,8 @@ func (q *Queue) Events() EventMask {
 }
 
 // IsEmpty returns if the wait queue is empty or not.
+//
+// +checklocksexclude:q.mu
 func (q *Queue) IsEmpty() bool {
 	q.mu.RLock()
 	defer q.mu.RUnlock()

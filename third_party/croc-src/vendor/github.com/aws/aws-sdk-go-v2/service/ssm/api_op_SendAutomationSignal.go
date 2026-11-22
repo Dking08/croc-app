@@ -4,12 +4,10 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Sends a signal to an Automation execution to change the current behavior or
@@ -43,16 +41,43 @@ type SendAutomationSignalInput struct {
 	SignalType types.SignalType
 
 	// The data sent with the signal. The data schema depends on the type of signal
-	// used in the request. For Approve and Reject signal types, the payload is an
-	// optional comment that you can send with the signal type. For example:
-	// Comment="Looks good" For StartStep and Resume signal types, you must send the
-	// name of the Automation step to start or resume as the payload. For example:
-	// StepName="step1" For the StopStep signal type, you must send the step execution
-	// ID as the payload. For example:
-	// StepExecutionId="97fff367-fc5a-4299-aed8-0123456789ab"
+	// used in the request.
+	//
+	// For Approve and Reject signal types, the payload is an optional comment that
+	// you can send with the signal type. For example:
+	//
+	//     Comment="Looks good"
+	//
+	// For StartStep and Resume signal types, you must send the name of the Automation
+	// step to start or resume as the payload. For example:
+	//
+	//     StepName="step1"
+	//
+	// For the StopStep signal type, you must send the step execution ID as the
+	// payload. For example:
+	//
+	//     StepExecutionId="97fff367-fc5a-4299-aed8-0123456789ab"
 	Payload map[string][]string
 
 	noSmithyDocumentSerde
+}
+
+func (v *SendAutomationSignalInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.SendAutomationSignalRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *SendAutomationSignalInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AutomationExecutionId != nil {
+		s.WriteString(schemas.SendAutomationSignalRequest_AutomationExecutionId, *v.AutomationExecutionId)
+	}
+	if v.Payload != nil {
+		serializeAutomationParameterMap(s, schemas.SendAutomationSignalRequest_Payload, v.Payload)
+	}
+	if v.SignalType != "" {
+		s.WriteString(schemas.SendAutomationSignalRequest_SignalType, string(v.SignalType))
+	}
 }
 
 type SendAutomationSignalOutput struct {
@@ -62,68 +87,42 @@ type SendAutomationSignalOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *SendAutomationSignalOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.SendAutomationSignalResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *SendAutomationSignalOutput) SerializeMembers(s smithy.ShapeSerializer) {
+}
+func (v *SendAutomationSignalOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.SendAutomationSignalResult, func(s *smithy.Schema) error {
+		switch s {
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationSendAutomationSignalMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.SendAutomationSignal, schemas.SendAutomationSignalRequest, schemas.SendAutomationSignalResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpSendAutomationSignal{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.SendAutomationSignal, schemas.SendAutomationSignalRequest, schemas.SendAutomationSignalResult), output: &SendAutomationSignalOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpSendAutomationSignal{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "SendAutomationSignal"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpSendAutomationSignalValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opSendAutomationSignal(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -138,13 +137,8 @@ func (c *Client) addOperationSendAutomationSignalMiddlewares(stack *middleware.S
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opSendAutomationSignal(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "SendAutomationSignal",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -152,11 +153,37 @@ func TestPerFileCompressionNegotiationFallsBackForLegacyPeers(t *testing.T) {
 	assert.True(t, supportsFeature([]string{"other", perFileCompressionFeature}, perFileCompressionFeature))
 }
 
+func TestLargeFileCompressionUsesTheBody(t *testing.T) {
+	data := make([]byte, 34<<20)
+	_, _ = rand.New(rand.NewSource(42)).Read(data)
+	path := filepath.Join(t.TempDir(), "media.bin")
+	check := func(want bool) {
+		t.Helper()
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := shouldCompressFile(path, make([]byte, compressionSampleSize), nil)
+		if got != want {
+			t.Fatalf("compress = %t, want %t", got, want)
+		}
+	}
+
+	// Quiet ends must not select a codec for an incompressible body.
+	clear(data[:compressionSampleSize])
+	clear(data[len(data)-compressionSampleSize:])
+	check(false)
+
+	// An incompressible header must not hide a compressible body either.
+	clear(data)
+	_, _ = rand.New(rand.NewSource(42)).Read(data[:compressionSampleSize])
+	check(true)
+}
+
 func TestWebReceiveURL(t *testing.T) {
 	assert.Equal(
 		t,
 		"https://getcroc.com/?code=1234-word%2Fword%3F%26",
-		webReceiveURL("1234-word/word?&"),
+		webReceiveURL("", "1234-word/word?&"),
 	)
 }
 
@@ -493,9 +520,10 @@ func TestHostilePortableDestinationNamesRejected(t *testing.T) {
 		{name: "control", files: []FileInfo{{Name: "escape\x1b.txt", FolderRemote: "."}}},
 		{name: "device", files: []FileInfo{{Name: "CON.txt", FolderRemote: "."}}},
 		{name: "alternate data stream", files: []FileInfo{{Name: "file.txt:stream", FolderRemote: "."}}},
-		{name: "git hook", files: []FileInfo{{Name: "post-checkout", FolderRemote: ".git/hooks"}}},
+		{name: "gnupg keys", files: []FileInfo{{Name: "key", FolderRemote: ".gnupg/private-keys-v1.d"}}},
 		{name: "case folded ssh", files: []FileInfo{{Name: "authorized_keys", FolderRemote: ".SSH"}}},
-		{name: "sensitive symlink target", files: []FileInfo{{Name: "link", FolderRemote: ".", Symlink: ".git/config"}}},
+		{name: "sensitive symlink target", files: []FileInfo{{Name: "link", FolderRemote: ".", Symlink: ".ssh/authorized_keys"}}},
+		{name: "sensitive path inside git", files: []FileInfo{{Name: "authorized_keys", FolderRemote: "11/.git/.SSH"}}},
 		{name: "case fold collision", files: []FileInfo{
 			{Name: "README", FolderRemote: "."},
 			{Name: "readme", FolderRemote: "."},
@@ -1299,10 +1327,8 @@ func TestGetFilesInfoZipFolderHonoursFilters(t *testing.T) {
 			t.Fatalf("write %s: %v", rel, err)
 		}
 	}
-	// gitWalk calls MatchesPath(info.Name()) on basenames, which doesn't
-	// match patterns with trailing slashes. Use a plain pattern.
 	gitignore := filepath.Join(src, ".gitignore")
-	if err := os.WriteFile(gitignore, []byte("build\n"), 0o644); err != nil {
+	if err := os.WriteFile(gitignore, []byte("build/\n"), 0o644); err != nil {
 		t.Fatalf("write .gitignore: %v", err)
 	}
 
@@ -1382,6 +1408,87 @@ func TestGetFilesInfoExactFileExclusion(t *testing.T) {
 		if !got[want] {
 			t.Errorf("expected %q to be returned; got %v", want, got)
 		}
+	}
+}
+
+func TestRemoteFolderPath(t *testing.T) {
+	tests := []struct {
+		name       string
+		parentDir  string
+		folderPath string
+		separator  string
+		want       string
+	}{
+		{"windows drive root", `D:\`, `D:\first_folder\empty_folder`, `\`, "first_folder/empty_folder/"},
+		{"windows drive root top folder", `D:\`, `D:\first_folder`, `\`, "first_folder/"},
+		{"windows nested parent", `C:\Users\me`, `C:\Users\me\first_folder\a\b`, `\`, "first_folder/a/b/"},
+		{"unix root", "/", "/first_folder/empty_folder", "/", "first_folder/empty_folder/"},
+		{"unix nested parent", "/home/me", "/home/me/first_folder/empty_folder", "/", "first_folder/empty_folder/"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := remoteFolderPath(tt.parentDir, tt.folderPath, tt.separator); got != tt.want {
+				t.Fatalf("remoteFolderPath(%q, %q, %q) = %q, want %q", tt.parentDir, tt.folderPath, tt.separator, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetFilesInfoEmptyFolderIsRelative(t *testing.T) {
+	parent := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(parent, "first_folder", "empty_folder"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(parent, "first_folder", "file.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	files, emptyFolders, _, err := GetFilesInfo([]string{filepath.Join(parent, "first_folder")}, false, false, nil)
+	if err != nil {
+		t.Fatalf("GetFilesInfo: %v", err)
+	}
+	if len(files) != 1 || files[0].FolderRemote != "first_folder/" {
+		t.Fatalf("unexpected files: %+v", files)
+	}
+	if len(emptyFolders) != 1 || emptyFolders[0].FolderRemote != "first_folder/empty_folder/" {
+		t.Fatalf("unexpected empty folders: %+v", emptyFolders)
+	}
+	if _, _, err := validateReceiveMetadata(files, emptyFolders); err != nil {
+		t.Fatalf("receiver rejected sender metadata: %v", err)
+	}
+}
+
+func TestGetFilesInfoSkipsDirectoryJunctions(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("NTFS junctions are Windows-only")
+	}
+	parent := t.TempDir()
+	folder := filepath.Join(parent, "folder")
+	target := filepath.Join(parent, "target")
+	for _, dir := range []string{folder, target} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(folder, "file.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "linked.txt"), []byte("y"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if out, err := exec.Command("cmd", "/c", "mklink", "/J", filepath.Join(folder, "junction"), target).CombinedOutput(); err != nil {
+		t.Skipf("mklink /J: %v: %s", err, out)
+	}
+
+	files, emptyFolders, _, err := GetFilesInfo([]string{folder}, false, false, nil)
+	if err != nil {
+		t.Fatalf("GetFilesInfo: %v", err)
+	}
+	if len(files) != 1 || files[0].Name != "file.txt" {
+		t.Fatalf("junction should be skipped, got files: %+v", files)
+	}
+	if len(emptyFolders) != 0 {
+		t.Fatalf("unexpected empty folders: %+v", emptyFolders)
 	}
 }
 
@@ -1468,6 +1575,80 @@ func TestReceiveCancellationClosesPendingRelayConnection(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("receiver cancellation did not close the relay connection")
 	}
+}
+
+// TestGetFilesInfoGitIgnoreDirectoryPatterns covers the usual .gitignore
+// forms: directory patterns with a trailing slash ("node_modules/"), patterns
+// anchored to the .gitignore ("/dist") and patterns with a slash in the middle
+// ("docs/generated/"). They have to match against the path relative to the
+// .gitignore, with a trailing slash for directories, not only the base name.
+func TestGetFilesInfoGitIgnoreDirectoryPatterns(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "myproj")
+	for _, rel := range []string{
+		"main.go",
+		"node_modules/pkg/index.js",
+		"dist/app.js",
+		"docs/generated/api.md",
+		"docs/guide.md",
+		"lib/dist/keep.js",
+		"build",
+	} {
+		p := filepath.Join(src, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+	gitignore := "node_modules/\n/dist\ndocs/generated/\nbuild/\n"
+	if err := os.WriteFile(filepath.Join(src, ".gitignore"), []byte(gitignore), 0o644); err != nil {
+		t.Fatalf("write .gitignore: %v", err)
+	}
+
+	filesInfo, _, _, err := GetFilesInfo([]string{src}, false, true, nil)
+	if err != nil {
+		t.Fatalf("GetFilesInfo: %v", err)
+	}
+	got := make([]string, 0, len(filesInfo))
+	for _, fi := range filesInfo {
+		got = append(got, fi.FolderRemote+fi.Name)
+	}
+	slices.Sort(got)
+	want := []string{
+		"myproj/.gitignore",
+		// a file named like a directory pattern is not ignored
+		"myproj/build",
+		"myproj/docs/guide.md",
+		// "/dist" only matches next to the .gitignore
+		"myproj/lib/dist/keep.js",
+		"myproj/main.go",
+	}
+	assert.Equal(t, want, got)
+
+	// The .gitignore in the working directory applies to the paths given on
+	// the command line, e.g. `croc send --git *` from inside the project.
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(src); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+
+	filesInfo, _, _, err = GetFilesInfo([]string{"*"}, false, true, nil)
+	if err != nil {
+		t.Fatalf("GetFilesInfo: %v", err)
+	}
+	got = got[:0]
+	for _, fi := range filesInfo {
+		got = append(got, fi.FolderRemote+fi.Name)
+	}
+	assert.NotContains(t, got, "node_modules/pkg/index.js")
+	assert.NotContains(t, got, "dist/app.js")
+	assert.Contains(t, got, "./main.go")
+	assert.Contains(t, got, "lib/dist/keep.js")
 }
 
 // TestIsChild guards the gitignore walk helper. A directory or file whose

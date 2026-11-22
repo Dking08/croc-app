@@ -119,14 +119,14 @@ func (e *icmpv6PacketTooBigSockError) beforeSave() {}
 // +checklocksignore
 func (e *icmpv6PacketTooBigSockError) StateSave(stateSinkObject state.Sink) {
 	e.beforeSave()
-	stateSinkObject.Save(0, &e.mtu)
+	stateSinkObject.SaveUint32(0, &e.mtu)
 }
 
 func (e *icmpv6PacketTooBigSockError) afterLoad(context.Context) {}
 
 // +checklocksignore
 func (e *icmpv6PacketTooBigSockError) StateLoad(ctx context.Context, stateSourceObject state.Source) {
-	stateSourceObject.Load(0, &e.mtu)
+	stateSourceObject.LoadUint32(0, &e.mtu)
 }
 
 func (e *endpointMu) StateTypeName() string {
@@ -290,7 +290,6 @@ func (p *protocolMu) StateTypeName() string {
 
 func (p *protocolMu) StateFields() []string {
 	return []string{
-		"eps",
 		"icmpRateLimitedTypes",
 		"multicastForwardingDisp",
 	}
@@ -301,18 +300,20 @@ func (p *protocolMu) beforeSave() {}
 // +checklocksignore
 func (p *protocolMu) StateSave(stateSinkObject state.Sink) {
 	p.beforeSave()
-	stateSinkObject.Save(0, &p.eps)
-	stateSinkObject.Save(1, &p.icmpRateLimitedTypes)
-	stateSinkObject.Save(2, &p.multicastForwardingDisp)
+	stateSinkObject.Save(0, &p.icmpRateLimitedTypes)
+	stateSinkObject.Save(1, &p.multicastForwardingDisp)
 }
-
-func (p *protocolMu) afterLoad(context.Context) {}
 
 // +checklocksignore
 func (p *protocolMu) StateLoad(ctx context.Context, stateSourceObject state.Source) {
-	stateSourceObject.Load(0, &p.eps)
-	stateSourceObject.Load(1, &p.icmpRateLimitedTypes)
-	stateSourceObject.Load(2, &p.multicastForwardingDisp)
+	stateSourceObject.Load(0, &p.icmpRateLimitedTypes)
+	stateSourceObject.Load(1, &p.multicastForwardingDisp)
+	stateSourceObject.AfterLoadTo(p)
+}
+
+// +checklocksignore
+func (p *protocolMu) StateAfterLoad(ctx context.Context) {
+	p.afterLoad(ctx)
 }
 
 func (p *protocol) StateTypeName() string {
@@ -381,13 +382,13 @@ func (o *Options) beforeSave() {}
 func (o *Options) StateSave(stateSinkObject state.Sink) {
 	o.beforeSave()
 	stateSinkObject.Save(0, &o.NDPConfigs)
-	stateSinkObject.Save(1, &o.AutoGenLinkLocal)
+	stateSinkObject.SaveBool(1, &o.AutoGenLinkLocal)
 	stateSinkObject.Save(2, &o.NDPDisp)
 	stateSinkObject.Save(3, &o.OpaqueIIDOpts)
 	stateSinkObject.Save(4, &o.TempIIDSeed)
 	stateSinkObject.Save(5, &o.MLD)
 	stateSinkObject.Save(6, &o.DADConfigs)
-	stateSinkObject.Save(7, &o.AllowExternalLoopbackTraffic)
+	stateSinkObject.SaveBool(7, &o.AllowExternalLoopbackTraffic)
 }
 
 func (o *Options) afterLoad(context.Context) {}
@@ -395,13 +396,13 @@ func (o *Options) afterLoad(context.Context) {}
 // +checklocksignore
 func (o *Options) StateLoad(ctx context.Context, stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &o.NDPConfigs)
-	stateSourceObject.Load(1, &o.AutoGenLinkLocal)
+	stateSourceObject.LoadBool(1, &o.AutoGenLinkLocal)
 	stateSourceObject.Load(2, &o.NDPDisp)
 	stateSourceObject.Load(3, &o.OpaqueIIDOpts)
 	stateSourceObject.Load(4, &o.TempIIDSeed)
 	stateSourceObject.Load(5, &o.MLD)
 	stateSourceObject.Load(6, &o.DADConfigs)
-	stateSourceObject.Load(7, &o.AllowExternalLoopbackTraffic)
+	stateSourceObject.LoadBool(7, &o.AllowExternalLoopbackTraffic)
 }
 
 func (m *MLDOptions) StateTypeName() string {
@@ -419,14 +420,14 @@ func (m *MLDOptions) beforeSave() {}
 // +checklocksignore
 func (m *MLDOptions) StateSave(stateSinkObject state.Sink) {
 	m.beforeSave()
-	stateSinkObject.Save(0, &m.Enabled)
+	stateSinkObject.SaveBool(0, &m.Enabled)
 }
 
 func (m *MLDOptions) afterLoad(context.Context) {}
 
 // +checklocksignore
 func (m *MLDOptions) StateLoad(ctx context.Context, stateSourceObject state.Source) {
-	stateSourceObject.Load(0, &m.Enabled)
+	stateSourceObject.LoadBool(0, &m.Enabled)
 }
 
 func (mld *mldState) StateTypeName() string {
@@ -484,16 +485,16 @@ func (c *NDPConfigurations) beforeSave() {}
 // +checklocksignore
 func (c *NDPConfigurations) StateSave(stateSinkObject state.Sink) {
 	c.beforeSave()
-	stateSinkObject.Save(0, &c.MaxRtrSolicitations)
+	stateSinkObject.SaveUint8(0, &c.MaxRtrSolicitations)
 	stateSinkObject.Save(1, &c.RtrSolicitationInterval)
 	stateSinkObject.Save(2, &c.MaxRtrSolicitationDelay)
-	stateSinkObject.Save(3, &c.HandleRAs)
-	stateSinkObject.Save(4, &c.DiscoverDefaultRouters)
-	stateSinkObject.Save(5, &c.DiscoverMoreSpecificRoutes)
-	stateSinkObject.Save(6, &c.DiscoverOnLinkPrefixes)
-	stateSinkObject.Save(7, &c.AutoGenGlobalAddresses)
-	stateSinkObject.Save(8, &c.AutoGenAddressConflictRetries)
-	stateSinkObject.Save(9, &c.AutoGenTempGlobalAddresses)
+	stateSinkObject.SaveInt(3, (*int)(&c.HandleRAs))
+	stateSinkObject.SaveBool(4, &c.DiscoverDefaultRouters)
+	stateSinkObject.SaveBool(5, &c.DiscoverMoreSpecificRoutes)
+	stateSinkObject.SaveBool(6, &c.DiscoverOnLinkPrefixes)
+	stateSinkObject.SaveBool(7, &c.AutoGenGlobalAddresses)
+	stateSinkObject.SaveUint8(8, &c.AutoGenAddressConflictRetries)
+	stateSinkObject.SaveBool(9, &c.AutoGenTempGlobalAddresses)
 	stateSinkObject.Save(10, &c.MaxTempAddrValidLifetime)
 	stateSinkObject.Save(11, &c.MaxTempAddrPreferredLifetime)
 	stateSinkObject.Save(12, &c.RegenAdvanceDuration)
@@ -503,16 +504,16 @@ func (c *NDPConfigurations) afterLoad(context.Context) {}
 
 // +checklocksignore
 func (c *NDPConfigurations) StateLoad(ctx context.Context, stateSourceObject state.Source) {
-	stateSourceObject.Load(0, &c.MaxRtrSolicitations)
+	stateSourceObject.LoadUint8(0, &c.MaxRtrSolicitations)
 	stateSourceObject.Load(1, &c.RtrSolicitationInterval)
 	stateSourceObject.Load(2, &c.MaxRtrSolicitationDelay)
-	stateSourceObject.Load(3, &c.HandleRAs)
-	stateSourceObject.Load(4, &c.DiscoverDefaultRouters)
-	stateSourceObject.Load(5, &c.DiscoverMoreSpecificRoutes)
-	stateSourceObject.Load(6, &c.DiscoverOnLinkPrefixes)
-	stateSourceObject.Load(7, &c.AutoGenGlobalAddresses)
-	stateSourceObject.Load(8, &c.AutoGenAddressConflictRetries)
-	stateSourceObject.Load(9, &c.AutoGenTempGlobalAddresses)
+	stateSourceObject.LoadInt(3, (*int)(&c.HandleRAs))
+	stateSourceObject.LoadBool(4, &c.DiscoverDefaultRouters)
+	stateSourceObject.LoadBool(5, &c.DiscoverMoreSpecificRoutes)
+	stateSourceObject.LoadBool(6, &c.DiscoverOnLinkPrefixes)
+	stateSourceObject.LoadBool(7, &c.AutoGenGlobalAddresses)
+	stateSourceObject.LoadUint8(8, &c.AutoGenAddressConflictRetries)
+	stateSourceObject.LoadBool(9, &c.AutoGenTempGlobalAddresses)
 	stateSourceObject.Load(10, &c.MaxTempAddrValidLifetime)
 	stateSourceObject.Load(11, &c.MaxTempAddrPreferredLifetime)
 	stateSourceObject.Load(12, &c.RegenAdvanceDuration)
@@ -602,7 +603,7 @@ func (ndp *ndpState) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(4, &ndp.rtrSolicitTimer)
 	stateSinkObject.Save(5, &ndp.onLinkPrefixes)
 	stateSinkObject.Save(6, &ndp.slaacPrefixes)
-	stateSinkObject.Save(7, &ndp.dhcpv6Configuration)
+	stateSinkObject.SaveInt(7, (*int)(&ndp.dhcpv6Configuration))
 	stateSinkObject.Save(8, &ndp.temporaryIIDHistory)
 	stateSinkObject.Save(9, &ndp.temporaryAddressDesyncFactor)
 }
@@ -618,7 +619,7 @@ func (ndp *ndpState) StateLoad(ctx context.Context, stateSourceObject state.Sour
 	stateSourceObject.Load(4, &ndp.rtrSolicitTimer)
 	stateSourceObject.Load(5, &ndp.onLinkPrefixes)
 	stateSourceObject.Load(6, &ndp.slaacPrefixes)
-	stateSourceObject.Load(7, &ndp.dhcpv6Configuration)
+	stateSourceObject.LoadInt(7, (*int)(&ndp.dhcpv6Configuration))
 	stateSourceObject.Load(8, &ndp.temporaryIIDHistory)
 	stateSourceObject.Load(9, &ndp.temporaryAddressDesyncFactor)
 }
@@ -701,7 +702,7 @@ func (t *tempSLAACAddrState) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(2, &t.regenJob)
 	stateSinkObject.Save(3, &t.createdAt)
 	stateSinkObject.Save(4, &t.addressEndpoint)
-	stateSinkObject.Save(5, &t.regenerated)
+	stateSinkObject.SaveBool(5, &t.regenerated)
 }
 
 func (t *tempSLAACAddrState) afterLoad(context.Context) {}
@@ -713,7 +714,7 @@ func (t *tempSLAACAddrState) StateLoad(ctx context.Context, stateSourceObject st
 	stateSourceObject.Load(2, &t.regenJob)
 	stateSourceObject.Load(3, &t.createdAt)
 	stateSourceObject.Load(4, &t.addressEndpoint)
-	stateSourceObject.Load(5, &t.regenerated)
+	stateSourceObject.LoadBool(5, &t.regenerated)
 }
 
 func (s *stableAddrState) StateTypeName() string {
@@ -733,7 +734,7 @@ func (s *stableAddrState) beforeSave() {}
 func (s *stableAddrState) StateSave(stateSinkObject state.Sink) {
 	s.beforeSave()
 	stateSinkObject.Save(0, &s.addressEndpoint)
-	stateSinkObject.Save(1, &s.localGenerationFailures)
+	stateSinkObject.SaveUint8(1, &s.localGenerationFailures)
 }
 
 func (s *stableAddrState) afterLoad(context.Context) {}
@@ -741,7 +742,7 @@ func (s *stableAddrState) afterLoad(context.Context) {}
 // +checklocksignore
 func (s *stableAddrState) StateLoad(ctx context.Context, stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &s.addressEndpoint)
-	stateSourceObject.Load(1, &s.localGenerationFailures)
+	stateSourceObject.LoadUint8(1, &s.localGenerationFailures)
 }
 
 func (s *slaacPrefixState) StateTypeName() string {
@@ -772,8 +773,8 @@ func (s *slaacPrefixState) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(3, &s.preferredUntil)
 	stateSinkObject.Save(4, &s.stableAddr)
 	stateSinkObject.Save(5, &s.tempAddrs)
-	stateSinkObject.Save(6, &s.generationAttempts)
-	stateSinkObject.Save(7, &s.maxGenerationAttempts)
+	stateSinkObject.SaveUint8(6, &s.generationAttempts)
+	stateSinkObject.SaveUint8(7, &s.maxGenerationAttempts)
 }
 
 func (s *slaacPrefixState) afterLoad(context.Context) {}
@@ -786,8 +787,8 @@ func (s *slaacPrefixState) StateLoad(ctx context.Context, stateSourceObject stat
 	stateSourceObject.Load(3, &s.preferredUntil)
 	stateSourceObject.Load(4, &s.stableAddr)
 	stateSourceObject.Load(5, &s.tempAddrs)
-	stateSourceObject.Load(6, &s.generationAttempts)
-	stateSourceObject.Load(7, &s.maxGenerationAttempts)
+	stateSourceObject.LoadUint8(6, &s.generationAttempts)
+	stateSourceObject.LoadUint8(7, &s.maxGenerationAttempts)
 }
 
 func (s *Stats) StateTypeName() string {
@@ -1013,34 +1014,34 @@ func (m *multiCounterICMPv6Stats) StateLoad(ctx context.Context, stateSourceObje
 }
 
 func init() {
-	state.Register((*icmpv6DestinationUnreachableSockError)(nil))
-	state.Register((*icmpv6DestinationNetworkUnreachableSockError)(nil))
-	state.Register((*icmpv6DestinationPortUnreachableSockError)(nil))
-	state.Register((*icmpv6DestinationAddressUnreachableSockError)(nil))
-	state.Register((*icmpv6PacketTooBigSockError)(nil))
-	state.Register((*endpointMu)(nil))
-	state.Register((*dadMu)(nil))
-	state.Register((*endpointDAD)(nil))
-	state.Register((*endpoint)(nil))
-	state.Register((*OpaqueInterfaceIdentifierOptions)(nil))
-	state.Register((*protocolMu)(nil))
-	state.Register((*protocol)(nil))
-	state.Register((*Options)(nil))
-	state.Register((*MLDOptions)(nil))
-	state.Register((*mldState)(nil))
-	state.Register((*NDPConfigurations)(nil))
-	state.Register((*timer)(nil))
-	state.Register((*offLinkRoute)(nil))
-	state.Register((*ndpState)(nil))
-	state.Register((*offLinkRouteState)(nil))
-	state.Register((*onLinkPrefixState)(nil))
-	state.Register((*tempSLAACAddrState)(nil))
-	state.Register((*stableAddrState)(nil))
-	state.Register((*slaacPrefixState)(nil))
-	state.Register((*Stats)(nil))
-	state.Register((*sharedStats)(nil))
-	state.Register((*multiCounterICMPv6PacketStats)(nil))
-	state.Register((*multiCounterICMPv6SentPacketStats)(nil))
-	state.Register((*multiCounterICMPv6ReceivedPacketStats)(nil))
-	state.Register((*multiCounterICMPv6Stats)(nil))
+	state.RegisterNoHooks((*icmpv6DestinationUnreachableSockError)(nil))
+	state.RegisterNoHooks((*icmpv6DestinationNetworkUnreachableSockError)(nil))
+	state.RegisterNoHooks((*icmpv6DestinationPortUnreachableSockError)(nil))
+	state.RegisterNoHooks((*icmpv6DestinationAddressUnreachableSockError)(nil))
+	state.RegisterNoHooks((*icmpv6PacketTooBigSockError)(nil))
+	state.RegisterNoHooks((*endpointMu)(nil))
+	state.RegisterNoHooks((*dadMu)(nil))
+	state.RegisterNoHooks((*endpointDAD)(nil))
+	state.RegisterNoHooks((*endpoint)(nil))
+	state.RegisterNoHooks((*OpaqueInterfaceIdentifierOptions)(nil))
+	state.RegisterStruct((*protocolMu)(nil))
+	state.RegisterNoHooks((*protocol)(nil))
+	state.RegisterNoHooks((*Options)(nil))
+	state.RegisterNoHooks((*MLDOptions)(nil))
+	state.RegisterNoHooks((*mldState)(nil))
+	state.RegisterNoHooks((*NDPConfigurations)(nil))
+	state.RegisterNoHooks((*timer)(nil))
+	state.RegisterNoHooks((*offLinkRoute)(nil))
+	state.RegisterNoHooks((*ndpState)(nil))
+	state.RegisterNoHooks((*offLinkRouteState)(nil))
+	state.RegisterNoHooks((*onLinkPrefixState)(nil))
+	state.RegisterNoHooks((*tempSLAACAddrState)(nil))
+	state.RegisterNoHooks((*stableAddrState)(nil))
+	state.RegisterNoHooks((*slaacPrefixState)(nil))
+	state.RegisterNoHooks((*Stats)(nil))
+	state.RegisterNoHooks((*sharedStats)(nil))
+	state.RegisterNoHooks((*multiCounterICMPv6PacketStats)(nil))
+	state.RegisterNoHooks((*multiCounterICMPv6SentPacketStats)(nil))
+	state.RegisterNoHooks((*multiCounterICMPv6ReceivedPacketStats)(nil))
+	state.RegisterNoHooks((*multiCounterICMPv6Stats)(nil))
 }

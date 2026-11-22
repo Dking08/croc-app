@@ -4,15 +4,20 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Delete a parameter from the system. After deleting a parameter, wait for at
 // least 30 seconds to create a parameter with the same name.
+//
+// This operation is authorized against the ssm:DeleteParameter action. Denying
+// that action alone doesn't restrict DeleteParameters, which is authorized against its own
+// action. For more information, see [Restricting access to specific parameters and paths]in the Amazon Web Services Systems Manager
+// User Guide.
+//
+// [Restricting access to specific parameters and paths]: https://docs.aws.amazon.com/systems-manager/latest/userguide/ps-restrict-parameter-access.html
 func (c *Client) DeleteParameter(ctx context.Context, params *DeleteParameterInput, optFns ...func(*Options)) (*DeleteParameterOutput, error) {
 	if params == nil {
 		params = &DeleteParameterInput{}
@@ -32,10 +37,25 @@ type DeleteParameterInput struct {
 
 	// The name of the parameter to delete.
 	//
+	// You can't enter the Amazon Resource Name (ARN) for a parameter, only the
+	// parameter name itself.
+	//
 	// This member is required.
 	Name *string
 
 	noSmithyDocumentSerde
+}
+
+func (v *DeleteParameterInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DeleteParameterRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DeleteParameterInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Name != nil {
+		s.WriteString(schemas.DeleteParameterRequest_Name, *v.Name)
+	}
 }
 
 type DeleteParameterOutput struct {
@@ -45,68 +65,42 @@ type DeleteParameterOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DeleteParameterOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DeleteParameterResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DeleteParameterOutput) SerializeMembers(s smithy.ShapeSerializer) {
+}
+func (v *DeleteParameterOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DeleteParameterResult, func(s *smithy.Schema) error {
+		switch s {
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDeleteParameterMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DeleteParameter, schemas.DeleteParameterRequest, schemas.DeleteParameterResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDeleteParameter{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DeleteParameter, schemas.DeleteParameterRequest, schemas.DeleteParameterResult), output: &DeleteParameterOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDeleteParameter{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DeleteParameter"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDeleteParameterValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDeleteParameter(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -121,13 +115,8 @@ func (c *Client) addOperationDeleteParameterMiddlewares(stack *middleware.Stack,
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opDeleteParameter(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DeleteParameter",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

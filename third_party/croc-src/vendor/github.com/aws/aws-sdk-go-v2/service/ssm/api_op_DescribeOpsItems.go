@@ -5,22 +5,23 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Query a set of OpsItems. You must have permission in Identity and Access
-// Management (IAM) to query a list of OpsItems. For more information, see Set up
-// OpsCenter (https://docs.aws.amazon.com/systems-manager/latest/userguide/OpsCenter-setup.html)
-// in the Amazon Web Services Systems Manager User Guide. Operations engineers and
-// IT professionals use Amazon Web Services Systems Manager OpsCenter to view,
-// investigate, and remediate operational issues impacting the performance and
-// health of their Amazon Web Services resources. For more information, see
-// OpsCenter (https://docs.aws.amazon.com/systems-manager/latest/userguide/OpsCenter.html)
-// in the Amazon Web Services Systems Manager User Guide.
+// Management (IAM) to query a list of OpsItems. For more information, see [Set up OpsCenter]in the
+// Amazon Web Services Systems Manager User Guide.
+//
+// Operations engineers and IT professionals use Amazon Web Services Systems
+// Manager OpsCenter to view, investigate, and remediate operational issues
+// impacting the performance and health of their Amazon Web Services resources. For
+// more information, see [Amazon Web Services Systems Manager OpsCenter]in the Amazon Web Services Systems Manager User Guide.
+//
+// [Amazon Web Services Systems Manager OpsCenter]: https://docs.aws.amazon.com/systems-manager/latest/userguide/OpsCenter.html
+// [Set up OpsCenter]: https://docs.aws.amazon.com/systems-manager/latest/userguide/OpsCenter-setup.html
 func (c *Client) DescribeOpsItems(ctx context.Context, params *DescribeOpsItemsInput, optFns ...func(*Options)) (*DescribeOpsItemsOutput, error) {
 	if params == nil {
 		params = &DescribeOpsItemsInput{}
@@ -46,28 +47,91 @@ type DescribeOpsItemsInput struct {
 	NextToken *string
 
 	// One or more filters to limit the response.
-	//   - Key: CreatedTime Operations: GreaterThan, LessThan
-	//   - Key: LastModifiedBy Operations: Contains, Equals
-	//   - Key: LastModifiedTime Operations: GreaterThan, LessThan
-	//   - Key: Priority Operations: Equals
-	//   - Key: Source Operations: Contains, Equals
-	//   - Key: Status Operations: Equals
-	//   - Key: Title* Operations: Equals,Contains
-	//   - Key: OperationalData** Operations: Equals
-	//   - Key: OperationalDataKey Operations: Equals
-	//   - Key: OperationalDataValue Operations: Equals, Contains
-	//   - Key: OpsItemId Operations: Equals
-	//   - Key: ResourceId Operations: Contains
-	//   - Key: AutomationId Operations: Equals
-	//   - Key: AccountId Operations: Equals
+	//
+	//   - Key: CreatedTime
+	//
+	// Operations: GreaterThan, LessThan
+	//
+	//   - Key: LastModifiedBy
+	//
+	// Operations: Contains, Equals
+	//
+	//   - Key: LastModifiedTime
+	//
+	// Operations: GreaterThan, LessThan
+	//
+	//   - Key: Priority
+	//
+	// Operations: Equals
+	//
+	//   - Key: Source
+	//
+	// Operations: Contains, Equals
+	//
+	//   - Key: Status
+	//
+	// Operations: Equals
+	//
+	//   - Key: Title*
+	//
+	// Operations: Equals,Contains
+	//
+	//   - Key: OperationalData**
+	//
+	// Operations: Equals
+	//
+	//   - Key: OperationalDataKey
+	//
+	// Operations: Equals
+	//
+	//   - Key: OperationalDataValue
+	//
+	// Operations: Equals, Contains
+	//
+	//   - Key: OpsItemId
+	//
+	// Operations: Equals
+	//
+	//   - Key: ResourceId
+	//
+	// Operations: Contains
+	//
+	//   - Key: AutomationId
+	//
+	// Operations: Equals
+	//
+	//   - Key: AccountId
+	//
+	// Operations: Equals
+	//
 	// *The Equals operator for Title matches the first 100 characters. If you specify
 	// more than 100 characters, they system returns an error that the filter value
-	// exceeds the length limit. **If you filter the response by using the
-	// OperationalData operator, specify a key-value pair by using the following JSON
-	// format: {"key":"key_name","value":"a_value"}
+	// exceeds the length limit.
+	//
+	// **If you filter the response by using the OperationalData operator, specify a
+	// key-value pair by using the following JSON format:
+	// {"key":"key_name","value":"a_value"}
 	OpsItemFilters []types.OpsItemFilter
 
 	noSmithyDocumentSerde
+}
+
+func (v *DescribeOpsItemsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeOpsItemsRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeOpsItemsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.DescribeOpsItemsRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeOpsItemsRequest_NextToken, *v.NextToken)
+	}
+	if v.OpsItemFilters != nil {
+		serializeOpsItemFilters(s, schemas.DescribeOpsItemsRequest_OpsItemFilters, v.OpsItemFilters)
+	}
 }
 
 type DescribeOpsItemsOutput struct {
@@ -85,68 +149,53 @@ type DescribeOpsItemsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeOpsItemsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeOpsItemsResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeOpsItemsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeOpsItemsResponse_NextToken, *v.NextToken)
+	}
+	if v.OpsItemSummaries != nil {
+		serializeOpsItemSummaries(s, schemas.DescribeOpsItemsResponse_OpsItemSummaries, v.OpsItemSummaries)
+	}
+}
+func (v *DescribeOpsItemsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeOpsItemsResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeOpsItemsResponse_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.DescribeOpsItemsResponse_NextToken, v.NextToken)
+		case schemas.DescribeOpsItemsResponse_OpsItemSummaries:
+			return deserializeOpsItemSummaries(d, schemas.DescribeOpsItemsResponse_OpsItemSummaries, &v.OpsItemSummaries)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeOpsItemsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeOpsItems, schemas.DescribeOpsItemsRequest, schemas.DescribeOpsItemsResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeOpsItems{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeOpsItems, schemas.DescribeOpsItemsRequest, schemas.DescribeOpsItemsResponse), output: &DescribeOpsItemsOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDescribeOpsItems{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeOpsItems"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeOpsItemsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeOpsItems(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -161,16 +210,11 @@ func (c *Client) addOperationDescribeOpsItemsMiddlewares(stack *middleware.Stack
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribeOpsItemsAPIClient is a client that implements the DescribeOpsItems
-// operation.
-type DescribeOpsItemsAPIClient interface {
-	DescribeOpsItems(context.Context, *DescribeOpsItemsInput, ...func(*Options)) (*DescribeOpsItemsOutput, error)
-}
-
-var _ DescribeOpsItemsAPIClient = (*Client)(nil)
 
 // DescribeOpsItemsPaginatorOptions is the paginator options for DescribeOpsItems
 type DescribeOpsItemsPaginatorOptions struct {
@@ -236,6 +280,9 @@ func (p *DescribeOpsItemsPaginator) NextPage(ctx context.Context, optFns ...func
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeOpsItems(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -255,10 +302,10 @@ func (p *DescribeOpsItemsPaginator) NextPage(ctx context.Context, optFns ...func
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribeOpsItems(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeOpsItems",
-	}
+// DescribeOpsItemsAPIClient is a client that implements the DescribeOpsItems
+// operation.
+type DescribeOpsItemsAPIClient interface {
+	DescribeOpsItems(context.Context, *DescribeOpsItemsInput, ...func(*Options)) (*DescribeOpsItemsOutput, error)
 }
+
+var _ DescribeOpsItemsAPIClient = (*Client)(nil)

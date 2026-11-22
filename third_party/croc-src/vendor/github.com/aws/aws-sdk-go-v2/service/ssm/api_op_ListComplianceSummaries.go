@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Returns a summary count of compliant and non-compliant resources for a
@@ -48,6 +47,24 @@ type ListComplianceSummariesInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListComplianceSummariesInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListComplianceSummariesRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListComplianceSummariesInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Filters != nil {
+		serializeComplianceStringFilterList(s, schemas.ListComplianceSummariesRequest_Filters, v.Filters)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.ListComplianceSummariesRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListComplianceSummariesRequest_NextToken, *v.NextToken)
+	}
+}
+
 type ListComplianceSummariesOutput struct {
 
 	// A list of compliant and non-compliant summary counts based on compliance types.
@@ -65,65 +82,50 @@ type ListComplianceSummariesOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListComplianceSummariesOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListComplianceSummariesResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListComplianceSummariesOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ComplianceSummaryItems != nil {
+		serializeComplianceSummaryItemList(s, schemas.ListComplianceSummariesResult_ComplianceSummaryItems, v.ComplianceSummaryItems)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListComplianceSummariesResult_NextToken, *v.NextToken)
+	}
+}
+func (v *ListComplianceSummariesOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListComplianceSummariesResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListComplianceSummariesResult_ComplianceSummaryItems:
+			return deserializeComplianceSummaryItemList(d, schemas.ListComplianceSummariesResult_ComplianceSummaryItems, &v.ComplianceSummaryItems)
+		case schemas.ListComplianceSummariesResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ListComplianceSummariesResult_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListComplianceSummariesMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListComplianceSummaries, schemas.ListComplianceSummariesRequest, schemas.ListComplianceSummariesResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpListComplianceSummaries{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListComplianceSummaries, schemas.ListComplianceSummariesRequest, schemas.ListComplianceSummariesResult), output: &ListComplianceSummariesOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpListComplianceSummaries{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ListComplianceSummaries"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opListComplianceSummaries(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -138,16 +140,11 @@ func (c *Client) addOperationListComplianceSummariesMiddlewares(stack *middlewar
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// ListComplianceSummariesAPIClient is a client that implements the
-// ListComplianceSummaries operation.
-type ListComplianceSummariesAPIClient interface {
-	ListComplianceSummaries(context.Context, *ListComplianceSummariesInput, ...func(*Options)) (*ListComplianceSummariesOutput, error)
-}
-
-var _ ListComplianceSummariesAPIClient = (*Client)(nil)
 
 // ListComplianceSummariesPaginatorOptions is the paginator options for
 // ListComplianceSummaries
@@ -216,6 +213,9 @@ func (p *ListComplianceSummariesPaginator) NextPage(ctx context.Context, optFns 
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.ListComplianceSummaries(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -235,10 +235,10 @@ func (p *ListComplianceSummariesPaginator) NextPage(ctx context.Context, optFns 
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opListComplianceSummaries(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ListComplianceSummaries",
-	}
+// ListComplianceSummariesAPIClient is a client that implements the
+// ListComplianceSummaries operation.
+type ListComplianceSummariesAPIClient interface {
+	ListComplianceSummaries(context.Context, *ListComplianceSummariesInput, ...func(*Options)) (*ListComplianceSummariesOutput, error)
 }
+
+var _ ListComplianceSummariesAPIClient = (*Client)(nil)

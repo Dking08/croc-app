@@ -4,12 +4,10 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Shares a Amazon Web Services Systems Manager document (SSM document)publicly or
@@ -44,13 +42,15 @@ type ModifyDocumentPermissionInput struct {
 	PermissionType types.DocumentPermissionType
 
 	// The Amazon Web Services users that should have access to the document. The
-	// account IDs can either be a group of account IDs or All.
+	// account IDs can either be a group of account IDs or All. You must specify a
+	// value for this parameter or the AccountIdsToRemove parameter.
 	AccountIdsToAdd []string
 
 	// The Amazon Web Services users that should no longer have access to the
 	// document. The Amazon Web Services user can either be a group of account IDs or
-	// All. This action has a higher priority than AccountIdsToAdd. If you specify an
+	// All. This action has a higher priority than AccountIdsToAdd . If you specify an
 	// ID to add and the same ID to remove, the system removes access to the document.
+	// You must specify a value for this parameter or the AccountIdsToAdd parameter.
 	AccountIdsToRemove []string
 
 	// (Optional) The version of the document to share. If it isn't specified, the
@@ -60,6 +60,30 @@ type ModifyDocumentPermissionInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ModifyDocumentPermissionInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ModifyDocumentPermissionRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ModifyDocumentPermissionInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AccountIdsToAdd != nil {
+		serializeAccountIdList(s, schemas.ModifyDocumentPermissionRequest_AccountIdsToAdd, v.AccountIdsToAdd)
+	}
+	if v.AccountIdsToRemove != nil {
+		serializeAccountIdList(s, schemas.ModifyDocumentPermissionRequest_AccountIdsToRemove, v.AccountIdsToRemove)
+	}
+	if v.Name != nil {
+		s.WriteString(schemas.ModifyDocumentPermissionRequest_Name, *v.Name)
+	}
+	if v.PermissionType != "" {
+		s.WriteString(schemas.ModifyDocumentPermissionRequest_PermissionType, string(v.PermissionType))
+	}
+	if v.SharedDocumentVersion != nil {
+		s.WriteString(schemas.ModifyDocumentPermissionRequest_SharedDocumentVersion, *v.SharedDocumentVersion)
+	}
+}
+
 type ModifyDocumentPermissionOutput struct {
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -67,68 +91,42 @@ type ModifyDocumentPermissionOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ModifyDocumentPermissionOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ModifyDocumentPermissionResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ModifyDocumentPermissionOutput) SerializeMembers(s smithy.ShapeSerializer) {
+}
+func (v *ModifyDocumentPermissionOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ModifyDocumentPermissionResponse, func(s *smithy.Schema) error {
+		switch s {
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationModifyDocumentPermissionMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ModifyDocumentPermission, schemas.ModifyDocumentPermissionRequest, schemas.ModifyDocumentPermissionResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpModifyDocumentPermission{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ModifyDocumentPermission, schemas.ModifyDocumentPermissionRequest, schemas.ModifyDocumentPermissionResponse), output: &ModifyDocumentPermissionOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpModifyDocumentPermission{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ModifyDocumentPermission"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpModifyDocumentPermissionValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opModifyDocumentPermission(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -143,13 +141,8 @@ func (c *Client) addOperationModifyDocumentPermissionMiddlewares(stack *middlewa
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opModifyDocumentPermission(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "ModifyDocumentPermission",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

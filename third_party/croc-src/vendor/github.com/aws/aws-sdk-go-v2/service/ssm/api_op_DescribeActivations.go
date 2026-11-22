@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Describes details about the activation, such as the date and time the
@@ -46,6 +45,24 @@ type DescribeActivationsInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeActivationsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeActivationsRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeActivationsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Filters != nil {
+		serializeDescribeActivationsFilterList(s, schemas.DescribeActivationsRequest_Filters, v.Filters)
+	}
+	if v.MaxResults != nil {
+		s.WriteInt32(schemas.DescribeActivationsRequest_MaxResults, *v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeActivationsRequest_NextToken, *v.NextToken)
+	}
+}
+
 type DescribeActivationsOutput struct {
 
 	// A list of activations for your Amazon Web Services account.
@@ -61,65 +78,50 @@ type DescribeActivationsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeActivationsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeActivationsResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeActivationsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ActivationList != nil {
+		serializeActivationList(s, schemas.DescribeActivationsResult_ActivationList, v.ActivationList)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.DescribeActivationsResult_NextToken, *v.NextToken)
+	}
+}
+func (v *DescribeActivationsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeActivationsResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeActivationsResult_ActivationList:
+			return deserializeActivationList(d, schemas.DescribeActivationsResult_ActivationList, &v.ActivationList)
+		case schemas.DescribeActivationsResult_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.DescribeActivationsResult_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeActivationsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeActivations, schemas.DescribeActivationsRequest, schemas.DescribeActivationsResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeActivations{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeActivations, schemas.DescribeActivationsRequest, schemas.DescribeActivationsResult), output: &DescribeActivationsOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpDescribeActivations{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeActivations"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeActivations(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -134,16 +136,11 @@ func (c *Client) addOperationDescribeActivationsMiddlewares(stack *middleware.St
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// DescribeActivationsAPIClient is a client that implements the
-// DescribeActivations operation.
-type DescribeActivationsAPIClient interface {
-	DescribeActivations(context.Context, *DescribeActivationsInput, ...func(*Options)) (*DescribeActivationsOutput, error)
-}
-
-var _ DescribeActivationsAPIClient = (*Client)(nil)
 
 // DescribeActivationsPaginatorOptions is the paginator options for
 // DescribeActivations
@@ -210,6 +207,9 @@ func (p *DescribeActivationsPaginator) NextPage(ctx context.Context, optFns ...f
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeActivations(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -229,10 +229,10 @@ func (p *DescribeActivationsPaginator) NextPage(ctx context.Context, optFns ...f
 	return result, nil
 }
 
-func newServiceMetadataMiddleware_opDescribeActivations(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "DescribeActivations",
-	}
+// DescribeActivationsAPIClient is a client that implements the
+// DescribeActivations operation.
+type DescribeActivationsAPIClient interface {
+	DescribeActivations(context.Context, *DescribeActivationsInput, ...func(*Options)) (*DescribeActivationsOutput, error)
 }
+
+var _ DescribeActivationsAPIClient = (*Client)(nil)

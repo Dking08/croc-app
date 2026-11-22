@@ -5,11 +5,10 @@ package ssm
 import (
 	"context"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Registers a target with a maintenance window.
@@ -36,23 +35,45 @@ type RegisterTargetWithMaintenanceWindowInput struct {
 	ResourceType types.MaintenanceWindowResourceType
 
 	// The targets to register with the maintenance window. In other words, the
-	// managed nodes to run commands on when the maintenance window runs. If a single
-	// maintenance window task is registered with multiple targets, its task
-	// invocations occur sequentially and not in parallel. If your task must run on
-	// multiple targets at the same time, register a task for each target individually
-	// and assign each task the same priority level. You can specify targets using
-	// managed node IDs, resource group names, or tags that have been applied to
-	// managed nodes. Example 1: Specify managed node IDs Key=InstanceIds,Values=,,
-	// Example 2: Use tag key-pairs applied to managed nodes Key=tag:,Values=, Example
-	// 3: Use tag-keys applied to managed nodes Key=tag-key,Values=, Example 4: Use
-	// resource group names Key=resource-groups:Name,Values= Example 5: Use filters
-	// for resource group types Key=resource-groups:ResourceTypeFilters,Values=, For
-	// Key=resource-groups:ResourceTypeFilters , specify resource types in the
+	// managed nodes to run commands on when the maintenance window runs.
+	//
+	// If a single maintenance window task is registered with multiple targets, its
+	// task invocations occur sequentially and not in parallel. If your task must run
+	// on multiple targets at the same time, register a task for each target
+	// individually and assign each task the same priority level.
+	//
+	// You can specify targets using managed node IDs, resource group names, or tags
+	// that have been applied to managed nodes.
+	//
+	// Example 1: Specify managed node IDs
+	//
+	//     Key=InstanceIds,Values=,,
+	//
+	// Example 2: Use tag key-pairs applied to managed nodes
+	//
+	//     Key=tag:,Values=,
+	//
+	// Example 3: Use tag-keys applied to managed nodes
+	//
+	//     Key=tag-key,Values=,
+	//
+	// Example 4: Use resource group names
+	//
+	//     Key=resource-groups:Name,Values=
+	//
+	// Example 5: Use filters for resource group types
+	//
+	//     Key=resource-groups:ResourceTypeFilters,Values=,
+	//
+	// For Key=resource-groups:ResourceTypeFilters , specify resource types in the
 	// following format
-	// Key=resource-groups:ResourceTypeFilters,Values=AWS::EC2::INSTANCE,AWS::EC2::VPC
+	//
+	//     Key=resource-groups:ResourceTypeFilters,Values=AWS::EC2::INSTANCE,AWS::EC2::VPC
+	//
 	// For more information about these examples formats, including the best use case
-	// for each one, see Examples: Register targets with a maintenance window (https://docs.aws.amazon.com/systems-manager/latest/userguide/mw-cli-tutorial-targets-examples.html)
-	// in the Amazon Web Services Systems Manager User Guide.
+	// for each one, see [Examples: Register targets with a maintenance window]in the Amazon Web Services Systems Manager User Guide.
+	//
+	// [Examples: Register targets with a maintenance window]: https://docs.aws.amazon.com/systems-manager/latest/userguide/mw-cli-tutorial-targets-examples.html
 	//
 	// This member is required.
 	Targets []types.Target
@@ -78,6 +99,36 @@ type RegisterTargetWithMaintenanceWindowInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *RegisterTargetWithMaintenanceWindowInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.RegisterTargetWithMaintenanceWindowRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *RegisterTargetWithMaintenanceWindowInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ClientToken != nil {
+		s.WriteString(schemas.RegisterTargetWithMaintenanceWindowRequest_ClientToken, *v.ClientToken)
+	}
+	if v.Description != nil {
+		s.WriteString(schemas.RegisterTargetWithMaintenanceWindowRequest_Description, *v.Description)
+	}
+	if v.Name != nil {
+		s.WriteString(schemas.RegisterTargetWithMaintenanceWindowRequest_Name, *v.Name)
+	}
+	if v.OwnerInformation != nil {
+		s.WriteString(schemas.RegisterTargetWithMaintenanceWindowRequest_OwnerInformation, *v.OwnerInformation)
+	}
+	if v.ResourceType != "" {
+		s.WriteString(schemas.RegisterTargetWithMaintenanceWindowRequest_ResourceType, string(v.ResourceType))
+	}
+	if v.Targets != nil {
+		serializeTargets(s, schemas.RegisterTargetWithMaintenanceWindowRequest_Targets, v.Targets)
+	}
+	if v.WindowId != nil {
+		s.WriteString(schemas.RegisterTargetWithMaintenanceWindowRequest_WindowId, *v.WindowId)
+	}
+}
+
 type RegisterTargetWithMaintenanceWindowOutput struct {
 
 	// The ID of the target definition in this maintenance window.
@@ -89,71 +140,51 @@ type RegisterTargetWithMaintenanceWindowOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *RegisterTargetWithMaintenanceWindowOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.RegisterTargetWithMaintenanceWindowResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *RegisterTargetWithMaintenanceWindowOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.WindowTargetId != nil {
+		s.WriteString(schemas.RegisterTargetWithMaintenanceWindowResult_WindowTargetId, *v.WindowTargetId)
+	}
+}
+func (v *RegisterTargetWithMaintenanceWindowOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.RegisterTargetWithMaintenanceWindowResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.RegisterTargetWithMaintenanceWindowResult_WindowTargetId:
+			v.WindowTargetId = new(string)
+			return d.ReadString(schemas.RegisterTargetWithMaintenanceWindowResult_WindowTargetId, v.WindowTargetId)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationRegisterTargetWithMaintenanceWindowMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.RegisterTargetWithMaintenanceWindow, schemas.RegisterTargetWithMaintenanceWindowRequest, schemas.RegisterTargetWithMaintenanceWindowResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpRegisterTargetWithMaintenanceWindow{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.RegisterTargetWithMaintenanceWindow, schemas.RegisterTargetWithMaintenanceWindowRequest, schemas.RegisterTargetWithMaintenanceWindowResult), output: &RegisterTargetWithMaintenanceWindowOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpRegisterTargetWithMaintenanceWindow{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "RegisterTargetWithMaintenanceWindow"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addIdempotencyToken_opRegisterTargetWithMaintenanceWindowMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addOpRegisterTargetWithMaintenanceWindowValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opRegisterTargetWithMaintenanceWindow(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -166,6 +197,9 @@ func (c *Client) addOperationRegisterTargetWithMaintenanceWindowMiddlewares(stac
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -202,12 +236,4 @@ func (m *idempotencyToken_initializeOpRegisterTargetWithMaintenanceWindow) Handl
 }
 func addIdempotencyToken_opRegisterTargetWithMaintenanceWindowMiddleware(stack *middleware.Stack, cfg Options) error {
 	return stack.Initialize.Add(&idempotencyToken_initializeOpRegisterTargetWithMaintenanceWindow{tokenProvider: cfg.IdempotencyTokenProvider}, middleware.Before)
-}
-
-func newServiceMetadataMiddleware_opRegisterTargetWithMaintenanceWindow(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "RegisterTargetWithMaintenanceWindow",
-	}
 }

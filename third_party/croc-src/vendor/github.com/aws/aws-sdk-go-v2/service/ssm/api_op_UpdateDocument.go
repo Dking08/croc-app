@@ -4,12 +4,10 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Updates one or more values for an SSM document.
@@ -49,15 +47,16 @@ type UpdateDocumentInput struct {
 	// version.
 	DisplayName *string
 
-	// Specify the document format for the new document version. Systems Manager
-	// supports JSON and YAML documents. JSON is the default format.
+	// Specify the document format for the new document version. The document format
+	// can be JSON, YAML, or TEXT. JSON is the default format.
 	DocumentFormat types.DocumentFormat
 
 	// The version of the document that you want to update. Currently, Systems Manager
 	// supports updating only the latest version of the document. You can specify the
-	// version number of the latest version or use the $LATEST variable. If you change
-	// a document version for a State Manager association, Systems Manager immediately
-	// runs the association unless you previously specifed the
+	// version number of the latest version or use the $LATEST variable.
+	//
+	// If you change a document version for a State Manager association, Systems
+	// Manager immediately runs the association unless you previously specifed the
 	// apply-only-at-cron-interval parameter.
 	DocumentVersion *string
 
@@ -72,6 +71,39 @@ type UpdateDocumentInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UpdateDocumentInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UpdateDocumentRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UpdateDocumentInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Attachments != nil {
+		serializeAttachmentsSourceList(s, schemas.UpdateDocumentRequest_Attachments, v.Attachments)
+	}
+	if v.Content != nil {
+		s.WriteString(schemas.UpdateDocumentRequest_Content, *v.Content)
+	}
+	if v.DisplayName != nil {
+		s.WriteString(schemas.UpdateDocumentRequest_DisplayName, *v.DisplayName)
+	}
+	if v.DocumentFormat != "" {
+		s.WriteString(schemas.UpdateDocumentRequest_DocumentFormat, string(v.DocumentFormat))
+	}
+	if v.DocumentVersion != nil {
+		s.WriteString(schemas.UpdateDocumentRequest_DocumentVersion, *v.DocumentVersion)
+	}
+	if v.Name != nil {
+		s.WriteString(schemas.UpdateDocumentRequest_Name, *v.Name)
+	}
+	if v.TargetType != nil {
+		s.WriteString(schemas.UpdateDocumentRequest_TargetType, *v.TargetType)
+	}
+	if v.VersionName != nil {
+		s.WriteString(schemas.UpdateDocumentRequest_VersionName, *v.VersionName)
+	}
+}
+
 type UpdateDocumentOutput struct {
 
 	// A description of the document that was updated.
@@ -83,68 +115,50 @@ type UpdateDocumentOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UpdateDocumentOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UpdateDocumentResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UpdateDocumentOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.DocumentDescription != nil {
+		s.WriteStruct(schemas.UpdateDocumentResult_DocumentDescription)
+		v.DocumentDescription.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *UpdateDocumentOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.UpdateDocumentResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.UpdateDocumentResult_DocumentDescription:
+			v.DocumentDescription = &types.DocumentDescription{}
+			return v.DocumentDescription.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationUpdateDocumentMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UpdateDocument, schemas.UpdateDocumentRequest, schemas.UpdateDocumentResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpUpdateDocument{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UpdateDocument, schemas.UpdateDocumentRequest, schemas.UpdateDocumentResult), output: &UpdateDocumentOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpUpdateDocument{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "UpdateDocument"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpUpdateDocumentValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opUpdateDocument(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -159,13 +173,8 @@ func (c *Client) addOperationUpdateDocumentMiddlewares(stack *middleware.Stack, 
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opUpdateDocument(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "UpdateDocument",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

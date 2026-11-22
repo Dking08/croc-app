@@ -7,15 +7,15 @@
 
 package device
 
-// Fit within memory limits for iOS's Network Extension API, which has stricter requirements.
-// These are vars instead of consts, because heavier network extensions might want to reduce
-// them further.
-var (
-	QueueStagedSize                   = 128
-	QueueOutboundSize                 = 1024
-	QueueInboundSize                  = 1024
-	QueueHandshakeSize                = 1024
-	PreallocatedBuffersPerPool uint32 = 1024
+// Fit within memory limits for iOS's Network Extension API, which has stricter
+// requirements. Heavier network extensions can reduce these further using
+// [Device.Option]'s.
+const (
+	DefaultQueueStagedSize            = 128
+	DefaultQueueOutboundSize          = 1024
+	DefaultQueueInboundSize           = 1024
+	DefaultQueueHandshakeSize         = 1024
+	DefaultPreallocatedBuffersPerPool = 1024
 )
 
 const MaxSegmentSize = 1700

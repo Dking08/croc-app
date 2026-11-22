@@ -16,6 +16,8 @@ package state
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"reflect"
 	"sort"
 
@@ -103,6 +105,10 @@ type encodeState struct {
 	// Sink.SaveValue() for a given field, resulting in object duplication.
 	encodedStructs map[reflect.Value]*wire.Struct
 
+	// binaryBuf holds temporary BinaryAppender output. Each saved value is
+	// copied into an immutable string before this buffer is reused.
+	binaryBuf []byte
+
 	// stats tracks time data.
 	stats Stats
 }
@@ -138,38 +144,7 @@ type encodeState struct {
 //
 // Precondition: parent and child must occupy the same memory.
 func isSameSizeParent(parent reflect.Value, childType reflect.Type) bool {
-	switch parent.Kind() {
-	case reflect.Struct:
-		for i := 0; i < parent.NumField(); i++ {
-			field := parent.Field(i)
-			if field.Type() == childType {
-				return true
-			}
-			// Recurse through any intermediate types.
-			if isSameSizeParent(field, childType) {
-				return true
-			}
-			// Does it make sense to keep going if the first field
-			// doesn't match? Yes, because there might be an
-			// arbitrary number of zero-sized fields before we get
-			// a match, and childType itself can be zero-sized.
-		}
-		return false
-	case reflect.Array:
-		// The only case where an array with more than one elements can
-		// return true is if childType is zero-sized. In such cases,
-		// it's ambiguous which element contains the match since a
-		// zero-sized child object fully fits in any of the zero-sized
-		// elements in an array... However since all elements are of
-		// the same type, we only need to check one element.
-		//
-		// For non-zero-sized childTypes, parent.Len() must be 1, but a
-		// combination of the precondition and an implicit comparison
-		// between the array element size and childType ensures this.
-		return parent.Len() > 0 && isSameSizeParent(parent.Index(0), childType)
-	default:
-		return false
-	}
+	return findTraversal(parent.Type(), childType, 0, nil)
 }
 
 // nextID returns the next valid ID.
@@ -248,10 +223,8 @@ func (es *encodeState) resolve(obj reflect.Value, ref *wire.Ref) {
 			// address map.  We add this to the dedicated
 			// zeroValues.
 			//
-			// Note that zero-sized objects must be *true*
-			// zero-sized objects. They cannot be part of some
-			// larger object. In that case, they are assigned a
-			// 1-byte address at the end of the object.
+			// Interior zero-sized fields with other addresses are
+			// represented by a one-byte range in the address map below.
 			oes, ok := es.zeroValues[typ]
 			if !ok {
 				oes = &objectEncodeState{
@@ -394,49 +367,70 @@ func (es *encodeState) resolve(obj reflect.Value, ref *wire.Ref) {
 // Precondition: The target object must lie completely within the range defined
 // by [rootAddr, rootAddr + sizeof(rootType)].
 func traverse(rootType, targetType reflect.Type, rootAddr, targetAddr uintptr) []wire.Dot {
-	// Recursion base case: the types actually match.
-	if targetType == rootType && targetAddr == rootAddr {
-		return nil
+	var dots []wire.Dot
+	if findTraversal(rootType, targetType, targetAddr-rootAddr, &dots) {
+		return dots
 	}
+	Failf("traverse failed for root type %v @%x and target type %v @%x", rootType, rootAddr, targetType, targetAddr)
+	panic("unreachable")
+}
 
+// findTraversal searches for targetType at offset within rootType. If dots is
+// non-nil, it appends the matching path in reverse order. Containment checks
+// can omit dots without allocating a path that would immediately be discarded.
+func findTraversal(rootType, targetType reflect.Type, offset uintptr, dots *[]wire.Dot) bool {
+	if offset > rootType.Size() || targetType.Size() > rootType.Size()-offset {
+		return false
+	}
+	if targetType == rootType && offset == 0 {
+		return true
+	}
 	switch rootType.Kind() {
 	case reflect.Struct:
-		offset := targetAddr - rootAddr
 		for i := rootType.NumField(); i > 0; i-- {
 			field := rootType.Field(i - 1)
-			// The first field from the end with an offset that is
-			// smaller than or equal to our address offset is where
-			// the target is located. Traverse from there.
-			if field.Offset <= offset {
-				dots := traverse(field.Type, targetType, rootAddr+field.Offset, targetAddr)
-				fieldName := wire.FieldName(field.Name)
-				return append(dots, &fieldName)
+			// Zero-sized fields can share an offset with other fields. An
+			// address match alone does not identify the target's type.
+			if field.Offset <= offset && findTraversal(field.Type, targetType, offset-field.Offset, dots) {
+				if dots != nil {
+					fieldName := wire.FieldName(field.Name)
+					*dots = append(*dots, &fieldName)
+				}
+				return true
 			}
 		}
-		// Should never happen; the target should be reachable.
-		Failf("no field in root type %v contains target type %v", rootType, targetType)
-
 	case reflect.Array:
-		// Since arrays have homogeneous types, all elements have the
-		// same size and we can compute where the target lives. This
-		// does not matter for the purpose of typing, but matters for
-		// the purpose of computing the address of the given index.
-		elemSize := int(rootType.Elem().Size())
-		n := int(targetAddr-rootAddr) / elemSize // Relies on integer division rounding down.
-		if rootType.Len() < n {
-			Failf("traversal target of type %v @%x is beyond the end of the array type %v @%x with %v elements",
-				targetType, targetAddr, rootType, rootAddr, rootType.Len())
+		if rootType.Len() == 0 {
+			return false
 		}
-		dots := traverse(rootType.Elem(), targetType, rootAddr+uintptr(n*elemSize), targetAddr)
-		return append(dots, wire.Index(n))
-
-	default:
-		// For any other type, there's no possibility of aliasing so if
-		// the types didn't match earlier then we have an address
-		// collision which shouldn't be possible at this point.
-		Failf("traverse failed for root type %v and target type %v", rootType, targetType)
+		index := uintptr(0)
+		if size := rootType.Elem().Size(); size != 0 {
+			index, offset = offset/size, offset%size
+		}
+		// Zero-sized elements all share an address; any matching element
+		// represents the same pointer. Use element zero without division.
+		if index < uintptr(rootType.Len()) && findTraversal(rootType.Elem(), targetType, offset, dots) {
+			if dots != nil {
+				*dots = append(*dots, wire.Index(index))
+			}
+			return true
+		}
 	}
-	panic("unreachable")
+	return false
+}
+
+// mapScalarSlot allocates reusable iterator storage for values that encodeObject
+// copies directly into the wire representation. Composite values may retain
+// their reflect.Value for deferred encoding or struct identity tracking.
+func mapScalarSlot(typ reflect.Type) reflect.Value {
+	switch typ.Kind() {
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.String:
+		return reflect.New(typ).Elem()
+	default:
+		return reflect.Value{}
+	}
 }
 
 // encodeMap encodes a map.
@@ -453,8 +447,24 @@ func (es *encodeState) encodeMap(obj reflect.Value, dest *wire.Object) {
 		Values: make([]wire.Object, l),
 	}
 	*dest = m
-	for i, k := range obj.MapKeys() {
-		v := obj.MapIndex(k)
+	var keySlot, valueSlot reflect.Value
+	if l > 1 {
+		keySlot = mapScalarSlot(obj.Type().Key())
+		valueSlot = mapScalarSlot(obj.Type().Elem())
+	}
+	iter := obj.MapRange()
+	for i := 0; iter.Next(); i++ {
+		k, v := keySlot, valueSlot
+		if k.IsValid() {
+			k.SetIterKey(iter)
+		} else {
+			k = iter.Key()
+		}
+		if v.IsValid() {
+			v.SetIterValue(iter)
+		} else {
+			v = iter.Value()
+		}
 		// Map keys must be encoded using the full value because the
 		// type will be omitted after the first key.
 		es.encodeObject(k, encodeAsValue, &m.Keys[i])
@@ -530,10 +540,11 @@ func (es *encodeState) encodeStruct(obj reflect.Value, dest *wire.Object) {
 	}
 	es.stats.start(te.ID)
 	defer es.stats.done()
-	if sl, ok := obj.Addr().Interface().(SaverLoader); ok {
-		// Note: may be a registered empty struct which does not
-		// implement the saver/loader interfaces.
-		sl.StateSave(Sink{internal: oe})
+	switch value := obj.Addr().Interface().(type) {
+	case SaverLoader:
+		value.StateSave(Sink{internal: oe})
+	case binaryObject:
+		es.saveBinary(value, te.Name, Sink{internal: oe})
 	}
 }
 
@@ -612,46 +623,42 @@ func (es *encodeState) encodeInterface(obj reflect.Value, dest *wire.Object) {
 	es.encodeObject(obj, encodeAsValue, &i.Value)
 }
 
-// isPrimitive returns true if this is a primitive object, or a composite
-// object composed entirely of primitives.
-func isPrimitiveZero(typ reflect.Type) bool {
-	switch typ.Kind() {
-	case reflect.Ptr:
-		// Pointers are always treated as primitive types because we
-		// won't encode directly from here. Returning true here won't
-		// prevent the object from being encoded correctly.
-		return true
-	case reflect.Bool:
-		return true
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return true
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+// isFloatingZero reports whether a float, a complex number, or an array of
+// either has only positive zero components. Value.IsZero treats either sign
+// as zero, but omitting negative zero changes the restored value.
+func isFloatingZero(obj reflect.Value) bool {
+	switch obj.Kind() {
+	case reflect.Array:
+		for i := 0; i < obj.Len(); i++ {
+			if !isFloatingZero(obj.Index(i)) {
+				return false
+			}
+		}
 		return true
 	case reflect.Float32, reflect.Float64:
-		return true
-	case reflect.Complex64, reflect.Complex128:
-		return true
-	case reflect.String:
-		return true
-	case reflect.Slice:
-		// The slice itself a primitive, but not necessarily the array
-		// that points to. This is similar to a pointer.
-		return true
-	case reflect.Array:
-		// We cannot treat an array as a primitive, because it may be
-		// composed of structures or other things with side-effects.
-		return isPrimitiveZero(typ.Elem())
-	case reflect.Interface:
-		// Since we now that this type is the zero type, the interface
-		// value must be zero. Therefore this is primitive.
-		return true
+		return math.Float64bits(obj.Float()) == 0
+	default:
+		c := obj.Complex()
+		return math.Float64bits(real(c)) == 0 && math.Float64bits(imag(c)) == 0
+	}
+}
+
+// isPrimitiveZero reports whether obj can be encoded as wire.Nil.
+func isPrimitiveZero(obj reflect.Value) bool {
+	typ := obj.Type()
+	for typ.Kind() == reflect.Array {
+		typ = typ.Elem()
+	}
+	switch typ.Kind() {
+	case reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+		return isFloatingZero(obj)
 	case reflect.Struct:
+		// Even zero-valued structs must run their savers.
 		return false
-	case reflect.Map:
-		// The isPrimitiveZero function is called only on zero-types to
-		// see if it's safe to serialize. Since a zero map has no
-		// elements, it is safe to treat as a primitive.
-		return true
+	case reflect.Ptr, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.String, reflect.Slice, reflect.Interface, reflect.Map:
+		return obj.IsZero()
 	default:
 		Failf("unknown type %q", typ.Name())
 	}
@@ -675,7 +682,7 @@ const (
 
 // encodeObject encodes an object.
 func (es *encodeState) encodeObject(obj reflect.Value, how encodeStrategy, dest *wire.Object) {
-	if how == encodeDefault && isPrimitiveZero(obj.Type()) && obj.IsZero() {
+	if how == encodeDefault && isPrimitiveZero(obj) {
 		*dest = wire.Nil{}
 		return
 	}
@@ -825,6 +832,22 @@ func (es *encodeState) Save(obj reflect.Value) {
 // byte length. When this is set on a length header in the stream, it may be
 // decoded appropriately.
 const objectFlag uint64 = 1 << 63
+
+// graphObjectFlag indicates that the header precedes a graph-engine stream of
+// length bytes, rather than a legacy wire-engine object stream.
+const graphObjectFlag uint64 = 1 << 62
+
+// writeGraphHeader writes a header for a graph-engine object stream of length
+// bytes.
+func writeGraphHeader(w *wire.Writer, length uint64) error {
+	if length&(objectFlag|graphObjectFlag) != 0 {
+		return fmt.Errorf("impossibly huge length: %d", length)
+	}
+	length |= objectFlag | graphObjectFlag
+	return safely(func() {
+		wire.SaveUint(w, length)
+	})
+}
 
 // WriteHeader writes a header.
 //

@@ -526,6 +526,27 @@ type AddressProperties struct {
 	Disp      AddressDispatcher
 }
 
+// AddressInfo contains information about an address assigned to an
+// AddressableEndpoint.
+type AddressInfo struct {
+	AddressWithPrefix tcpip.AddressWithPrefix
+
+	// Permanent is true if the address is configured with an infinite valid
+	// lifetime and is not a temporary (RFC 4941) address.
+	Permanent bool
+}
+
+// ProtocolAddressInfo contains information about a protocol address assigned to
+// a NIC.
+type ProtocolAddressInfo struct {
+	Protocol tcpip.NetworkProtocolNumber
+	tcpip.AddressWithPrefix
+
+	// Permanent is true if the address is configured with an infinite valid
+	// lifetime and is not a temporary (RFC 4941) address.
+	Permanent bool
+}
+
 // AddressAssignmentState is an address' assignment state.
 type AddressAssignmentState int
 
@@ -782,6 +803,10 @@ type AddressableEndpoint interface {
 
 	// PermanentAddresses returns all the permanent addresses.
 	PermanentAddresses() []tcpip.AddressWithPrefix
+
+	// AddressInfos returns all configured address endpoints, including tentative
+	// endpoints, but excluding expired endpoints and one-off temporary endpoints.
+	AddressInfos() []AddressInfo
 }
 
 // NDPEndpoint is a network endpoint that supports NDP.
@@ -821,6 +846,10 @@ type NetworkInterface interface {
 	// When in spoofing mode, the interface should consider all addresses as
 	// assigned to it.
 	Spoofing() bool
+
+	// AllowExternalIPv4LoopbackTraffic returns true if IPv4 loopback packets
+	// should be accepted from external networks on this interface.
+	AllowExternalIPv4LoopbackTraffic() bool
 
 	// PrimaryAddress returns the primary address associated with the interface.
 	//
@@ -920,6 +949,15 @@ type NetworkEndpoint interface {
 
 	// Stats returns a reference to the network endpoint stats.
 	Stats() NetworkEndpointStats
+}
+
+// RestorableNetworkEndpoint is a network endpoint that needs to restore state
+// after being loaded from a checkpoint.
+type RestorableNetworkEndpoint interface {
+	NetworkEndpoint
+
+	// Restore restores the network endpoint after a checkpoint load.
+	Restore()
 }
 
 // NetworkEndpointStats is the interface implemented by each network endpoint
@@ -1498,7 +1536,3 @@ type GSOEndpoint interface {
 	// SupportedGSO returns the supported segmentation offloading.
 	SupportedGSO() SupportedGSO
 }
-
-// GVisorGSOMaxSize is a maximum allowed size of a software GSO segment.
-// This isn't a hard limit, because it is never set into packet headers.
-const GVisorGSOMaxSize = 1 << 16

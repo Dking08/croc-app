@@ -4,36 +4,40 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // A resource data sync helps you view data from multiple sources in a single
 // location. Amazon Web Services Systems Manager offers two types of resource data
-// sync: SyncToDestination and SyncFromSource . You can configure Systems Manager
-// Inventory to use the SyncToDestination type to synchronize Inventory data from
-// multiple Amazon Web Services Regions to a single Amazon Simple Storage Service
-// (Amazon S3) bucket. For more information, see Configuring resource data sync
-// for Inventory (https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-inventory-datasync.html)
-// in the Amazon Web Services Systems Manager User Guide. You can configure Systems
-// Manager Explorer to use the SyncFromSource type to synchronize operational work
-// items (OpsItems) and operational data (OpsData) from multiple Amazon Web
-// Services Regions to a single Amazon S3 bucket. This type can synchronize
-// OpsItems and OpsData from multiple Amazon Web Services accounts and Amazon Web
-// Services Regions or EntireOrganization by using Organizations. For more
-// information, see Setting up Systems Manager Explorer to display data from
-// multiple accounts and Regions (https://docs.aws.amazon.com/systems-manager/latest/userguide/Explorer-resource-data-sync.html)
-// in the Amazon Web Services Systems Manager User Guide. A resource data sync is
-// an asynchronous operation that returns immediately. After a successful initial
-// sync is completed, the system continuously syncs data. To check the status of a
-// sync, use the ListResourceDataSync . By default, data isn't encrypted in Amazon
-// S3. We strongly recommend that you enable encryption in Amazon S3 to ensure
-// secure data storage. We also recommend that you secure access to the Amazon S3
-// bucket by creating a restrictive bucket policy.
+// sync: SyncToDestination and SyncFromSource .
+//
+// You can configure Systems Manager Inventory to use the SyncToDestination type
+// to synchronize Inventory data from multiple Amazon Web Services Regions to a
+// single Amazon Simple Storage Service (Amazon S3) bucket. For more information,
+// see [Creating a resource data sync for Inventory]in the Amazon Web Services Systems Manager User Guide.
+//
+// You can configure Systems Manager Explorer to use the SyncFromSource type to
+// synchronize operational work items (OpsItems) and operational data (OpsData)
+// from multiple Amazon Web Services Regions to a single Amazon S3 bucket. This
+// type can synchronize OpsItems and OpsData from multiple Amazon Web Services
+// accounts and Amazon Web Services Regions or EntireOrganization by using
+// Organizations. For more information, see [Setting up Systems Manager Explorer to display data from multiple accounts and Regions]in the Amazon Web Services Systems
+// Manager User Guide.
+//
+// A resource data sync is an asynchronous operation that returns immediately.
+// After a successful initial sync is completed, the system continuously syncs
+// data. To check the status of a sync, use the ListResourceDataSync.
+//
+// By default, data isn't encrypted in Amazon S3. We strongly recommend that you
+// enable encryption in Amazon S3 to ensure secure data storage. We also recommend
+// that you secure access to the Amazon S3 bucket by creating a restrictive bucket
+// policy.
+//
+// [Setting up Systems Manager Explorer to display data from multiple accounts and Regions]: https://docs.aws.amazon.com/systems-manager/latest/userguide/Explorer-resource-data-sync.html
+// [Creating a resource data sync for Inventory]: https://docs.aws.amazon.com/systems-manager/latest/userguide/inventory-create-resource-data-sync.html
 func (c *Client) CreateResourceDataSync(ctx context.Context, params *CreateResourceDataSyncInput, optFns ...func(*Options)) (*CreateResourceDataSyncOutput, error) {
 	if params == nil {
 		params = &CreateResourceDataSyncInput{}
@@ -76,6 +80,31 @@ type CreateResourceDataSyncInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *CreateResourceDataSyncInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.CreateResourceDataSyncRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *CreateResourceDataSyncInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.S3Destination != nil {
+		s.WriteStruct(schemas.CreateResourceDataSyncRequest_S3Destination)
+		v.S3Destination.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.SyncName != nil {
+		s.WriteString(schemas.CreateResourceDataSyncRequest_SyncName, *v.SyncName)
+	}
+	if v.SyncSource != nil {
+		s.WriteStruct(schemas.CreateResourceDataSyncRequest_SyncSource)
+		v.SyncSource.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.SyncType != nil {
+		s.WriteString(schemas.CreateResourceDataSyncRequest_SyncType, *v.SyncType)
+	}
+}
+
 type CreateResourceDataSyncOutput struct {
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -83,68 +112,42 @@ type CreateResourceDataSyncOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *CreateResourceDataSyncOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.CreateResourceDataSyncResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *CreateResourceDataSyncOutput) SerializeMembers(s smithy.ShapeSerializer) {
+}
+func (v *CreateResourceDataSyncOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.CreateResourceDataSyncResult, func(s *smithy.Schema) error {
+		switch s {
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationCreateResourceDataSyncMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.CreateResourceDataSync, schemas.CreateResourceDataSyncRequest, schemas.CreateResourceDataSyncResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpCreateResourceDataSync{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.CreateResourceDataSync, schemas.CreateResourceDataSyncRequest, schemas.CreateResourceDataSyncResult), output: &CreateResourceDataSyncOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpCreateResourceDataSync{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "CreateResourceDataSync"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpCreateResourceDataSyncValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opCreateResourceDataSync(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -159,13 +162,8 @@ func (c *Client) addOperationCreateResourceDataSyncMiddlewares(stack *middleware
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opCreateResourceDataSync(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "CreateResourceDataSync",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

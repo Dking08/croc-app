@@ -4,11 +4,9 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Permanently ends a session and closes the data connection between the Session
@@ -39,6 +37,18 @@ type TerminateSessionInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *TerminateSessionInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.TerminateSessionRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *TerminateSessionInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.SessionId != nil {
+		s.WriteString(schemas.TerminateSessionRequest_SessionId, *v.SessionId)
+	}
+}
+
 type TerminateSessionOutput struct {
 
 	// The ID of the session that has been terminated.
@@ -50,68 +60,48 @@ type TerminateSessionOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *TerminateSessionOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.TerminateSessionResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *TerminateSessionOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.SessionId != nil {
+		s.WriteString(schemas.TerminateSessionResponse_SessionId, *v.SessionId)
+	}
+}
+func (v *TerminateSessionOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.TerminateSessionResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.TerminateSessionResponse_SessionId:
+			v.SessionId = new(string)
+			return d.ReadString(schemas.TerminateSessionResponse_SessionId, v.SessionId)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationTerminateSessionMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.TerminateSession, schemas.TerminateSessionRequest, schemas.TerminateSessionResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpTerminateSession{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.TerminateSession, schemas.TerminateSessionRequest, schemas.TerminateSessionResponse), output: &TerminateSessionOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpTerminateSession{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "TerminateSession"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpTerminateSessionValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opTerminateSession(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -126,13 +116,8 @@ func (c *Client) addOperationTerminateSessionMiddlewares(stack *middleware.Stack
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opTerminateSession(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "TerminateSession",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

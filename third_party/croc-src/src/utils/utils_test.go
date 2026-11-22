@@ -198,6 +198,31 @@ func TestUnusedFilename(t *testing.T) {
 	assert.Equal(t, "noext (1)", UnusedFilename(folder, "noext"))
 }
 
+func TestGenerateRandomPinUsesAllDigits(t *testing.T) {
+	seen := make(map[rune]bool)
+	for range 2000 {
+		pin := GenerateRandomPin()
+		assert.Len(t, pin, NbPinNumbers)
+		for _, digit := range pin {
+			assert.True(t, digit >= '0' && digit <= '9', "unexpected character %q in pin %q", digit, pin)
+			seen[digit] = true
+		}
+	}
+	for digit := '0'; digit <= '9'; digit++ {
+		assert.True(t, seen[digit], "digit %c never appeared in 2000 pins", digit)
+	}
+}
+
+func TestRandomFileNameReturnsBareName(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	name, err := RandomFileName()
+	assert.NoError(t, err)
+	assert.Equal(t, filepath.Base(name), name)
+	assert.True(t, strings.HasPrefix(name, "croc-stdin-"), name)
+	assert.FileExists(t, filepath.Join(dir, name))
+}
+
 func TestRemoveMarkedFilesIgnoresTransferredCleanupFile(t *testing.T) {
 	// Ensure this test starts with an empty process-local cleanup list.
 	assert.NoError(t, RemoveMarkedFiles())
@@ -300,6 +325,9 @@ func TestByteCountDecimal(t *testing.T) {
 	assert.Equal(t, "10.0 kB", ByteCountDecimal(10240))
 	assert.Equal(t, "50 B", ByteCountDecimal(50))
 	assert.Equal(t, "12.4 MB", ByteCountDecimal(13002343))
+	assert.Equal(t, "1023.0 kB", ByteCountDecimal(1023*1024))
+	assert.Equal(t, "1.0 MB", ByteCountDecimal(1024*1024-1))
+	assert.Equal(t, "1.0 GB", ByteCountDecimal(1024*1024*1024-1))
 }
 
 func TestMissingChunks(t *testing.T) {
@@ -440,6 +468,18 @@ func TestFindOpenPorts(t *testing.T) {
 
 func TestIsLocalIP(t *testing.T) {
 	assert.True(t, IsLocalIP("192.168.0.14:9009"))
+	assert.True(t, IsLocalIP("127.0.0.1:9009"))
+	assert.True(t, IsLocalIP("[::1]:9009"))
+	// Addresses without a port are checked too.
+	assert.True(t, IsLocalIP("127.0.0.1"))
+	assert.True(t, IsLocalIP("10.0.0.5"))
+	assert.True(t, IsLocalIP("fe80::1"))
+	// A hostname that merely contains "127.0.0.1" is not a local address,
+	// so the connection must still go through the configured proxy.
+	assert.False(t, IsLocalIP("127.0.0.1.nip.io:9009"))
+	assert.False(t, IsLocalIP("relay-127.0.0.1.example.com:9009"))
+	assert.False(t, IsLocalIP("croc.schollz.com:9009"))
+	assert.False(t, IsLocalIP("8.8.8.8:9009"))
 }
 
 func TestValidFileName(t *testing.T) {
@@ -746,7 +786,8 @@ func TestUnzipDirectoryRejectsPortablePathHazards(t *testing.T) {
 		{name: "alternate data stream", entries: []zipTestEntry{{name: "file.txt:stream", content: "x"}}},
 		{name: "ssh directory", entries: []zipTestEntry{{name: ".ssh/authorized_keys", content: "x"}}},
 		{name: "case folded ssh directory", entries: []zipTestEntry{{name: ".SSH/authorized_keys", content: "x"}}},
-		{name: "git hooks directory", entries: []zipTestEntry{{name: ".git/hooks/post-checkout", content: "x"}}},
+		{name: "gnupg directory", entries: []zipTestEntry{{name: ".GnUpG/private-keys-v1.d/key", content: "x"}}},
+		{name: "sensitive path inside git", entries: []zipTestEntry{{name: "11/.git/.SSH/authorized_keys", content: "x"}}},
 		{name: "case fold collision", entries: []zipTestEntry{
 			{name: "README", content: "a"}, {name: "readme", content: "b"},
 		}},
@@ -769,6 +810,40 @@ func TestUnzipDirectoryRejectsPortablePathHazards(t *testing.T) {
 				t.Fatalf("unsafe archive changed destination: %v", entries)
 			}
 		})
+	}
+}
+
+func TestUnzipDirectoryAllowsGitRepository(t *testing.T) {
+	directory := t.TempDir()
+	archive := filepath.Join(directory, "repository.zip")
+	destination := filepath.Join(directory, "received")
+	entries := []zipTestEntry{
+		{name: "11/README.md", content: "working tree\n"},
+		{name: "11/.git/config", content: "[core]\n\tbare = false\n"},
+		{name: "11/.git/hooks/post-checkout", content: "#!/bin/sh\nexit 0\n"},
+		{name: "11/.git/refs/tags/"},
+		{name: "other/.GIT/HEAD", content: "ref: refs/heads/main\n"},
+		{name: "linked/.git", content: "gitdir: ../11/.git/worktrees/linked\n"},
+	}
+	if err := createZipWithEntries(archive, entries); err != nil {
+		t.Fatal(err)
+	}
+	if err := UnzipDirectory(destination, archive); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := filepath.Join(destination, filepath.FromSlash(entry.name))
+		if strings.HasSuffix(entry.name, "/") {
+			info, err := os.Stat(name)
+			if err != nil || !info.IsDir() {
+				t.Fatalf("extracted directory %q: %v, %v", entry.name, info, err)
+			}
+			continue
+		}
+		got, err := os.ReadFile(name)
+		if err != nil || string(got) != entry.content {
+			t.Fatalf("extracted %q = %q, %v; want %q", entry.name, got, err, entry.content)
+		}
 	}
 }
 
@@ -1636,5 +1711,43 @@ func TestZipDirectoryHonoursIgnoredPaths(t *testing.T) {
 		if !found {
 			t.Errorf("expected %q in zip; got %v", want, members)
 		}
+	}
+}
+
+func TestUnzipDirectoryOverwritePromptReplacesStdin(t *testing.T) {
+	tmpDir := t.TempDir()
+	zipPath := filepath.Join(tmpDir, "test.zip")
+	extractDir := filepath.Join(tmpDir, "extracted")
+	if err := createTestZipWithModTime(zipPath, time.Date(2023, 2, 1, 10, 30, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("Failed to create test zip: %v", err)
+	}
+	if err := UnzipDirectory(extractDir, zipPath); err != nil {
+		t.Fatalf("UnzipDirectory failed: %v", err)
+	}
+	changed := []string{"test/file1.txt", "test/file4.txt"}
+	for _, name := range changed {
+		if err := os.WriteFile(filepath.Join(extractDir, name), []byte("local edit"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var asked []string
+	ctx := WithOverwritePrompt(context.Background(), func(_ context.Context, name string) (bool, error) {
+		asked = append(asked, name)
+		return name == "test/file1.txt", nil
+	})
+	if err := UnzipDirectoryContext(ctx, extractDir, zipPath); err != nil {
+		t.Fatalf("UnzipDirectoryContext failed: %v", err)
+	}
+	if len(asked) != 4 {
+		t.Errorf("asked about %v, want the four existing members", asked)
+	}
+	verifyFileContent(t, filepath.Join(extractDir, "test/file1.txt"), "Test content 1")
+	verifyFileContent(t, filepath.Join(extractDir, "test/file4.txt"), "local edit")
+
+	want := errors.New("prompt failed")
+	ctx = WithOverwritePrompt(context.Background(), func(context.Context, string) (bool, error) { return false, want })
+	if err := UnzipDirectoryContext(ctx, extractDir, zipPath); !errors.Is(err, want) {
+		t.Errorf("UnzipDirectoryContext error = %v, want %v", err, want)
 	}
 }

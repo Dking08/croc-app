@@ -4,12 +4,10 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"time"
 )
 
@@ -48,6 +46,24 @@ type GetMaintenanceWindowExecutionTaskInvocationInput struct {
 	WindowExecutionId *string
 
 	noSmithyDocumentSerde
+}
+
+func (v *GetMaintenanceWindowExecutionTaskInvocationInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetMaintenanceWindowExecutionTaskInvocationRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetMaintenanceWindowExecutionTaskInvocationInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.InvocationId != nil {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationRequest_InvocationId, *v.InvocationId)
+	}
+	if v.TaskId != nil {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationRequest_TaskId, *v.TaskId)
+	}
+	if v.WindowExecutionId != nil {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationRequest_WindowExecutionId, *v.WindowExecutionId)
+	}
 }
 
 type GetMaintenanceWindowExecutionTaskInvocationOutput struct {
@@ -97,68 +113,122 @@ type GetMaintenanceWindowExecutionTaskInvocationOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetMaintenanceWindowExecutionTaskInvocationOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetMaintenanceWindowExecutionTaskInvocationResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetMaintenanceWindowExecutionTaskInvocationOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.EndTime != nil {
+		s.WriteTime(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_EndTime, *v.EndTime)
+	}
+	if v.ExecutionId != nil {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_ExecutionId, *v.ExecutionId)
+	}
+	if v.InvocationId != nil {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_InvocationId, *v.InvocationId)
+	}
+	if v.OwnerInformation != nil {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_OwnerInformation, *v.OwnerInformation)
+	}
+	if v.Parameters != nil {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_Parameters, *v.Parameters)
+	}
+	if v.StartTime != nil {
+		s.WriteTime(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_StartTime, *v.StartTime)
+	}
+	if v.Status != "" {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_Status, string(v.Status))
+	}
+	if v.StatusDetails != nil {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_StatusDetails, *v.StatusDetails)
+	}
+	if v.TaskExecutionId != nil {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_TaskExecutionId, *v.TaskExecutionId)
+	}
+	if v.TaskType != "" {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_TaskType, string(v.TaskType))
+	}
+	if v.WindowExecutionId != nil {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_WindowExecutionId, *v.WindowExecutionId)
+	}
+	if v.WindowTargetId != nil {
+		s.WriteString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_WindowTargetId, *v.WindowTargetId)
+	}
+}
+func (v *GetMaintenanceWindowExecutionTaskInvocationOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.GetMaintenanceWindowExecutionTaskInvocationResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.GetMaintenanceWindowExecutionTaskInvocationResult_EndTime:
+			v.EndTime = new(time.Time)
+			return d.ReadTime(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_EndTime, v.EndTime)
+		case schemas.GetMaintenanceWindowExecutionTaskInvocationResult_ExecutionId:
+			v.ExecutionId = new(string)
+			return d.ReadString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_ExecutionId, v.ExecutionId)
+		case schemas.GetMaintenanceWindowExecutionTaskInvocationResult_InvocationId:
+			v.InvocationId = new(string)
+			return d.ReadString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_InvocationId, v.InvocationId)
+		case schemas.GetMaintenanceWindowExecutionTaskInvocationResult_OwnerInformation:
+			v.OwnerInformation = new(string)
+			return d.ReadString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_OwnerInformation, v.OwnerInformation)
+		case schemas.GetMaintenanceWindowExecutionTaskInvocationResult_Parameters:
+			v.Parameters = new(string)
+			return d.ReadString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_Parameters, v.Parameters)
+		case schemas.GetMaintenanceWindowExecutionTaskInvocationResult_StartTime:
+			v.StartTime = new(time.Time)
+			return d.ReadTime(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_StartTime, v.StartTime)
+		case schemas.GetMaintenanceWindowExecutionTaskInvocationResult_Status:
+			var ev string
+			if err := d.ReadString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_Status, &ev); err != nil {
+				return err
+			}
+			v.Status = types.MaintenanceWindowExecutionStatus(ev)
+			return nil
+		case schemas.GetMaintenanceWindowExecutionTaskInvocationResult_StatusDetails:
+			v.StatusDetails = new(string)
+			return d.ReadString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_StatusDetails, v.StatusDetails)
+		case schemas.GetMaintenanceWindowExecutionTaskInvocationResult_TaskExecutionId:
+			v.TaskExecutionId = new(string)
+			return d.ReadString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_TaskExecutionId, v.TaskExecutionId)
+		case schemas.GetMaintenanceWindowExecutionTaskInvocationResult_TaskType:
+			var ev string
+			if err := d.ReadString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_TaskType, &ev); err != nil {
+				return err
+			}
+			v.TaskType = types.MaintenanceWindowTaskType(ev)
+			return nil
+		case schemas.GetMaintenanceWindowExecutionTaskInvocationResult_WindowExecutionId:
+			v.WindowExecutionId = new(string)
+			return d.ReadString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_WindowExecutionId, v.WindowExecutionId)
+		case schemas.GetMaintenanceWindowExecutionTaskInvocationResult_WindowTargetId:
+			v.WindowTargetId = new(string)
+			return d.ReadString(schemas.GetMaintenanceWindowExecutionTaskInvocationResult_WindowTargetId, v.WindowTargetId)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationGetMaintenanceWindowExecutionTaskInvocationMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetMaintenanceWindowExecutionTaskInvocation, schemas.GetMaintenanceWindowExecutionTaskInvocationRequest, schemas.GetMaintenanceWindowExecutionTaskInvocationResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpGetMaintenanceWindowExecutionTaskInvocation{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetMaintenanceWindowExecutionTaskInvocation, schemas.GetMaintenanceWindowExecutionTaskInvocationRequest, schemas.GetMaintenanceWindowExecutionTaskInvocationResult), output: &GetMaintenanceWindowExecutionTaskInvocationOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpGetMaintenanceWindowExecutionTaskInvocation{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "GetMaintenanceWindowExecutionTaskInvocation"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetMaintenanceWindowExecutionTaskInvocationValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opGetMaintenanceWindowExecutionTaskInvocation(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -173,13 +243,8 @@ func (c *Client) addOperationGetMaintenanceWindowExecutionTaskInvocationMiddlewa
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opGetMaintenanceWindowExecutionTaskInvocation(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "GetMaintenanceWindowExecutionTaskInvocation",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

@@ -6,22 +6,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
 	smithytime "github.com/aws/smithy-go/time"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	smithywaiter "github.com/aws/smithy-go/waiter"
-	"github.com/jmespath/go-jmespath"
 	"time"
 )
 
 // Returns detailed information about command execution for an invocation or
-// plugin. GetCommandInvocation only gives the execution status of a plugin in a
-// document. To get the command execution status on a specific managed node, use
-// ListCommandInvocations . To get the command execution status across managed
-// nodes, use ListCommands .
+// plugin. The Run Command API follows an eventual consistency model, due to the
+// distributed nature of the system supporting the API. This means that the result
+// of an API command you run that affects your resources might not be immediately
+// visible to all subsequent commands you run. You should keep this in mind when
+// you carry out an API command that immediately follows a previous API command.
+//
+// GetCommandInvocation only gives the execution status of a plugin in a document.
+// To get the command execution status on a specific managed node, use ListCommandInvocations. To get
+// the command execution status across managed nodes, use ListCommands.
 func (c *Client) GetCommandInvocation(ctx context.Context, params *GetCommandInvocationInput, optFns ...func(*Options)) (*GetCommandInvocationOutput, error) {
 	if params == nil {
 		params = &GetCommandInvocationInput{}
@@ -56,14 +59,33 @@ type GetCommandInvocationInput struct {
 	// contains only one step, you can omit the name and details for that step. If the
 	// document contains more than one step, you must specify the name of the step for
 	// which you want to view details. Be sure to specify the name of the step, not the
-	// name of a plugin like aws:RunShellScript . To find the PluginName , check the
-	// document content and find the name of the step you want details for.
-	// Alternatively, use ListCommandInvocations with the CommandId and Details
+	// name of a plugin like aws:RunShellScript .
+	//
+	// To find the PluginName , check the document content and find the name of the
+	// step you want details for. Alternatively, use ListCommandInvocationswith the CommandId and Details
 	// parameters. The PluginName is the Name attribute of the CommandPlugin object in
 	// the CommandPlugins list.
 	PluginName *string
 
 	noSmithyDocumentSerde
+}
+
+func (v *GetCommandInvocationInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetCommandInvocationRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetCommandInvocationInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.CommandId != nil {
+		s.WriteString(schemas.GetCommandInvocationRequest_CommandId, *v.CommandId)
+	}
+	if v.InstanceId != nil {
+		s.WriteString(schemas.GetCommandInvocationRequest_InstanceId, *v.InstanceId)
+	}
+	if v.PluginName != nil {
+		s.WriteString(schemas.GetCommandInvocationRequest_PluginName, *v.PluginName)
+	}
 }
 
 type GetCommandInvocationOutput struct {
@@ -90,15 +112,19 @@ type GetCommandInvocationOutput struct {
 	// The date and time the plugin finished running. Date and time are written in ISO
 	// 8601 format. For example, June 7, 2017 is represented as 2017-06-7. The
 	// following sample Amazon Web Services CLI command uses the InvokedAfter filter.
-	// aws ssm list-commands --filters key=InvokedAfter,value=2017-06-07T00:00:00Z If
-	// the plugin hasn't started to run, the string is empty.
+	//
+	//     aws ssm list-commands --filters key=InvokedAfter,value=2017-06-07T00:00:00Z
+	//
+	// If the plugin hasn't started to run, the string is empty.
 	ExecutionEndDateTime *string
 
 	// The date and time the plugin started running. Date and time are written in ISO
 	// 8601 format. For example, June 7, 2017 is represented as 2017-06-7. The
 	// following sample Amazon Web Services CLI command uses the InvokedBefore filter.
-	// aws ssm list-commands --filters key=InvokedBefore,value=2017-06-07T00:00:00Z If
-	// the plugin hasn't started to run, the string is empty.
+	//
+	//     aws ssm list-commands --filters key=InvokedBefore,value=2017-06-07T00:00:00Z
+	//
+	// If the plugin hasn't started to run, the string is empty.
 	ExecutionStartDateTime *string
 
 	// The ID of the managed node targeted by the command. A managed node can be an
@@ -141,40 +167,51 @@ type GetCommandInvocationOutput struct {
 	// A detailed status of the command execution for an invocation. StatusDetails
 	// includes more information than Status because it includes states resulting from
 	// error and concurrency control parameters. StatusDetails can show different
-	// results than Status . For more information about these statuses, see
-	// Understanding command statuses (https://docs.aws.amazon.com/systems-manager/latest/userguide/monitor-commands.html)
-	// in the Amazon Web Services Systems Manager User Guide. StatusDetails can be one
-	// of the following values:
+	// results than Status . For more information about these statuses, see [Understanding command statuses] in the
+	// Amazon Web Services Systems Manager User Guide. StatusDetails can be one of the
+	// following values:
+	//
 	//   - Pending: The command hasn't been sent to the managed node.
+	//
 	//   - In Progress: The command has been sent to the managed node but hasn't
 	//   reached a terminal state.
+	//
 	//   - Delayed: The system attempted to send the command to the target, but the
 	//   target wasn't available. The managed node might not be available because of
 	//   network issues, because the node was stopped, or for similar reasons. The system
 	//   will try to send the command again.
+	//
 	//   - Success: The command or plugin ran successfully. This is a terminal state.
+	//
 	//   - Delivery Timed Out: The command wasn't delivered to the managed node before
 	//   the delivery timeout expired. Delivery timeouts don't count against the parent
 	//   command's MaxErrors limit, but they do contribute to whether the parent
 	//   command status is Success or Incomplete. This is a terminal state.
+	//
 	//   - Execution Timed Out: The command started to run on the managed node, but
 	//   the execution wasn't complete before the timeout expired. Execution timeouts
 	//   count against the MaxErrors limit of the parent command. This is a terminal
 	//   state.
+	//
 	//   - Failed: The command wasn't run successfully on the managed node. For a
 	//   plugin, this indicates that the result code wasn't zero. For a command
 	//   invocation, this indicates that the result code for one or more plugins wasn't
 	//   zero. Invocation failures count against the MaxErrors limit of the parent
 	//   command. This is a terminal state.
+	//
 	//   - Cancelled: The command was terminated before it was completed. This is a
 	//   terminal state.
+	//
 	//   - Undeliverable: The command can't be delivered to the managed node. The node
 	//   might not exist or might not be responding. Undeliverable invocations don't
 	//   count against the parent command's MaxErrors limit and don't contribute to
 	//   whether the parent command status is Success or Incomplete. This is a terminal
 	//   state.
+	//
 	//   - Terminated: The parent command exceeded its MaxErrors limit and subsequent
 	//   command invocations were canceled by the system. This is a terminal state.
+	//
+	// [Understanding command statuses]: https://docs.aws.amazon.com/systems-manager/latest/userguide/monitor-commands.html
 	StatusDetails *string
 
 	// Metadata pertaining to the operation's result.
@@ -183,68 +220,149 @@ type GetCommandInvocationOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetCommandInvocationOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetCommandInvocationResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetCommandInvocationOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.CloudWatchOutputConfig != nil {
+		s.WriteStruct(schemas.GetCommandInvocationResult_CloudWatchOutputConfig)
+		v.CloudWatchOutputConfig.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.CommandId != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_CommandId, *v.CommandId)
+	}
+	if v.Comment != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_Comment, *v.Comment)
+	}
+	if v.DocumentName != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_DocumentName, *v.DocumentName)
+	}
+	if v.DocumentVersion != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_DocumentVersion, *v.DocumentVersion)
+	}
+	if v.ExecutionElapsedTime != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_ExecutionElapsedTime, *v.ExecutionElapsedTime)
+	}
+	if v.ExecutionEndDateTime != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_ExecutionEndDateTime, *v.ExecutionEndDateTime)
+	}
+	if v.ExecutionStartDateTime != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_ExecutionStartDateTime, *v.ExecutionStartDateTime)
+	}
+	if v.InstanceId != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_InstanceId, *v.InstanceId)
+	}
+	if v.PluginName != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_PluginName, *v.PluginName)
+	}
+	if v.ResponseCode != 0 {
+		s.WriteInt32(schemas.GetCommandInvocationResult_ResponseCode, v.ResponseCode)
+	}
+	if v.StandardErrorContent != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_StandardErrorContent, *v.StandardErrorContent)
+	}
+	if v.StandardErrorUrl != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_StandardErrorUrl, *v.StandardErrorUrl)
+	}
+	if v.StandardOutputContent != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_StandardOutputContent, *v.StandardOutputContent)
+	}
+	if v.StandardOutputUrl != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_StandardOutputUrl, *v.StandardOutputUrl)
+	}
+	if v.Status != "" {
+		s.WriteString(schemas.GetCommandInvocationResult_Status, string(v.Status))
+	}
+	if v.StatusDetails != nil {
+		s.WriteString(schemas.GetCommandInvocationResult_StatusDetails, *v.StatusDetails)
+	}
+}
+func (v *GetCommandInvocationOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.GetCommandInvocationResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.GetCommandInvocationResult_CloudWatchOutputConfig:
+			v.CloudWatchOutputConfig = &types.CloudWatchOutputConfig{}
+			return v.CloudWatchOutputConfig.Deserialize(d)
+		case schemas.GetCommandInvocationResult_CommandId:
+			v.CommandId = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_CommandId, v.CommandId)
+		case schemas.GetCommandInvocationResult_Comment:
+			v.Comment = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_Comment, v.Comment)
+		case schemas.GetCommandInvocationResult_DocumentName:
+			v.DocumentName = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_DocumentName, v.DocumentName)
+		case schemas.GetCommandInvocationResult_DocumentVersion:
+			v.DocumentVersion = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_DocumentVersion, v.DocumentVersion)
+		case schemas.GetCommandInvocationResult_ExecutionElapsedTime:
+			v.ExecutionElapsedTime = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_ExecutionElapsedTime, v.ExecutionElapsedTime)
+		case schemas.GetCommandInvocationResult_ExecutionEndDateTime:
+			v.ExecutionEndDateTime = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_ExecutionEndDateTime, v.ExecutionEndDateTime)
+		case schemas.GetCommandInvocationResult_ExecutionStartDateTime:
+			v.ExecutionStartDateTime = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_ExecutionStartDateTime, v.ExecutionStartDateTime)
+		case schemas.GetCommandInvocationResult_InstanceId:
+			v.InstanceId = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_InstanceId, v.InstanceId)
+		case schemas.GetCommandInvocationResult_PluginName:
+			v.PluginName = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_PluginName, v.PluginName)
+		case schemas.GetCommandInvocationResult_ResponseCode:
+			return d.ReadInt32(schemas.GetCommandInvocationResult_ResponseCode, &v.ResponseCode)
+		case schemas.GetCommandInvocationResult_StandardErrorContent:
+			v.StandardErrorContent = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_StandardErrorContent, v.StandardErrorContent)
+		case schemas.GetCommandInvocationResult_StandardErrorUrl:
+			v.StandardErrorUrl = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_StandardErrorUrl, v.StandardErrorUrl)
+		case schemas.GetCommandInvocationResult_StandardOutputContent:
+			v.StandardOutputContent = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_StandardOutputContent, v.StandardOutputContent)
+		case schemas.GetCommandInvocationResult_StandardOutputUrl:
+			v.StandardOutputUrl = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_StandardOutputUrl, v.StandardOutputUrl)
+		case schemas.GetCommandInvocationResult_Status:
+			var ev string
+			if err := d.ReadString(schemas.GetCommandInvocationResult_Status, &ev); err != nil {
+				return err
+			}
+			v.Status = types.CommandInvocationStatus(ev)
+			return nil
+		case schemas.GetCommandInvocationResult_StatusDetails:
+			v.StatusDetails = new(string)
+			return d.ReadString(schemas.GetCommandInvocationResult_StatusDetails, v.StatusDetails)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationGetCommandInvocationMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetCommandInvocation, schemas.GetCommandInvocationRequest, schemas.GetCommandInvocationResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpGetCommandInvocation{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetCommandInvocation, schemas.GetCommandInvocationRequest, schemas.GetCommandInvocationResult), output: &GetCommandInvocationOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpGetCommandInvocation{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "GetCommandInvocation"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetCommandInvocationValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opGetCommandInvocation(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -259,16 +377,11 @@ func (c *Client) addOperationGetCommandInvocationMiddlewares(stack *middleware.S
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
-
-// GetCommandInvocationAPIClient is a client that implements the
-// GetCommandInvocation operation.
-type GetCommandInvocationAPIClient interface {
-	GetCommandInvocation(context.Context, *GetCommandInvocationInput, ...func(*Options)) (*GetCommandInvocationOutput, error)
-}
-
-var _ GetCommandInvocationAPIClient = (*Client)(nil)
 
 // CommandExecutedWaiterOptions are waiter options for CommandExecutedWaiter
 type CommandExecutedWaiterOptions struct {
@@ -276,7 +389,16 @@ type CommandExecutedWaiterOptions struct {
 	// Set of options to modify how an operation is invoked. These apply to all
 	// operations invoked for this client. Use functional options on operation call to
 	// modify this list for per operation behavior.
+	//
+	// Passing options here is functionally equivalent to passing values to this
+	// config's ClientOptions field that extend the inner client's APIOptions directly.
 	APIOptions []func(*middleware.Stack) error
+
+	// Functional options to be passed to all operations invoked by this client.
+	//
+	// Function values that modify the inner APIOptions are applied after the waiter
+	// config's own APIOptions modifiers.
+	ClientOptions []func(*Options)
 
 	// MinDelay is the minimum amount of time to delay between retries. If unset,
 	// CommandExecutedWaiter will use default minimum delay of 5 seconds. Note that
@@ -293,12 +415,13 @@ type CommandExecutedWaiterOptions struct {
 
 	// Retryable is function that can be used to override the service defined
 	// waiter-behavior based on operation output, or returned error. This function is
-	// used by the waiter to decide if a state is retryable or a terminal state. By
-	// default service-modeled logic will populate this option. This option can thus be
-	// used to define a custom waiter state with fall-back to service-modeled waiter
-	// state mutators.The function returns an error in case of a failure state. In case
-	// of retry state, this function returns a bool value of true and nil error, while
-	// in case of success it returns a bool value of false and nil error.
+	// used by the waiter to decide if a state is retryable or a terminal state.
+	//
+	// By default service-modeled logic will populate this option. This option can
+	// thus be used to define a custom waiter state with fall-back to service-modeled
+	// waiter state mutators.The function returns an error in case of a failure state.
+	// In case of retry state, this function returns a bool value of true and nil
+	// error, while in case of success it returns a bool value of false and nil error.
 	Retryable func(context.Context, *GetCommandInvocationInput, *GetCommandInvocationOutput, error) (bool, error)
 }
 
@@ -375,7 +498,16 @@ func (w *CommandExecutedWaiter) WaitForOutput(ctx context.Context, params *GetCo
 		}
 
 		out, err := w.client.GetCommandInvocation(ctx, params, func(o *Options) {
+			baseOpts := []func(*Options){
+				addIsWaiterUserAgent,
+			}
 			o.APIOptions = append(o.APIOptions, apiOptions...)
+			for _, opt := range baseOpts {
+				opt(o)
+			}
+			for _, opt := range options.ClientOptions {
+				opt(o)
+			}
 		})
 
 		retryable, err := options.Retryable(ctx, params, out, err)
@@ -411,137 +543,81 @@ func (w *CommandExecutedWaiter) WaitForOutput(ctx context.Context, params *GetCo
 func commandExecutedStateRetryable(ctx context.Context, input *GetCommandInvocationInput, output *GetCommandInvocationOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Status", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
+		v1 := output.Status
 		expectedValue := "Pending"
-		value, ok := pathValue.(types.CommandInvocationStatus)
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected types.CommandInvocationStatus value, got %T", pathValue)
-		}
-
-		if string(value) == expectedValue {
+		var pathValue string
+		pathValue = string(v1)
+		if pathValue == expectedValue {
 			return true, nil
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Status", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
+		v1 := output.Status
 		expectedValue := "InProgress"
-		value, ok := pathValue.(types.CommandInvocationStatus)
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected types.CommandInvocationStatus value, got %T", pathValue)
-		}
-
-		if string(value) == expectedValue {
+		var pathValue string
+		pathValue = string(v1)
+		if pathValue == expectedValue {
 			return true, nil
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Status", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
+		v1 := output.Status
 		expectedValue := "Delayed"
-		value, ok := pathValue.(types.CommandInvocationStatus)
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected types.CommandInvocationStatus value, got %T", pathValue)
-		}
-
-		if string(value) == expectedValue {
+		var pathValue string
+		pathValue = string(v1)
+		if pathValue == expectedValue {
 			return true, nil
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Status", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
+		v1 := output.Status
 		expectedValue := "Success"
-		value, ok := pathValue.(types.CommandInvocationStatus)
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected types.CommandInvocationStatus value, got %T", pathValue)
-		}
-
-		if string(value) == expectedValue {
+		var pathValue string
+		pathValue = string(v1)
+		if pathValue == expectedValue {
 			return false, nil
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Status", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
+		v1 := output.Status
 		expectedValue := "Cancelled"
-		value, ok := pathValue.(types.CommandInvocationStatus)
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected types.CommandInvocationStatus value, got %T", pathValue)
-		}
-
-		if string(value) == expectedValue {
+		var pathValue string
+		pathValue = string(v1)
+		if pathValue == expectedValue {
 			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Status", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
+		v1 := output.Status
 		expectedValue := "TimedOut"
-		value, ok := pathValue.(types.CommandInvocationStatus)
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected types.CommandInvocationStatus value, got %T", pathValue)
-		}
-
-		if string(value) == expectedValue {
+		var pathValue string
+		pathValue = string(v1)
+		if pathValue == expectedValue {
 			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Status", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
+		v1 := output.Status
 		expectedValue := "Failed"
-		value, ok := pathValue.(types.CommandInvocationStatus)
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected types.CommandInvocationStatus value, got %T", pathValue)
-		}
-
-		if string(value) == expectedValue {
+		var pathValue string
+		pathValue = string(v1)
+		if pathValue == expectedValue {
 			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Status", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
+		v1 := output.Status
 		expectedValue := "Cancelling"
-		value, ok := pathValue.(types.CommandInvocationStatus)
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected types.CommandInvocationStatus value, got %T", pathValue)
-		}
-
-		if string(value) == expectedValue {
+		var pathValue string
+		pathValue = string(v1)
+		if pathValue == expectedValue {
 			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
@@ -553,13 +629,16 @@ func commandExecutedStateRetryable(ctx context.Context, input *GetCommandInvocat
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
-func newServiceMetadataMiddleware_opGetCommandInvocation(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "GetCommandInvocation",
-	}
+// GetCommandInvocationAPIClient is a client that implements the
+// GetCommandInvocation operation.
+type GetCommandInvocationAPIClient interface {
+	GetCommandInvocation(context.Context, *GetCommandInvocationInput, ...func(*Options)) (*GetCommandInvocationOutput, error)
 }
+
+var _ GetCommandInvocationAPIClient = (*Client)(nil)

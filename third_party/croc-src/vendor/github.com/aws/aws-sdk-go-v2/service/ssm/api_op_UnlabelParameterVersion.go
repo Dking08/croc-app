@@ -4,14 +4,17 @@ package ssm
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Remove a label or labels from a parameter.
+//
+// Parameter names can't contain spaces. The service removes any spaces specified
+// for the beginning or end of a parameter name. If the specified name for a
+// parameter contains spaces between characters, the request fails with a
+// ValidationException error.
 func (c *Client) UnlabelParameterVersion(ctx context.Context, params *UnlabelParameterVersionInput, optFns ...func(*Options)) (*UnlabelParameterVersionOutput, error) {
 	if params == nil {
 		params = &UnlabelParameterVersionInput{}
@@ -36,6 +39,9 @@ type UnlabelParameterVersionInput struct {
 
 	// The name of the parameter from which you want to delete one or more labels.
 	//
+	// You can't enter the Amazon Resource Name (ARN) for a parameter, only the
+	// parameter name itself.
+	//
 	// This member is required.
 	Name *string
 
@@ -46,6 +52,24 @@ type UnlabelParameterVersionInput struct {
 	ParameterVersion *int64
 
 	noSmithyDocumentSerde
+}
+
+func (v *UnlabelParameterVersionInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UnlabelParameterVersionRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UnlabelParameterVersionInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Labels != nil {
+		serializeParameterLabelList(s, schemas.UnlabelParameterVersionRequest_Labels, v.Labels)
+	}
+	if v.Name != nil {
+		s.WriteString(schemas.UnlabelParameterVersionRequest_Name, *v.Name)
+	}
+	if v.ParameterVersion != nil {
+		s.WriteInt64(schemas.UnlabelParameterVersionRequest_ParameterVersion, *v.ParameterVersion)
+	}
 }
 
 type UnlabelParameterVersionOutput struct {
@@ -62,68 +86,52 @@ type UnlabelParameterVersionOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UnlabelParameterVersionOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UnlabelParameterVersionResult)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UnlabelParameterVersionOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.InvalidLabels != nil {
+		serializeParameterLabelList(s, schemas.UnlabelParameterVersionResult_InvalidLabels, v.InvalidLabels)
+	}
+	if v.RemovedLabels != nil {
+		serializeParameterLabelList(s, schemas.UnlabelParameterVersionResult_RemovedLabels, v.RemovedLabels)
+	}
+}
+func (v *UnlabelParameterVersionOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.UnlabelParameterVersionResult, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.UnlabelParameterVersionResult_InvalidLabels:
+			return deserializeParameterLabelList(d, schemas.UnlabelParameterVersionResult_InvalidLabels, &v.InvalidLabels)
+		case schemas.UnlabelParameterVersionResult_RemovedLabels:
+			return deserializeParameterLabelList(d, schemas.UnlabelParameterVersionResult_RemovedLabels, &v.RemovedLabels)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationUnlabelParameterVersionMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UnlabelParameterVersion, schemas.UnlabelParameterVersionRequest, schemas.UnlabelParameterVersionResult)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsAwsjson11_serializeOpUnlabelParameterVersion{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UnlabelParameterVersion, schemas.UnlabelParameterVersionRequest, schemas.UnlabelParameterVersionResult), output: &UnlabelParameterVersionOutput{}}, middleware.After); err != nil {
 		return err
-	}
-	err = stack.Deserialize.Add(&awsAwsjson11_deserializeOpUnlabelParameterVersion{}, middleware.After)
-	if err != nil {
-		return err
-	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "UnlabelParameterVersion"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpUnlabelParameterVersionValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opUnlabelParameterVersion(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -138,13 +146,8 @@ func (c *Client) addOperationUnlabelParameterVersionMiddlewares(stack *middlewar
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	return nil
-}
-
-func newServiceMetadataMiddleware_opUnlabelParameterVersion(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "UnlabelParameterVersion",
+	if err = addInterceptors(stack, options); err != nil {
+		return err
 	}
+	return nil
 }

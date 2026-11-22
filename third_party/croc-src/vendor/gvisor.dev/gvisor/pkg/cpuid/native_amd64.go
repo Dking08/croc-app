@@ -50,6 +50,7 @@ const (
 	monitorMwaitParams            cpuidFunction = 0x5               // Returns information about monitor/mwait instructions.
 	powerParams                   cpuidFunction = 0x6               // Returns information about power management and thermal sensors.
 	extendedFeatureInfo           cpuidFunction = 0x7               // Returns extended feature bits.
+	extendedFeatureInfoSub        cpuidFunction = 0x7 | (0x1 << 32) // Returns extended feature bits (Sub-leaf).
 	_                                                               // Function 0x8 is reserved.
 	intelDCAParams                cpuidFunction = 0x9               // Returns direct cache access information. Intel only.
 	intelPMCInfo                  cpuidFunction = 0xa               // Returns information about performance monitoring features. Intel only.
@@ -130,7 +131,7 @@ func (i *In) normalize() {
 	switch cpuidFunction(i.Eax) {
 	case vendorID, featureInfo, intelCacheDescriptors, extendedFunctionInfo, extendedFeatures:
 		i.Ecx = 0 // Ignore.
-	case processorBrandString2, processorBrandString3, processorBrandString4, l1CacheAndTLBInfo, l2CacheInfo, amdMemoryEncryptionInfo:
+	case processorBrandString2, processorBrandString3, processorBrandString4, l1CacheAndTLBInfo, l2CacheInfo, addressSizes, amdMemoryEncryptionInfo:
 		i.Ecx = 0 // Ignore.
 	case intelDeterministicCacheParams, extendedFeatureInfo:
 		// Preserve i.Ecx.

@@ -168,6 +168,14 @@ func getInputContext(ctx context.Context, reader *bufio.Reader, prompt string) (
 	}
 }
 
+type overwritePromptKey struct{}
+
+// WithOverwritePrompt makes an extraction under the returned context call ask,
+// not read stdin, to decide whether to overwrite an existing zip member.
+func WithOverwritePrompt(ctx context.Context, ask func(ctx context.Context, name string) (bool, error)) context.Context {
+	return context.WithValue(ctx, overwritePromptKey{}, ask)
+}
+
 type contextReader struct {
 	ctx    context.Context
 	reader io.Reader
@@ -393,8 +401,8 @@ func LocalIP() string {
 // GenerateRandomPin returns a randomly generated pin with set length
 func GenerateRandomPin() string {
 	var s strings.Builder
-	max := new(big.Int)
-	max.SetInt64(9)
+	// rand.Int returns a value in [0, max), so max is 10 to cover 0-9.
+	max := big.NewInt(10)
 	for range NbPinNumbers {
 		v, err := rand.Int(rand.Reader, max)
 		if err != nil {
@@ -428,7 +436,13 @@ func ByteCountDecimal(b int64) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
+	value := float64(b) / float64(div)
+	// %.1f rounds a value just below the next unit up to 1024.0
+	if fmt.Sprintf("%.1f", value) == "1024.0" && exp < len("kMGTPE")-1 {
+		value /= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", value, "kMGTPE"[exp])
 }
 
 // MissingChunks returns the positions of missing chunks.
@@ -632,7 +646,7 @@ func RandomFileName() (fname string, err error) {
 	if err != nil {
 		return
 	}
-	fname = f.Name()
+	fname = filepath.Base(f.Name())
 	_ = f.Close()
 	return
 }
@@ -678,10 +692,11 @@ func init() {
 }
 
 func IsLocalIP(ipaddress string) bool {
-	if strings.Contains(ipaddress, "127.0.0.1") {
-		return true
+	host, _, err := net.SplitHostPort(ipaddress)
+	if err != nil {
+		// No port, e.g. a bare "127.0.0.1" or "10.0.0.5".
+		host = ipaddress
 	}
-	host, _, _ := net.SplitHostPort(ipaddress)
 	ip := net.ParseIP(host)
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 		return true
@@ -1143,13 +1158,20 @@ func unzipDirectoryFromReaderWithLimit(
 		}
 
 		if _, statErr := root.Stat(filePath); statErr == nil {
-			prompt := fmt.Sprintf("\nOverwrite '%s'? (y/N) ", filePath)
-			choice, inputErr := GetInputContext(ctx, prompt)
+			var overwrite bool
+			var inputErr error
+			if ask, ok := ctx.Value(overwritePromptKey{}).(func(context.Context, string) (bool, error)); ok {
+				overwrite, inputErr = ask(ctx, filePath)
+			} else {
+				var choice string
+				choice, inputErr = GetInputContext(ctx, fmt.Sprintf("\nOverwrite '%s'? (y/N) ", filePath))
+				choice = strings.ToLower(choice)
+				overwrite = choice == "y" || choice == "yes"
+			}
 			if inputErr != nil {
 				return inputErr
 			}
-			choice = strings.ToLower(choice)
-			if choice != "y" && choice != "yes" {
+			if !overwrite {
 				fmt.Fprintf(os.Stderr, "Skipping '%s'\n", filePath)
 				continue
 			}

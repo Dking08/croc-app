@@ -1,4 +1,19 @@
 import {
+  BUNDLE_FEATURE,
+  BUNDLE_LIMITS,
+  BundleLifecycle,
+  BundleControlGuard,
+  effectiveBundleLimits,
+  planBundles,
+  decodeBundleJSON,
+  validateBundleRequest,
+  validateBundleOffer,
+  validateBundleAck,
+} from "./bundle";
+import { createBundleProgress } from "./bundle-progress";
+import { BundleSink } from "./bundle-storage";
+import { checkProtocolCapabilities } from "./compression";
+import {
   base64ToBytes,
   bytesEqual,
   bytesToBase64,
@@ -26,7 +41,7 @@ import type {
   OfferedFile,
   PreparedFile,
   ReceiveCallbacks,
-  ReceiveSink,
+  WritablePayload,
   RemoteFileRequestWire,
   SenderInfoWire,
   TransferCallbacks,
@@ -34,7 +49,7 @@ import type {
   WireFileInfo,
 } from "./types";
 import { maxTextTransferBytes } from "./types";
-import { wasm } from "../wasm/client";
+import { protocolEngine } from "./engine";
 
 const CHUNK_SIZE = 32 * 1024;
 const MAX_DECOMPRESSED_CHUNK_SIZE = CHUNK_SIZE + 8;
@@ -54,7 +69,7 @@ function checkAbort(signal?: AbortSignal) {
   if (signal?.aborted) throw abortError();
 }
 
-function requirePakeVersion(version: number | undefined) {
+export function requirePakeVersion(version: number | undefined) {
   if (version !== PAKE_PROTOCOL_VERSION) {
     throw new Error(
       `Peer uses unsupported PAKE protocol version ${version ?? 0}; upgrade both croc clients`,
@@ -104,7 +119,7 @@ async function waitForHandshake(
   passphrase: string,
   signal?: AbortSignal,
 ) {
-  const engine = wasm();
+  const engine = protocolEngine();
   let localKey: Uint8Array | undefined;
   for (;;) {
     checkAbort(signal);
@@ -149,6 +164,7 @@ async function waitForHandshake(
       probe.Curve,
       PAKE_PURPOSE_LOCAL_PROBE,
       room,
+      signal,
     );
     const finished = await engine.pakeUpdate(pake.handle, initiator);
     const salt = randomBytes(PAKE_SALT_SIZE);
@@ -222,6 +238,7 @@ export async function prepareFiles(
   signal?: AbortSignal,
   hashProvider?: FileHashProvider,
 ) {
+  checkProtocolCapabilities();
   if (selected.length === 0) throw new Error("Choose at least one file");
   const names = new Set<string>();
   const outgoingNames = selected.map((file) =>
@@ -252,7 +269,7 @@ export async function prepareFiles(
       const sample = new Uint8Array(
         await file.slice(0, Math.min(file.size, 256 << 10)).arrayBuffer(),
       );
-      const compressedSample = await wasm().compress(sample);
+      const compressedSample = await protocolEngine().compress(sample);
       compressed = compressedSample.byteLength * 100 < sample.byteLength * 98;
     }
     prepared.push({
@@ -296,6 +313,7 @@ function senderInfo(
     m: file.modified,
     md: 0o644,
     c: file.compressed ?? true,
+    p: true,
   }));
   return {
     FilesToTransfer: wireFiles,
@@ -308,7 +326,8 @@ function senderInfo(
     HashAlgorithm: "xxhash",
     ReconnectVersion: 0,
     NextReconnectRoom: "",
-    Features: [PER_FILE_COMPRESSION_FEATURE],
+    Features: [PER_FILE_COMPRESSION_FEATURE, BUNDLE_FEATURE],
+    BundleLimits: BUNDLE_LIMITS,
   };
 }
 
@@ -324,15 +343,15 @@ function requestedOffset(offset: number, ranges: number[] | null | undefined) {
 }
 
 async function sendFileData(
-  prepared: PreparedFile,
+  prepared: { file: Blob; size: number },
   ranges: number[] | null,
   sockets: CrocSocket[],
   cipherHandle: number,
   compressed: boolean,
-  progress: (bytes: number) => void,
+  progress: (bytes: number, position: number, length: number) => void,
   signal?: AbortSignal,
 ) {
-  const engine = wasm();
+  const engine = protocolEngine();
   const chunkCount = Math.ceil(prepared.size / CHUNK_SIZE);
   let sent = 0;
 
@@ -355,14 +374,10 @@ async function sendFileData(
         new DataView(plain.buffer).setBigUint64(0, BigInt(position), true);
         plain.set(data, 8);
         await socket.send(
-          await engine.encodeChunk(
-            cipherHandle,
-            plain,
-            compressed,
-          ),
+          await engine.encodeChunk(cipherHandle, plain, compressed),
         );
         sent += data.byteLength;
-        progress(sent);
+        progress(sent, position, data.byteLength);
       }
     }),
   );
@@ -384,18 +399,24 @@ export async function sendFiles(options: {
     callbacks = {},
     signal,
   } = options;
+  checkProtocolCapabilities();
+  const engine = protocolEngine();
   validateSecret(secret);
   if (files.length === 0) throw new Error("Choose at least one file");
   if (sendingText && files.length !== 1) {
     throw new Error("A text transfer must contain exactly one text payload");
   }
   const totalSize = files.reduce((total, file) => total + file.size, 0);
-  const { room, passphrase } = await wasm().codeComponents(secret);
-  const relayIndex = await wasm().relayIndex(secret, settings.relayAddresses.length);
+  const { room, passphrase } = await engine.codeComponents(secret);
+  const relayIndex = await engine.relayIndex(
+    secret,
+    settings.relayAddresses.length,
+  );
   let control: CrocSocket | undefined;
   let data: CrocSocket[] = [];
   let key: Uint8Array | undefined;
   let cipherHandle: number | undefined;
+  let pakeHandle: number | undefined;
   try {
     callbacks.onStatus?.("Connecting to relay…");
     const relay = await connectRelay(
@@ -415,16 +436,18 @@ export async function sendFiles(options: {
     }
     requirePakeVersion(peerPake.v);
     const curve = textDecoder.decode(peerPake.b2);
-    const pake = await wasm().pakeInitWithIdentities(
+    const pake = await engine.pakeInitWithIdentities(
       textEncoder.encode(passphrase),
       1,
       curve,
       PAKE_PURPOSE_TRANSFER,
       room,
+      signal,
     );
-    const finished = await wasm().pakeUpdate(pake.handle, peerPake.b);
+    pakeHandle = pake.handle;
+    const finished = await engine.pakeUpdate(pake.handle, peerPake.b);
     const salt = randomBytes(PAKE_SALT_SIZE);
-    const peerKeys = await wasm().derivePeerKeys(
+    const peerKeys = await engine.derivePeerKeys(
       finished.key,
       salt,
       PAKE_PURPOSE_TRANSFER,
@@ -438,6 +461,7 @@ export async function sendFiles(options: {
       v: PAKE_PROTOCOL_VERSION,
       b: finished.bytes,
       b2: salt,
+      f: [BUNDLE_FEATURE],
     });
     const confirmationA = await receiveControl(control);
     if (confirmationA.t !== "pake-confirm" || !confirmationA.b) {
@@ -445,7 +469,7 @@ export async function sendFiles(options: {
     }
     requirePakeVersion(confirmationA.v);
     if (
-      !(await wasm().confirmPeerKey(peerKeys.confirmationA, confirmationA.b))
+      !(await engine.confirmPeerKey(peerKeys.confirmationA, confirmationA.b))
     ) {
       throw new Error("Recipient PAKE confirmation failed");
     }
@@ -455,7 +479,7 @@ export async function sendFiles(options: {
       b: peerKeys.confirmationB,
     });
     key = peerKeys.key;
-    cipherHandle = await wasm().cipherInit(key);
+    cipherHandle = await engine.cipherInit(key);
 
     callbacks.onStatus?.("Opening encrypted data channels…");
     data = await openDataConnections(
@@ -481,6 +505,9 @@ export async function sendFiles(options: {
 
     let totalTransferred = 0;
     let progressStarted = false;
+    const bundleState = new BundleLifecycle();
+    const bundleCapable =
+      (peerPake.f ?? []).includes(BUNDLE_FEATURE) && !sendingText;
     for (;;) {
       checkAbort(signal);
       const message = await receiveControl(control, key);
@@ -490,6 +517,103 @@ export async function sendFiles(options: {
         await sendControl(control, { t: "finished" }, key);
         callbacks.onStatus?.("Transfer complete");
         return;
+      }
+      if (message.t === "bundle-request") {
+        if (!bundleCapable)
+          throw new Error("Bundle request without negotiated support");
+        const members = files.map((file) => ({
+          size: file.size,
+          eligible:
+            file.size > 0 && file.size <= 1 << 20 && file.hash.byteLength === 8,
+          requested: true,
+        }));
+        const { request, id, offsets, size } = validateBundleRequest(
+          decodeBundleJSON(message.b),
+          members,
+          BUNDLE_LIMITS,
+        );
+        bundleState.request(id);
+        const payload = new Blob(
+          request.indices.map((index) => files[index].file),
+        );
+        if (payload.size !== size)
+          throw new Error("Bundle source size changed");
+        for (const index of request.indices) {
+          if (
+            !bytesEqual(
+              await hashFileContents(files[index].file, "xxhash", signal),
+              files[index].hash,
+            )
+          )
+            throw new Error(`Bundle source changed: ${files[index].name}`);
+        }
+        const hash = await hashFileContents(payload, "xxhash", signal);
+        const sample = new Uint8Array(
+          await payload.slice(0, 256 << 10).arrayBuffer(),
+        );
+        const compressed =
+          (await engine.compress(sample)).byteLength * 100 <
+          sample.byteLength * 98;
+        bundleState.advance(id, "offer");
+        await sendControl(
+          control,
+          {
+            t: "bundle-offer",
+            b: textEncoder.encode(
+              JSON.stringify({
+                id,
+                size,
+                hash: bytesToBase64(hash),
+                compressed,
+              }),
+            ),
+          },
+          key,
+        );
+        const ready = await receiveControl(control, key);
+        if (ready.t !== "bundle-ready")
+          throw new Error(`Expected bundle ready, got ${ready.t}`);
+        validateBundleAck(decodeBundleJSON(ready.b), id);
+        bundleState.advance(id, "ready");
+        progressStarted = true;
+        const update = createBundleProgress(
+          request.indices,
+          offsets,
+          files.length,
+          (index) => ({ size: files[index].size, name: files[index].name }),
+          totalTransferred,
+          totalSize,
+          callbacks,
+          (bytes) => {
+            totalTransferred = bytes;
+          },
+        );
+        update(0, 0);
+        callbacks.onStatus?.(`Sending ${files[request.indices[0]].name}`);
+        await sendFileData(
+          { file: payload, size },
+          null,
+          data,
+          cipherHandle,
+          compressed,
+          (_sent, position, length) => update(position, length),
+          signal,
+        );
+        const done = await receiveControl(control, key);
+        if (done.t !== "bundle-done")
+          throw new Error(`Expected bundle done, got ${done.t}`);
+        validateBundleAck(decodeBundleJSON(done.b), id);
+        bundleState.advance(id, "done");
+        // sendFileData awaited every worker before the close acknowledgement.
+        await sendControl(
+          control,
+          { t: "bundle-closed", b: textEncoder.encode(JSON.stringify({ id })) },
+          key,
+        );
+        bundleState.advance(id, "closed");
+        for (const index of request.indices)
+          callbacks.onFileComplete?.(files[index].name);
+        continue;
       }
       if (message.t !== "recipientready" || !message.b) {
         throw new Error(`Unexpected peer message: ${message.t}`);
@@ -555,22 +679,26 @@ export async function sendFiles(options: {
     await reportPeerError(control, key, error);
     throw error;
   } finally {
+    if (pakeHandle !== undefined)
+      await engine.pakeRelease(pakeHandle).catch(() => undefined);
     if (cipherHandle !== undefined) {
-      await wasm()
-        .cipherRelease(cipherHandle)
-        .catch(() => {});
+      await engine.cipherRelease(cipherHandle).catch(() => {});
     }
     closeAll(control, data);
   }
 }
 
+type DataPayload = { size: number; compressed?: boolean };
+
 type ActiveReceive = {
-  file: OfferedFile;
-  sink: ReceiveSink;
+  payload: DataPayload;
+  sink: WritablePayload;
   received: Set<number>;
   bytes: number;
   queue: Promise<void>;
   progress(fileBytes: number): void;
+  strictLength: boolean;
+  chunkProgress?: (position: number, length: number) => void;
   resolve(): void;
   reject(error: Error): void;
 };
@@ -590,9 +718,11 @@ export class DataReceiver {
   }
 
   receive(
-    file: OfferedFile,
-    sink: ReceiveSink,
+    payload: DataPayload,
+    sink: WritablePayload,
     progress: (fileBytes: number) => void,
+    chunkProgress?: (position: number, length: number) => void,
+    strictLength = false,
   ) {
     // A data socket can fail before the next file is requested, so surface the
     // recorded failure instead of waiting for data that will never arrive.
@@ -600,16 +730,22 @@ export class DataReceiver {
     if (this.active) throw new Error("A receive file is already active");
     return new Promise<void>((resolve, reject) => {
       this.active = {
-        file,
+        payload,
         sink,
         received: new Set(),
         bytes: 0,
         queue: Promise.resolve(),
         progress,
+        strictLength,
+        chunkProgress,
         resolve,
         reject,
       };
     });
+  }
+
+  assertHealthy() {
+    if (this.failure) throw this.failure;
   }
 
   stop() {
@@ -618,12 +754,12 @@ export class DataReceiver {
   }
 
   private async read(socket: CrocSocket) {
-    const engine = wasm();
+    const engine = protocolEngine();
     while (!this.stopped) {
       try {
         const encrypted = await socket.receive();
         const compressed =
-          !this.noCompress && (this.active?.file.compressed ?? true);
+          !this.noCompress && (this.active?.payload.compressed ?? true);
         const payload =
           this.cipherHandle === undefined
             ? await this.decodeLegacy(engine, encrypted, compressed)
@@ -655,7 +791,7 @@ export class DataReceiver {
   }
 
   private async decodeLegacy(
-    engine: ReturnType<typeof wasm>,
+    engine: ReturnType<typeof protocolEngine>,
     encrypted: Uint8Array,
     compressed: boolean,
   ) {
@@ -683,7 +819,10 @@ export class DataReceiver {
         position % CHUNK_SIZE !== 0 ||
         bytes.byteLength === 0 ||
         bytes.byteLength > CHUNK_SIZE ||
-        position + bytes.byteLength > active.file.size
+        position + bytes.byteLength > active.payload.size ||
+        (active.strictLength &&
+          bytes.byteLength !==
+            Math.min(CHUNK_SIZE, active.payload.size - position))
       ) {
         throw new Error(
           "Received a file chunk outside the advertised file size",
@@ -693,16 +832,18 @@ export class DataReceiver {
       await active.sink.writeAt(position, bytes);
       active.bytes += bytes.byteLength;
       active.progress(active.bytes);
-      if (active.bytes === active.file.size) {
+      active.chunkProgress?.(position, bytes.byteLength);
+      if (active.bytes === active.payload.size) {
         this.active = undefined;
         active.resolve();
-      } else if (active.bytes > active.file.size) {
+      } else if (active.bytes > active.payload.size) {
         throw new Error("Received more data than the advertised file size");
       }
     });
     active.queue.catch((error) => {
-      if (this.active === active) this.active = undefined;
-      active.reject(error instanceof Error ? error : new Error(String(error)));
+      const failure = error instanceof Error ? error : new Error(String(error));
+      this.fail(failure);
+      active.reject(failure);
     });
     return active.queue;
   }
@@ -715,13 +856,19 @@ export async function receiveFiles(options: {
   signal?: AbortSignal;
 }) {
   const { secret, settings, callbacks, signal } = options;
+  checkProtocolCapabilities();
+  const engine = protocolEngine();
   validateSecret(secret);
-  const { room, passphrase } = await wasm().codeComponents(secret);
-  const relayIndex = await wasm().relayIndex(secret, settings.relayAddresses.length);
+  const { room, passphrase } = await engine.codeComponents(secret);
+  const relayIndex = await engine.relayIndex(
+    secret,
+    settings.relayAddresses.length,
+  );
   let control: CrocSocket | undefined;
   let data: CrocSocket[] = [];
   let key: Uint8Array | undefined;
   let cipherHandle: number | undefined;
+  let pakeHandle: number | undefined;
   let receiver: DataReceiver | undefined;
   try {
     callbacks.onStatus?.("Connecting to relay…");
@@ -738,18 +885,21 @@ export async function receiveFiles(options: {
 
     callbacks.onStatus?.("Authenticating code…");
     const curve = "p256";
-    const pake = await wasm().pakeInitWithIdentities(
+    const pake = await engine.pakeInitWithIdentities(
       textEncoder.encode(passphrase),
       0,
       curve,
       PAKE_PURPOSE_TRANSFER,
       room,
+      signal,
     );
+    pakeHandle = pake.handle;
     await sendControl(control, {
       t: "pake",
       v: PAKE_PROTOCOL_VERSION,
       b: pake.bytes,
       b2: textEncoder.encode(curve),
+      f: [BUNDLE_FEATURE],
     });
     const peerPake = await receiveControl(control);
     if (peerPake.t !== "pake" || !peerPake.b || !peerPake.b2) {
@@ -761,8 +911,8 @@ export async function receiveFiles(options: {
         `Sender provided an invalid ${peerPake.b2.byteLength}-byte PAKE salt`,
       );
     }
-    const finished = await wasm().pakeUpdate(pake.handle, peerPake.b);
-    const peerKeys = await wasm().derivePeerKeys(
+    const finished = await engine.pakeUpdate(pake.handle, peerPake.b);
+    const peerKeys = await engine.derivePeerKeys(
       finished.key,
       peerPake.b2,
       PAKE_PURPOSE_TRANSFER,
@@ -782,14 +932,20 @@ export async function receiveFiles(options: {
     }
     requirePakeVersion(confirmationB.v);
     if (
-      !(await wasm().confirmPeerKey(peerKeys.confirmationB, confirmationB.b))
+      !(await engine.confirmPeerKey(peerKeys.confirmationB, confirmationB.b))
     ) {
       throw new Error("Sender PAKE confirmation failed");
     }
     key = peerKeys.key;
-    cipherHandle = await wasm().cipherInit(key);
+    cipherHandle = await engine.cipherInit(key);
     callbacks.onStatus?.("Opening transfer channels…");
-    data = await openDataConnections(settings, room, dataPorts(relay.banner), relayIndex, signal);
+    data = await openDataConnections(
+      settings,
+      room,
+      dataPorts(relay.banner),
+      relayIndex,
+      signal,
+    );
     await sendControl(
       control,
       {
@@ -825,7 +981,141 @@ export async function receiveFiles(options: {
     let totalTransferred = 0;
     let progressStarted = false;
     receiver = new DataReceiver(data, key, offer.noCompress, cipherHandle);
-    for (let fileIndex = 0; fileIndex < offer.files.length; fileIndex += 1) {
+    const bundleState = new BundleLifecycle();
+    const canBundle =
+      (peerPake.f ?? []).includes(BUNDLE_FEATURE) && offer.bundleLimits;
+    const units = canBundle
+      ? planBundles(
+          offer.files.map((file) => ({
+            size: file.size,
+            eligible:
+              Boolean(file.bundleEligible) && file.hash.byteLength === 8,
+            requested: true,
+          })),
+          effectiveBundleLimits(BUNDLE_LIMITS, canBundle),
+        )
+      : offer.files.map((_file, index) => [index]);
+    for (const indices of units) {
+      const fileIndex = indices[0];
+      if (indices.length >= 4) {
+        checkAbort(signal);
+        const id = bundleState.lastID + 1;
+        bundleState.request(id);
+        const offsets: number[] = [];
+        let size = 0;
+        for (const index of indices) {
+          offsets.push(size);
+          size += offer.files[index].size;
+        }
+        const request = {
+          id,
+          indices,
+          limits: BUNDLE_LIMITS,
+          MachineID: machineID(),
+          ReconnectVersion: 0,
+        };
+        await sendControl(
+          control,
+          {
+            t: "bundle-request",
+            b: textEncoder.encode(JSON.stringify(request)),
+          },
+          key,
+        );
+        const response = await receiveControl(control, key);
+        if (response.t !== "bundle-offer")
+          throw new Error(`Expected bundle offer, got ${response.t}`);
+        const bundleOffer = validateBundleOffer(
+          decodeBundleJSON(response.b),
+          id,
+          size,
+          offer.noCompress,
+        );
+        bundleState.advance(id, "offer");
+        const sink = new BundleSink(size);
+        const update = createBundleProgress(
+          indices,
+          offsets,
+          offer.files.length,
+          (index) => ({
+            size: offer.files[index].size,
+            name: offer.files[index].path,
+          }),
+          totalTransferred,
+          offer.totalSize,
+          callbacks,
+          (bytes) => {
+            totalTransferred = bytes;
+          },
+        );
+        const guard = new BundleControlGuard(
+          receiveControl(control, key),
+          signal,
+        );
+        try {
+          progressStarted = true;
+          update(0, 0);
+          const received = receiver.receive(
+            {
+              size,
+              compressed: bundleOffer.compressed,
+            },
+            sink,
+            () => {},
+            update,
+            true,
+          );
+          // Attach rejection handling before ready can fail or cancellation fires.
+          void received.catch(() => undefined);
+          bundleState.advance(id, "ready");
+          await sendControl(
+            control,
+            {
+              t: "bundle-ready",
+              b: textEncoder.encode(JSON.stringify({ id })),
+            },
+            key,
+          );
+          await Promise.race([received, guard.failure]);
+          await sink.finalize();
+          await verifySink(sink, base64ToBytes(bundleOffer.hash), guard.signal);
+          guard.check();
+          receiver.assertHealthy();
+          await sink.commitMembers(
+            offer.files,
+            indices,
+            offsets,
+            destination,
+            (index) => {
+              receiver!.assertHealthy();
+              callbacks.onFileComplete?.(offer.files[index].path);
+            },
+            guard.signal,
+          );
+          guard.check();
+          receiver.assertHealthy();
+          bundleState.advance(id, "done");
+          guard.allowClosed();
+          await sendControl(
+            control,
+            { t: "bundle-done", b: textEncoder.encode(JSON.stringify({ id })) },
+            key,
+          );
+          const closed = await guard.next;
+          if (closed.t !== "bundle-closed")
+            throw new Error(`Expected bundle closed, got ${closed.t}`);
+          validateBundleAck(decodeBundleJSON(closed.b), id);
+          bundleState.advance(id, "closed");
+          receiver.assertHealthy();
+        } catch (error) {
+          guard.check();
+          throw error;
+        } finally {
+          guard.dispose();
+          await sink.abort();
+        }
+        continue;
+      }
       checkAbort(signal);
       const file = offer.files[fileIndex];
       const displayName = offer.kind === "text" ? "Text message" : file.path;
@@ -834,7 +1124,7 @@ export async function receiveFiles(options: {
         try {
           await sink.finalize();
           callbacks.onStatus?.(`Verifying ${displayName}`);
-          await verifySink(sink, file.hash);
+          await verifySink(sink, file.hash, signal);
           await sink.commit();
           callbacks.onFileComplete?.(displayName);
         } catch (error) {
@@ -898,7 +1188,7 @@ export async function receiveFiles(options: {
           throw new Error(`Expected sender to close the file, got ${close.t}`);
         }
         callbacks.onStatus?.(`Verifying ${displayName}`);
-        await verifySink(sink, file.hash);
+        await verifySink(sink, file.hash, signal);
         await sink.commit();
         totalTransferred = beforeFile + file.size;
         callbacks.onFileComplete?.(displayName);
@@ -908,6 +1198,7 @@ export async function receiveFiles(options: {
       }
     }
 
+    receiver.assertHealthy();
     await sendControl(control, { t: "finished" }, key);
     const finishedMessage = await receiveControl(control, key);
     if (finishedMessage.t !== "finished") {
@@ -920,10 +1211,10 @@ export async function receiveFiles(options: {
     throw error;
   } finally {
     receiver?.stop();
+    if (pakeHandle !== undefined)
+      await engine.pakeRelease(pakeHandle).catch(() => undefined);
     if (cipherHandle !== undefined) {
-      await wasm()
-        .cipherRelease(cipherHandle)
-        .catch(() => {});
+      await engine.cipherRelease(cipherHandle).catch(() => {});
     }
     closeAll(control, data);
   }
